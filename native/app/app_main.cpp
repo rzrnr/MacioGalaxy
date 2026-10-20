@@ -28,6 +28,7 @@
 #include <petari/camera_input.h>
 #include <petari/camera_settings.hpp>
 #include <petari/volume.hpp>
+#include <petari/display_mode.hpp>
 #include <petari/efb_dump_mark.hpp>
 #include <petari/input.hpp>
 
@@ -481,6 +482,14 @@ int main(int argc, char** argv) {
     config.pauseOnFocusLost = false;
     config.windowWidth = 1280;
     config.windowHeight = 720;
+    // Fullscreen as last left (display.txt; Cmd+Return switches). Background smoke runs stay windowed.
+    if (!App::SmokeBackground::enabled) {
+        if (!App::Display::load(paths.user / "display.txt", &error)) {
+            std::fprintf(stderr, "petari: display: %s (starting windowed)\n", error.c_str());
+        }
+        App::Display::configureHints();
+        config.startFullscreen = App::Display::fullscreen();
+    }
     config.logCallback = logMessage;
     config.logLevel = LOG_INFO;
     const AuroraInfo info = aurora_initialize(1, argv, &config);
@@ -489,7 +498,9 @@ int main(int argc, char** argv) {
         aurora_shutdown();
         return 1;
     }
-    if (App::SmokeBackground::enabled) {
+    if (!App::SmokeBackground::enabled) {
+        App::Display::attach(static_cast<SDL_Window*>(info.window));
+    } else {
         auto* window = static_cast<SDL_Window*>(info.window);
         if (!SDL_SetWindowFocusable(window, false)) {
             std::fprintf(stderr, "petari: could not isolate background window focus: %s\n", SDL_GetError());

@@ -23,6 +23,7 @@
 #include "../app/spike_profiler.hpp"
 #include "../app/smoke.hpp"
 #include "petari/app.hpp"
+#include "petari/display_mode.hpp"
 #include "petari/frame_telemetry.hpp"
 #include "petari/host_allocation.hpp"
 
@@ -159,6 +160,12 @@ void setImage(const Rect& image, float width, float height) {
     lastWindowHeight = height;
 }
 }  // namespace PetariNative::App::Events
+
+// Fullscreen and cursor (display_mode.cpp) need a real window; not under test here.
+namespace PetariNative::App::Display {
+void handleEvent(const SDL_Event&) {}
+void update() {}
+}  // namespace PetariNative::App::Display
 
 namespace PetariNative::App::Smoke {
 Observation smokeObservation;

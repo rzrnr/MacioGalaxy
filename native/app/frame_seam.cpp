@@ -29,6 +29,7 @@ extern "C" void petari_gx_pipeline_report();
 #include "smoke_stage.hpp"
 #include "soak_telemetry.hpp"
 #include "petari/asset_diagnostics.hpp"
+#include "petari/display_mode.hpp"
 #include "petari/frame_telemetry.hpp"
 #include "petari/home_menu.hpp"
 #include "petari/host_allocation.hpp"
@@ -459,12 +460,14 @@ void handleEvents(const AuroraEvent* event) {
                              static_cast<unsigned>(event->sdl.adevice.which),
                              event->sdl.adevice.recording ? " (recording)" : "");
             }
+            Display::handleEvent(event->sdl);
             Events::input(event->sdl);
             break;
         default:
             break;
         }
     }
+    Display::update();
 }
 
 // Opens the next Aurora frame. While the window cannot present (minimized,
