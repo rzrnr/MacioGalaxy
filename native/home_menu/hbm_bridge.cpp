@@ -20,6 +20,9 @@
 #include "petari/platform/mod_folder.hpp"
 #include "petari/camera_settings.hpp"
 #endif
+#ifdef PETARI_HOME_MENU_VOLUME
+#include "petari/volume.hpp"
+#endif
 
 namespace PetariNative::HomeMenu {
 
@@ -237,6 +240,22 @@ void applyModToggles() {
 }
 #endif
 
+#ifdef PETARI_HOME_MENU_VOLUME
+// Applies a Volume slider change at once (it is heard on the next audio burst)
+// and saves it to sound.txt.
+void applyVolumeChange() {
+    int percent = 0;
+    if (!instance().takeVolumeChange(&percent)) {
+        return;
+    }
+    Volume::setPercent(percent);
+    std::string error;
+    if (!Volume::save(&error)) {
+        std::fprintf(stderr, "petari: sound: %s\n", error.c_str());
+    }
+}
+#endif
+
 void init() {
     for (std::uint32_t& hold : gStickHold) {
         hold = 0;
@@ -246,6 +265,9 @@ void init() {
     refreshMods();
     refreshFolderMods();
     refreshCamera();
+#endif
+#ifdef PETARI_HOME_MENU_VOLUME
+    instance().setVolume(Volume::percent());
 #endif
     instance().open();
 }
@@ -257,6 +279,9 @@ void calc(const HBMControllerData* controllers) {
     applyModToggles();
     applyFolderToggles();
     applyCameraChange();
+#endif
+#ifdef PETARI_HOME_MENU_VOLUME
+    applyVolumeChange();
 #endif
     // Level Select's Go, once the menu has closed: the game starts the warp
     // at its next normal gameplay frame (GameScene::update).

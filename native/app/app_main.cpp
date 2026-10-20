@@ -27,6 +27,7 @@
 #include <petari/progress.hpp>
 #include <petari/camera_input.h>
 #include <petari/camera_settings.hpp>
+#include <petari/volume.hpp>
 #include <petari/efb_dump_mark.hpp>
 #include <petari/input.hpp>
 
@@ -400,6 +401,9 @@ int main(int argc, char** argv) {
     if (!PetariNative::CameraSettings::load(paths.user / "camera.txt", &error)) {
         std::fprintf(stderr, "petari: camera: %s\n", error.c_str());
         return 1;
+    }
+    if (!PetariNative::Volume::load(paths.user / "sound.txt", &error)) {
+        std::fprintf(stderr, "petari: sound: %s (volume stays at %d%%)\n", error.c_str(), PetariNative::Volume::percent());
     }
     if (PetariNative::CameraSettings::enabled()) std::fputs("PETARI MODS: OdysseyCamera on\n", stderr);
     for (int m = 0; m < static_cast<int>(PetariNative::Mods::Mod::Count); ++m) {

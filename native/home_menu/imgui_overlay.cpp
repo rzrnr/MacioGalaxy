@@ -65,6 +65,53 @@ void leftText(ImDrawList* list, ImFont* font, float size, float maxWidth, ImVec2
     list->AddText(font, size, ImVec2(left.x, left.y - extent.y * 0.5f), col, text);
 }
 
+// A slider item (the Volume slider): the label on the left, a track with a
+// gradient fill and a round knob, and the value in percent on the right. The
+// focused slider gets the gold outline and a glowing knob.
+void drawSlider(ImDrawList* list, ImFont* font, const ImageSpace& image, const ViewItem& item, float textSize,
+                float rounding, float alpha) {
+    const ImVec2 itemMin = image.point(item.rect.x0, item.rect.y0);
+    const ImVec2 itemMax = image.point(item.rect.x1, item.rect.y1);
+    const float middle = (itemMin.y + itemMax.y) * 0.5f;
+    const float value = std::clamp(item.slider, 0.0f, 1.0f);
+    list->AddRectFilled(itemMin, itemMax, color(0.22f, 0.27f, 0.42f, 0.9f * alpha), rounding);
+    if (item.focused) {
+        list->AddRect(itemMin, itemMax, color(0.98f, 0.80f, 0.22f, alpha), rounding, 0, image.height * 0.004f);
+    }
+
+    const Rect trackRect = sliderTrack(item.rect);
+    const ImVec2 trackMin = image.point(trackRect.x0, trackRect.y0);
+    const ImVec2 trackMax = image.point(trackRect.x1, trackRect.y1);
+    const float trackRound = (trackMax.y - trackMin.y) * 0.5f;
+    const float fillX = trackMin.x + (trackMax.x - trackMin.x) * value;
+    list->AddRectFilled(trackMin, trackMax, color(0.06f, 0.08f, 0.16f, 0.95f * alpha), trackRound);
+    if (value > 0.0f) {
+        // Blue when quiet, turning gold toward full volume.
+        const ImU32 fill = color(0.30f + 0.68f * value, 0.62f + 0.18f * value, 1.0f - 0.78f * value, alpha);
+        list->AddRectFilled(trackMin, ImVec2(std::max(fillX, trackMin.x + trackRound * 2.0f), trackMax.y), fill, trackRound);
+    }
+    // Tick marks every 25%.
+    for (int tick = 1; tick < 4; tick++) {
+        const float x = trackMin.x + (trackMax.x - trackMin.x) * tick * 0.25f;
+        list->AddLine(ImVec2(x, trackMin.y + trackRound * 0.5f), ImVec2(x, trackMax.y - trackRound * 0.5f),
+                      color(1.0f, 1.0f, 1.0f, 0.25f * alpha), image.height * 0.0015f);
+    }
+    const float knob = (trackMax.y - trackMin.y) * 1.05f;
+    if (item.focused) {
+        list->AddCircleFilled(ImVec2(fillX, middle), knob * 1.55f, color(0.98f, 0.80f, 0.22f, 0.28f * alpha));
+    }
+    list->AddCircleFilled(ImVec2(fillX, middle), knob, color(1.0f, 1.0f, 1.0f, alpha));
+    list->AddCircle(ImVec2(fillX, middle), knob, color(0.98f, 0.80f, 0.22f, alpha), 0, image.height * 0.003f);
+
+    const ImU32 text = color(0.92f, 0.94f, 1.0f, alpha);
+    const float pad = (itemMax.x - itemMin.x) * 0.04f;
+    leftText(list, font, textSize, trackMin.x - itemMin.x - 2.0f * pad, ImVec2(itemMin.x + pad, middle), text, item.label);
+    char percent[8];
+    std::snprintf(percent, sizeof(percent), "%d%%", static_cast<int>(std::lround(value * 100.0f)));
+    centeredText(list, font, textSize, itemMax.x - trackMax.x - pad, ImVec2((trackMax.x + itemMax.x) * 0.5f + pad * 0.25f, middle),
+                 value > 0.0f ? text : color(1.0f, 0.55f, 0.45f, alpha), value > 0.0f ? percent : "Mute");
+}
+
 }  // namespace
 
 Rect titleHintRect() {
@@ -246,6 +293,10 @@ void drawImGuiOverlay(float imageX, float imageY, float imageWidth, float imageH
             const ImVec2 itemMax = image.point(item.rect.x1, item.rect.y1);
             const ImVec2 center((itemMin.x + itemMax.x) * 0.5f, (itemMin.y + itemMax.y) * 0.5f);
             const float labelWidth = (itemMax.x - itemMin.x) * 0.9f;
+            if (item.slider >= 0.0f) {
+                drawSlider(list, font, image, item, itemSize, rounding, alpha);
+                continue;
+            }
             if (item.focused) {
                 list->AddRectFilled(itemMin, itemMax, color(0.98f, 0.80f, 0.22f, alpha), rounding);
                 centeredText(list, font, itemSize, labelWidth, center, color(0.08f, 0.06f, 0.02f, alpha), item.label);

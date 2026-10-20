@@ -19,8 +19,8 @@
 //   and reports HBM_SELECT_BTN2; the layout's _25 flag only matters for that
 //   result. While the menu is closed it has no effect.
 //
-// The menu offers Mac actions (Resume, Controls, Mods, Restart from Title, Quit) and
-// does not present Wii system features. Controls lists the keyboard and mouse
+// The menu offers Mac actions (Resume, Controls, Mods, Restart from Title, Quit,
+// and a Volume slider) and does not present Wii system features. Controls lists the keyboard and mouse
 // controls as currently bound (setControls; the bridge refreshes them from the
 // input layer each time the menu opens, so controls.txt remaps show). Rendering is a Dear ImGui overlay drawn in the
 // host frame (drawImGuiOverlay); the state machine itself has no rendering or
@@ -34,7 +34,7 @@
 //   pointer.
 // - B alone (left mouse): activate the item under the pointer; elsewhere, back.
 // - Up/Down (arrow keys, W/S via the Nunchuk stick): move the focus, with
-//   hold repeat.
+//   hold repeat. Left/Right step the focused Volume slider, with the same repeat.
 // - Pointer (mouse): moving onto an item focuses it.
 
 #include <algorithm>
@@ -48,7 +48,7 @@ enum class Selection : int { None = -1, Resume = 0, Quit = 1, Restart = 2 };
 enum class Phase : std::uint8_t {
     Closed,    // before the first open
     Opening,   // fade in; input ignored
-    List,      // Resume / Controls / Mods / My Progress / Restart from Title / Quit
+    List,      // Resume / Controls / Mods / My Progress / Restart from Title / Quit / Volume slider
     Confirm,   // confirming Restart or Quit
     Controls,  // the controls page, with Back
     Mods,      // on/off toggles for the native mods, Level Select, Back
@@ -162,7 +162,17 @@ struct ViewItem {
     const char* label = "";
     Rect rect;
     bool focused = false;
+    float slider = -1.0f;  // 0..1: a slider filled this far (the Volume item); below 0: a button
 };
+
+// The bar of a slider item, inside its rect: the label sits to its left and
+// the value to its right. The menu maps the pointer through the same rect.
+inline Rect sliderTrack(const Rect& item) {
+    const float width = item.x1 - item.x0;
+    const float middle = (item.y0 + item.y1) * 0.5f;
+    const float half = (item.y1 - item.y0) * 0.14f;
+    return {item.x0 + width * 0.34f, middle - half, item.x0 + width * 0.78f, middle + half};
+}
 
 // What the overlay draws.
 struct View {
@@ -219,6 +229,12 @@ public:
     void setCamera(const CameraOptions& options);
     bool takeCameraChange(CameraOptions* options);
     const CameraOptions& camera() const { return mCamera; }
+    // The Volume slider (0..100 in steps of 5). Left/Right step it, a click or
+    // drag on it sets it; changes are reported once (true) and copied to
+    // *percent. The caller applies and saves them.
+    void setVolume(int percent);
+    bool takeVolumeChange(int* percent);
+    int volume() const { return mVolume; }
     int levelMission() const { return mLevelMission; }
     Selection selection() const { return mPhase == Phase::Finished ? mResult : Selection::None; }  // HBMGetSelectBtnNum
 
@@ -295,6 +311,14 @@ private:
     void refreshCameraLabels();
     void changeCameraValue(int item, int delta);
     void changeLevelValue(int item, int delta);
+    int mVolume = 100;
+    bool mVolumeChanged = false;
+    bool mVolumeDrag = false;       // A or B went down with the pointer on the slider and is still held
+    std::uint32_t mSideDir = 0;     // Button::Left or Button::Right being repeated on the slider
+    float mSideTime = 0.0f;
+    void changeVolume(int percent);
+    void setVolumeFromPointer(float x);
+    bool updateVolumeKeys(const FrameInput& input);  // true: a fresh press was used
 };
 
 // --- The game's menu instance (HomeButtonMenuWrapper.cpp's native branch) ---
