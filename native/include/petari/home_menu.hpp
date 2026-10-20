@@ -19,8 +19,8 @@
 //   and reports HBM_SELECT_BTN2; the layout's _25 flag only matters for that
 //   result. While the menu is closed it has no effect.
 //
-// The menu offers Mac actions (Resume, Controls, Mods, Restart from Title, Quit,
-// and a Volume slider) and does not present Wii system features. Controls lists the keyboard and mouse
+// The menu offers Mac actions (Resume, Controls, Mods, My Progress, a Volume
+// slider, Restart from Title, Quit) and does not present Wii system features. Controls lists the keyboard and mouse
 // controls as currently bound (setControls; the bridge refreshes them from the
 // input layer each time the menu opens, so controls.txt remaps show). Rendering is a Dear ImGui overlay drawn in the
 // host frame (drawImGuiOverlay); the state machine itself has no rendering or
@@ -48,7 +48,7 @@ enum class Selection : int { None = -1, Resume = 0, Quit = 1, Restart = 2 };
 enum class Phase : std::uint8_t {
     Closed,    // before the first open
     Opening,   // fade in; input ignored
-    List,      // Resume / Controls / Mods / My Progress / Restart from Title / Quit / Volume slider
+    List,      // Resume / Controls / Mods / My Progress / Volume slider / Restart from Title / Quit
     Confirm,   // confirming Restart or Quit
     Controls,  // the controls page, with Back
     Mods,      // on/off toggles for the native mods, Level Select, Back

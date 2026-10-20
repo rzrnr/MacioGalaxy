@@ -170,13 +170,14 @@ void testLifecycle() {
     const HM::View list = menu.view();
     check(list.itemCount == 7 && std::strcmp(list.items[0].label, "Resume") == 0 &&
               std::strcmp(list.items[1].label, "Controls") == 0 && std::strcmp(list.items[2].label, "Mods") == 0 &&
-              std::strcmp(list.items[3].label, "My Progress") == 0 && std::strcmp(list.items[4].label, "Restart from Title") == 0 &&
-              std::strcmp(list.items[5].label, "Quit") == 0 && std::strcmp(list.items[6].label, "Volume") == 0,
-          "list offers Resume, Controls, Mods, My Progress, Restart from Title, Quit, Volume");
-    check(list.items[6].slider == 1.0f && list.items[5].slider < 0.0f, "Volume is a slider at 100%, the rest are buttons");
+              std::strcmp(list.items[3].label, "My Progress") == 0 && std::strcmp(list.items[4].label, "Volume") == 0 &&
+              std::strcmp(list.items[5].label, "Restart from Title") == 0 && std::strcmp(list.items[6].label, "Quit") == 0,
+          "list offers Resume, Controls, Mods, My Progress, Volume, Restart from Title, Quit");
+    check(list.items[4].slider == 1.0f && list.items[3].slider < 0.0f && list.items[5].slider < 0.0f,
+          "Volume is a slider at 100%, the rest are buttons");
     check(list.panel.y0 >= -1.0f && list.panel.y1 <= 1.0f && list.items[6].rect.y1 < list.panel.y1 &&
               list.messageY < list.items[0].rect.y0,
-          "six items fit inside the panel and the image");
+          "seven items fit inside the panel and the image");
     check(list.items[0].focused && !list.items[1].focused, "Resume focused first");
 
     for (int i = 0; i < 300; i++) {
@@ -204,10 +205,10 @@ void testSelections() {
     for (int quit = 0; quit < 2; quit++) {
         HM::Menu menu = newMenu();
         openToList(menu);
-        menu.update(press(Down));
-        menu.update(press(Down));
-        menu.update(press(Down));
-        menu.update(press(Down));
+        for (int i = 0; i < 5; i++) {
+            menu.update(press(Down));  // past the Volume slider to Restart
+            menu.update(none());
+        }
         if (quit) {
             menu.update(press(Down));
         }
@@ -221,7 +222,7 @@ void testSelections() {
         check(std::strcmp(confirm.items[0].label, quit ? "Quit" : "Restart") == 0, "confirm names the action");
         check(menu.focus() == 1, "Cancel focused by default");
         menu.update(press(A));
-        check(menu.phase() == HM::Phase::List && menu.focus() == (quit ? 5 : 4), "A on Cancel returns to the item");
+        check(menu.phase() == HM::Phase::List && menu.focus() == (quit ? 6 : 5), "A on Cancel returns to the item");
 
         menu.update(press(A));
         menu.update(press(Up));
@@ -250,14 +251,14 @@ void testCancellation() {
     check(framesUntilSelection(menu) == 10 && menu.selection() == HM::Selection::Resume, "Escape resume result");
 
     openToList(menu);
-    menu.update(press(Down));
-    menu.update(press(Down));
-    menu.update(press(Down));
-    menu.update(press(Down));
+    for (int i = 0; i < 5; i++) {
+        menu.update(press(Down));
+        menu.update(none());
+    }
     menu.update(press(A));
     sounds.clear();
     menu.update(press(Plus | B));
-    check(menu.phase() == HM::Phase::List && menu.focus() == 4, "Escape in a confirmation goes back");
+    check(menu.phase() == HM::Phase::List && menu.focus() == 5, "Escape in a confirmation goes back");
     check(played(HM::Sound::Cancel), "cancel sound");
 
     menu.update(press(A));
@@ -276,6 +277,7 @@ void testCancellation() {
     check(menu.phase() == HM::Phase::Closing, "a left click outside the items is back");
 
     openToList(menu);
+    menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
@@ -321,6 +323,7 @@ void testBlackOut() {
             menu.update(press(Down));
             menu.update(press(Down));
             menu.update(press(Down));
+            menu.update(press(Down));
             menu.update(press(A));
         } else if (at == HM::Phase::Closing) {
             menu.update(press(A));
@@ -338,6 +341,7 @@ void testBlackOut() {
 
     // A reset during a Quit fade keeps its timing and becomes the reset result.
     openToList(menu);
+    menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
@@ -454,26 +458,26 @@ void testFocusAndRepeat() {
     openToList(menu);
     const HM::View view = menu.view();
     float x, y;
-    center(view.items[5].rect, &x, &y);
+    center(view.items[6].rect, &x, &y);
     sounds.clear();
     menu.update(pointer(x, y));
-    check(menu.focus() == 5 && playedCount(HM::Sound::Focus) == 1, "pointer moving onto Quit focuses it");
+    check(menu.focus() == 6 && playedCount(HM::Sound::Focus) == 1, "pointer moving onto Quit focuses it");
     menu.update(pointer(x, y));
     check(playedCount(HM::Sound::Focus) == 1, "no sound while resting");
     HM::FrameInput up = pointer(x, y, Up);
     menu.update(up);
-    check(menu.focus() == 4, "keyboard moves the focus under a resting pointer");
+    check(menu.focus() == 5, "keyboard moves the focus under a resting pointer");
     menu.update(pointer(x, y));
-    check(menu.focus() == 4, "resting pointer does not steal the focus back");
+    check(menu.focus() == 5, "resting pointer does not steal the focus back");
     menu.update(pointer(x + 0.01f, y));
-    check(menu.focus() == 5, "moving the pointer takes the focus");
+    check(menu.focus() == 6, "moving the pointer takes the focus");
     menu.update(pointer(0.95f, 0.95f));
-    check(menu.focus() == 5, "leaving the items keeps the focus");
+    check(menu.focus() == 6, "leaving the items keeps the focus");
     menu.update(pointer(x, y, B));
     check(menu.phase() == HM::Phase::Confirm && menu.confirming() == HM::Selection::Quit, "left click on Quit");
 
     openToList(menu);
-    center(menu.view().items[4].rect, &x, &y);
+    center(menu.view().items[5].rect, &x, &y);
     menu.update(pointer(x, y));
     menu.update(pointer(0.95f, 0.95f));
     menu.update(press(A));
@@ -693,6 +697,7 @@ void testWrapper() {
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
+    frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);  // past the Volume slider
     frame(WPAD_BUTTON_A, WPAD_BUTTON_A);
     check(HM::instance().phase() == HM::Phase::Confirm, "Restart chosen through RSO::HBMCalc");
     frame(WPAD_BUTTON_UP, WPAD_BUTTON_UP);
@@ -726,6 +731,7 @@ void testWrapper() {
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
+    frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);  // past the Volume slider
     frame(WPAD_BUTTON_A, WPAD_BUTTON_A);
     frame(WPAD_BUTTON_UP, WPAD_BUTTON_UP);
     frame(WPAD_BUTTON_A, WPAD_BUTTON_A);
@@ -939,6 +945,7 @@ void testImGuiOverlay() {
         check(none == 0, "no title hint without text");
     }
 
+    menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
@@ -1300,7 +1307,7 @@ void testCameraPage() {
     check(menu.phase() == HM::Phase::Mods && menu.focus() == 3, "Escape returns to the camera entry");
 }
 
-// The Volume slider at the bottom of the list: Left/Right step 5% with hold
+// The Volume slider, between My Progress and Restart from Title: Left/Right step 5% with hold
 // repeat and stop at 0 and 100; a click sets it where it lands; dragging with
 // the left button follows the pointer; each change is reported once.
 void testVolumeSlider() {
@@ -1309,11 +1316,11 @@ void testVolumeSlider() {
     check(menu.volume() == 85, "setVolume snaps to 5% steps");
     menu.setVolume(100);
     openToList(menu);
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 4; i++) {
         menu.update(press(Down));
         menu.update(none());
     }
-    check(menu.focus() == 6 && menu.view().items[6].focused, "Down reaches the slider");
+    check(menu.focus() == 4 && menu.view().items[4].focused, "Down reaches the slider");
 
     int percent = -1;
     check(!menu.takeVolumeChange(&percent), "no change before input");
@@ -1325,8 +1332,8 @@ void testVolumeSlider() {
     check(menu.volume() == 95 && playedCount(HM::Sound::Focus) == 1, "Left steps down 5% with a tick");
     check(menu.takeVolumeChange(&percent) && percent == 95, "the change is reported");
     check(!menu.takeVolumeChange(&percent), "and only once");
-    check(std::fabs(menu.view().items[6].slider - 0.95f) < 1e-6f, "the view shows the new fill");
-    check(menu.phase() == HM::Phase::List && menu.focus() == 6, "Left on the slider keeps the menu where it is");
+    check(std::fabs(menu.view().items[4].slider - 0.95f) < 1e-6f, "the view shows the new fill");
+    check(menu.phase() == HM::Phase::List && menu.focus() == 4, "Left on the slider keeps the menu where it is");
 
     for (int i = 0; i < 23; i++) {
         menu.update(hold(Left));
@@ -1337,7 +1344,7 @@ void testVolumeSlider() {
     for (int i = 0; i < 6 * 30; i++) {
         menu.update(hold(Left));
     }
-    check(menu.volume() == 0 && std::strcmp(menu.view().items[6].label, "Volume") == 0, "holding Left stops at 0");
+    check(menu.volume() == 0 && std::strcmp(menu.view().items[4].label, "Volume") == 0, "holding Left stops at 0");
     menu.update(none());
     menu.update(press(A));
     check(menu.volume() == 5, "A without the pointer steps up");
@@ -1345,15 +1352,19 @@ void testVolumeSlider() {
     // Left/Right elsewhere in the list do not touch the volume.
     menu.update(press(Up));
     menu.update(press(Right));
-    check(menu.volume() == 5 && menu.focus() == 5, "Right on Quit leaves the volume alone");
+    check(menu.volume() == 5 && menu.focus() == 3, "Right on My Progress leaves the volume alone");
+    menu.update(press(Down));
+    menu.update(press(Down));
+    menu.update(press(Right));
+    check(menu.volume() == 5 && menu.focus() == 5, "Right on Restart leaves the volume alone");
 
     // Clicks and drags map the pointer through the track.
-    const HM::Rect item = menu.view().items[6].rect;
+    const HM::Rect item = menu.view().items[4].rect;
     const HM::Rect track = HM::sliderTrack(item);
     const float y = (item.y0 + item.y1) * 0.5f;
     check(track.x0 > item.x0 && track.x1 < item.x1 && track.y0 > item.y0 && track.y1 < item.y1, "the track lies inside the item");
     menu.update(pointer(track.x0 + (track.x1 - track.x0) * 0.62f, y, B));
-    check(menu.volume() == 60 && menu.focus() == 6, "a click at 62% of the track sets 60%");
+    check(menu.volume() == 60 && menu.focus() == 4, "a click at 62% of the track sets 60%");
     HM::FrameInput drag = pointer(track.x0 + (track.x1 - track.x0) * 0.2f, y);
     drag.hold = B;
     menu.update(drag);
@@ -1384,7 +1395,7 @@ void testVolumeSlider() {
     framesUntilSelection(menu);
     menu.setVolume(40);
     openToList(menu);
-    check(std::fabs(menu.view().items[6].slider - 0.4f) < 1e-6f && !menu.takeVolumeChange(&percent), "reopening shows the saved volume");
+    check(std::fabs(menu.view().items[4].slider - 0.4f) < 1e-6f && !menu.takeVolumeChange(&percent), "reopening shows the saved volume");
 }
 
 int main() {

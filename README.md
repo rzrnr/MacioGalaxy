@@ -127,8 +127,8 @@ Keyboard and mouse by default, with game controller support. The main keys:
 **WASD** move, **Space** jump, **F** spin, **Shift** crouch, mouse aims the Star
 Pointer, left click shoots Star Bits, **Q/E** rotate the camera, **Escape**
 pauses, and **`** (the key under Escape) or **F1** opens the native Home menu
-(Controls, Mods, Restart, Quit, and a Volume slider: Left/Right in 5% steps,
-or click and drag it). Everything is listed, and remappable, in
+(Controls, Mods, a Volume slider: Left/Right in 5% steps or click and drag it,
+Restart, Quit). Everything is listed, and remappable, in
 [native/CONTROLS.md](native/CONTROLS.md). Controller support follows SDL3's
 standard layout but has not yet been tested with physical hardware.
 

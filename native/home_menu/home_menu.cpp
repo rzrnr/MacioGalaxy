@@ -36,15 +36,15 @@ constexpr float kControlsBackTop = 0.68f;
 constexpr float kControlsBackHeight = 0.15f;
 constexpr float kControlsBackHalfWidth = 0.2f;
 
-constexpr const char* kListLabels[] = {"Resume", "Controls", "Mods", "My Progress", "Restart from Title", "Quit", "Volume"};
+constexpr const char* kListLabels[] = {"Resume", "Controls", "Mods", "My Progress", "Volume", "Restart from Title", "Quit"};
 constexpr int kListCount = 7;
 constexpr int kListResume = 0;
 constexpr int kListControls = 1;
 constexpr int kListMods = 2;
 constexpr int kListProgress = 3;
-constexpr int kListRestart = 4;
-constexpr int kListQuit = 5;
-constexpr int kListVolume = 6;  // a slider, not a button
+constexpr int kListVolume = 4;  // a slider, not a button; above the actions that leave the game
+constexpr int kListRestart = 5;
+constexpr int kListQuit = 6;
 constexpr int kConfirmAccept = 0;
 constexpr int kConfirmCancel = 1;
 

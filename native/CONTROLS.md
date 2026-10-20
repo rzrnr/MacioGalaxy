@@ -32,7 +32,7 @@ have input-component tests but have not been approved through gameplay:
 | Input | Action |
 | --- | --- |
 | Arrow keys | D-pad; Up enters first-person view where supported, Down or Space leaves it |
-| F1 or ` | Native Home menu: Resume, Controls (every key as currently bound), Mods (with Level Select, native/LEVEL_SELECT.md), Restart from Title, Quit, Volume slider (Left/Right: 5% steps; click or drag; saved in `sound.txt`) |
+| F1 or ` | Native Home menu: Resume, Controls (every key as currently bound), Mods (with Level Select, native/LEVEL_SELECT.md), Volume slider (Left/Right: 5% steps; click or drag; saved in `sound.txt`), Restart from Title, Quit |
 | G / V | Optional mods (off by default; F1 → Mods): collect visible Star Bits / fire a Star Bit at the nearest enemy. See native/MODS.md |
 | J / L, I / K, Z / X, Command or middle mouse + mouse, trackpad scroll and pinch, right stick | Only with the Odyssey camera mod on (F1 → Mods → Odyssey camera): orbit, pitch, zoom. C recentres. See native/MODS.md |
 | P | Only with Photo mode on (F1 → Mods → Odyssey camera → Photo mode): freeze the game and fly a free camera (WASD, Space/Shift, mouse drag); O saves a screenshot; P or Escape returns. See native/MODS.md |
