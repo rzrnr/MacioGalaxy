@@ -1,13 +1,16 @@
 # MacioGalaxy · Guglis Edits
 
-A personal fork of [classicrob/MacioGalaxy](https://github.com/classicrob/MacioGalaxy), the
+A fork of [classicrob/MacioGalaxy](https://github.com/classicrob/MacioGalaxy), the
 unofficial native Apple Silicon port of Super Mario Galaxy built from the
 [Petari](https://github.com/SMGCommunity/Petari) decompilation.
 
 **This fork exists to support the main project, not to replace it.** The port itself, and
 everything that makes it work, comes from MacioGalaxy, Petari and Aurora. I really appreciate
-the work that has gone into them. Fixes that help everyone go back upstream as pull requests;
-the rest are personal tweaks.
+the work that has gone into them.
+
+The Guglis Edits are individual adjustments on top of it, one commit each. When an edit is
+finished and useful for everyone, it goes to the main project as a pull request, as the
+volume slider, fullscreen and the Honeyhive fix already have.
 
 For requirements, game data, building and playing, see the
 [MacioGalaxy README](https://github.com/classicrob/MacioGalaxy#readme). Like the main project,
@@ -23,10 +26,10 @@ The branch `guglis-edits` is the official `main` plus one commit per edit:
 | Volume slider | Master volume in the F1 menu, in 5% steps | [PR #1](https://github.com/classicrob/MacioGalaxy/pull/1) |
 | Fullscreen | Cmd+Return switches to real fullscreen and hides the Mac cursor | [PR #2](https://github.com/classicrob/MacioGalaxy/pull/2) |
 | Honeyhive lawn fix | Keeps negative texture LOD biases on arm64, so the grass is textured again | [PR #3](https://github.com/classicrob/MacioGalaxy/pull/3) |
-| FineFur | Mod (F1 → Mods): finer fur on the Honey Queen and the bees at high resolutions | personal |
-| App icon | A golden star over Hubble's Pinwheel Galaxy | personal |
-| Watch window | `PETARI_SMOKE_WATCH=1` shows test runs on screen, without taking input | personal |
-| CoreAudio link fix | A build fix my Mac needs | personal |
+| FineFur | Mod (F1 → Mods): finer fur on the Honey Queen and the bees at high resolutions | not yet proposed |
+| App icon | A golden star over Hubble's Pinwheel Galaxy | not yet proposed |
+| Watch window | `PETARI_SMOKE_WATCH=1` shows test runs on screen, without taking input | not yet proposed |
+| CoreAudio link fix | A build fix my Mac needs | not yet proposed |
 
 `guglis/update.sh` puts the edits on top of the newest official version, then builds, tests
 and installs the app. `guglis/propose.sh` turns single edits into pull request branches.

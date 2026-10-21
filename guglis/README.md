@@ -12,10 +12,10 @@ Branch auf meinem Fork (rzrnr/MacioGalaxy, Remote `fork`).
 | Lautstärkeregler (2 Commits) | F1-Menü: Schieberegler in 5-%-Schritten über „Restart from Title“, gespeichert in `sound.txt` | vorgeschlagen: PR [#1](https://github.com/classicrob/MacioGalaxy/pull/1), Branch `volume-slider` |
 | Vollbild | Cmd+Return schaltet echtes Vollbild, der Mac-Mauszeiger ist dort ausgeblendet, gespeichert in `display.txt` | vorgeschlagen: PR [#2](https://github.com/classicrob/MacioGalaxy/pull/2), Branch `fullscreen-cursor` |
 | Grastextur Honeyhive | Negativer Textur-LOD-Bias wird auf arm64 richtig übersetzt, der Rasen ist wieder texturiert | vorgeschlagen: PR [#3](https://github.com/classicrob/MacioGalaxy/pull/3), Branch `fix-negative-lod-bias` |
-| CoreAudio-Linkfix | Ohne ihn bricht der Build auf diesem Mac beim Linken ab | privat |
-| FineFur | Mod (F1 → Mods → „Fine fur“): Fell mit halb so breiten Haaren, schaltet sofort um. Details in `native/MODS.md` | privat |
-| Zuschau-Fenster | `PETARI_SMOKE_WATCH=1` zeigt Testläufe in einem Fenster ohne Fokus und ohne Eingabe | privat |
-| App-Icon | Die gebaute App bekommt ein eigenes Icon: ein goldener Stern vor der Feuerradgalaxie M101 (Bildnachweis unten). Quelle ist das Icon-Composer-Paket `guglis/icon/SuperMarioGalaxy.icon`, das beim Bauen kompiliert wird | privat |
+| CoreAudio-Linkfix | Ohne ihn bricht der Build auf diesem Mac beim Linken ab | noch nicht vorgeschlagen |
+| FineFur | Mod (F1 → Mods → „Fine fur“): Fell mit halb so breiten Haaren, schaltet sofort um. Details in `native/MODS.md` | noch nicht vorgeschlagen |
+| Zuschau-Fenster | `PETARI_SMOKE_WATCH=1` zeigt Testläufe in einem Fenster ohne Fokus und ohne Eingabe | noch nicht vorgeschlagen |
+| App-Icon | Die gebaute App bekommt ein eigenes Icon: ein goldener Stern vor der Feuerradgalaxie M101 (Bildnachweis unten). Quelle ist das Icon-Composer-Paket `guglis/icon/SuperMarioGalaxy.icon`, das beim Bauen kompiliert wird | noch nicht vorgeschlagen |
 
 `git log --oneline origin/main..guglis-edits` zeigt die Commits.
 
@@ -64,7 +64,7 @@ Zurück zu einem gesicherten Stand: `git switch -C guglis-edits guglis-edits-vor
 ## Eine neue eigene Änderung
 
 Auf `guglis-edits` arbeiten, die Änderung als eigenen Commit festhalten und hier in
-die Tabelle eintragen, zunächst als privat. Die kurze englische Tabelle in
+die Tabelle eintragen, zunächst als noch nicht vorgeschlagen. Die kurze englische Tabelle in
 `.github/README.md` (die Seite, die GitHub für den Fork zeigt) bekommt dieselbe Zeile. Je kleiner ein Edit die offiziellen
 Dateien berührt, desto seltener kollidiert er bei Updates. Commits für einen
 möglichen Vorschlag schreibt man wie fürs offizielle Repo: auf Englisch, ohne
@@ -72,8 +72,8 @@ möglichen Vorschlag schreibt man wie fürs offizielle Repo: auf Englisch, ohne
 
 ## Einen Edit doch vorschlagen
 
-Ob ein Edit privat bleibt oder vorgeschlagen wird, entscheide ich pro Edit. Zum
-Vorschlagen:
+Die Edits sind einzelne Anpassungen. Ist eine fertig und für alle sinnvoll, geht sie
+als Vorschlag ans offizielle Repo; wann, entscheide ich pro Edit. Zum Vorschlagen:
 
 ```sh
 guglis/propose.sh <branch-name> <commit> [<commit>...]
@@ -82,7 +82,7 @@ guglis/propose.sh <branch-name> <commit> [<commit>...]
 Das legt den Branch `<branch-name>` vom offiziellen Stand an, mit nur diesen
 Commits darauf, und zeigt die Befehle zum Hochladen auf den Fork (rzrnr) und für
 den PR. Hochgeladen wird erst, wenn ich die Befehle selbst ausführe. Danach in der
-Tabelle von „privat“ auf „vorgeschlagen“ umstellen.
+Tabelle auf „vorgeschlagen“ umstellen.
 
 Der Edit bleibt dabei auch in `guglis-edits`. Ändert sich ein Vorschlag nach
 Rückmeldungen, kommt die Korrektur in beide Branches: als Commit auf den
