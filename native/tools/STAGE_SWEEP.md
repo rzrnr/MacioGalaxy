@@ -132,6 +132,11 @@ Set `PETARI_SMOKE_BACKGROUND=0` explicitly for human-controlled fixture playtest
 or visible foreground diagnostics; physical input and ASSISTED detection then
 behave as before. An ordinary non-fixture, non-smoke launch stays interactive.
 
+To watch a background run, add `PETARI_SMOKE_WATCH=1`. The window is then shown
+above other windows but stays nonfocusable, physical input stays isolated and the
+audio stays muted. It can still be moved, resized or minimized. Resizing can change
+the render size, so leave the window as it is when frame dumps are compared.
+
 Background validation: `build/stage-sweep/background-live-v3` passed EggStar s1
 with all 1,457 measured frames unfocused, 0 physical assistance and fault-free
 audio. The external System Events monitor never reported Petari frontmost.
