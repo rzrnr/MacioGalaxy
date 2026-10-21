@@ -90,6 +90,9 @@ public:
     void padDisconnected();
     void mouseMoved(float x, float y);
     void mouseLeft();
+    // Where the mouse points into the game image (-1..1, y down, as the Star Pointer's KPAD
+    // position), while the mouse and not a controller stick drives the pointer.
+    bool mousePointing(float* posX, float* posY) const;
     void setViewport(const Viewport& viewport) { mViewport = viewport; }
     void focusChanged(bool focused);
     void setPosture(Posture posture) { mPosture = posture; }

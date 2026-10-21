@@ -38,6 +38,7 @@
 #include "petari/latency_probe.hpp"
 #include "petari/editor_settings.hpp"
 #include "petari/camera_settings.hpp"
+#include "petari/mods.hpp"
 #include "remote_model.hpp"
 
 namespace PetariNative::Input {
@@ -1144,6 +1145,23 @@ void resetForTesting() {
 }  // namespace PetariNative::Input
 
 using namespace PetariNative::Input;
+
+// The Instant pointer mod (native/MODS.md): where the mouse points into the game image now, for
+// drawing player 1's Star Pointer there (StarPointerLayout::draw); false while the mod is off or the
+// mouse does not drive the pointer. The game thread, which also handles the mouse events.
+extern "C" bool petari_host_pointer_now(float* x, float* y) {
+    if (!PetariNative::Mods::enabled(PetariNative::Mods::Mod::InstantPointer)) {
+        return false;
+    }
+    // PETARI_INSTANT_POINTER_AT=x,y: a fixed position (-1..1) instead of the mouse, for measuring
+    // the mod's cost in a background smoke run, where the mouse never enters the window.
+    static const char* fixed = std::getenv("PETARI_INSTANT_POINTER_AT");
+    if (fixed != nullptr && std::sscanf(fixed, "%f,%f", x, y) == 2) {
+        return true;
+    }
+    std::lock_guard<std::mutex> lock(gHostMutex);
+    return model().mousePointing(x, y);
+}
 
 // --- SDK API ---
 

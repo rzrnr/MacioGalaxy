@@ -64,6 +64,9 @@ public:
     void hideAll();
     void tearDownHide();
     void drawDecoration() const;
+#ifdef PETARI_NATIVE
+    void drawAtNow(const TVec2f& rPos) const;
+#endif
     void setPosition();
     void rotateTest();
     void calcPoseNozzle(const TVec2f&, const TVec2f&);

@@ -1,6 +1,7 @@
 #include "Game/Screen/StarPointerLayout.hpp"
 #include "Game/LiveActor/Nerve.hpp"
 #include "Game/Screen/LayoutCoreUtil.hpp"
+#include "Game/Screen/LayoutManager.hpp"
 #include "Game/Screen/StarPointerBlur.hpp"
 #include "Game/Screen/StarPointerCommandStream.hpp"
 #include "Game/Screen/StarPointerController.hpp"
@@ -16,10 +17,16 @@
 #include "Game/Util/SoundUtil.hpp"
 #include "Game/Util/StarPointerUtil.hpp"
 #include "Game/Util/SystemUtil.hpp"
+#include "Game/Util/ScreenUtil.hpp"
 #include <JSystem/JGeometry/TVec.hpp>
 #include <JSystem/JMath/JMATrigonometric.hpp>
 #include <JSystem/JUtility/JUTTexture.hpp>
+#include <JSystem/JUtility/JUTVideo.hpp>
 #include <revolution/wpad.h>
+
+#ifdef PETARI_NATIVE
+extern "C" bool petari_host_pointer_now(float* x, float* y);  // native/input/wpad_host.cpp
+#endif
 
 void StarPointerLayout_FORCE_MATCH_SDATA2() {
     (void)1.0f;
@@ -542,10 +549,55 @@ void StarPointerLayout::draw() const {
         return;
     }
 
+#ifdef PETARI_NATIVE
+    // The Instant pointer mod (native/MODS.md): player 1's pointer is drawn where the mouse points
+    // now, in every frame (the extra frames at Frame rate 120 too), not where the game's pointer
+    // was at the last step. The game keeps its own position for everything the pointer does.
+    float x = 0.0f, y = 0.0f;
+    if (mPadChannel == WPAD_CHAN0 && petari_host_pointer_now(&x, &y)) {
+        TVec2f now((x + 1.0f) * MR::getScreenWidth() * 0.5f, (y + 1.0f) * JUTVideo::getManager()->getEfbHeight() * 0.5f);
+        StarPointerFunction::forceInsideScreenEdge(&now);
+        drawAtNow(now);
+        return;
+    }
+#endif
+
     drawDecoration();
     LayoutActor::draw();
     mNumber->draw();
 }
+
+#ifdef PETARI_NATIVE
+// Draws the pointer and its Star Bit count with their root panes moved to rPos for this draw only.
+void StarPointerLayout::drawAtNow(const TVec2f& rPos) const {
+    TVec2f layoutPos;
+    MR::convertScreenPosToLayoutPos(&layoutPos, rPos);
+    const LayoutActor* actors[2] = {this, mNumber};
+    nw4r::math::VEC3 kept[2];
+    for (int i = 0; i < 2; i++) {
+        nw4r::lyt::Pane* pRoot = MR::getRootPane(actors[i]);
+        if (pRoot == nullptr) {
+            actors[i] = nullptr;
+            continue;
+        }
+        kept[i] = pRoot->mTranslate;
+        pRoot->mTranslate.x = layoutPos.x;
+        pRoot->mTranslate.y = layoutPos.y;
+        actors[i]->getLayoutManager()->calcMtx();
+    }
+
+    drawDecoration();
+    LayoutActor::draw();
+    mNumber->draw();
+
+    for (int i = 0; i < 2; i++) {
+        if (actors[i] != nullptr) {
+            MR::getRootPane(actors[i])->mTranslate = kept[i];
+            actors[i]->getLayoutManager()->calcMtx();
+        }
+    }
+}
+#endif
 
 void StarPointerLayout::drawDecoration() const {
     if (mPointerKind == StarPointerKind_HandPointer || mPointerKind == StarPointerKind_2 || mPointerKind == StarPointerKind_FingerPointer ||
