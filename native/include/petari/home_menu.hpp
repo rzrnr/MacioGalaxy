@@ -19,8 +19,8 @@
 //   and reports HBM_SELECT_BTN2; the layout's _25 flag only matters for that
 //   result. While the menu is closed it has no effect.
 //
-// The menu offers Mac actions (Resume, Controls, Mods, My Progress, a Volume
-// slider, Restart from Title, Quit) and does not present Wii system features. Controls lists the keyboard and mouse
+// The menu offers Mac actions (Resume, Controls, Mods, Graphics, My Progress, a
+// Volume slider, Restart from Title, Quit) and does not present Wii system features. Controls lists the keyboard and mouse
 // controls as currently bound (setControls; the bridge refreshes them from the
 // input layer each time the menu opens, so controls.txt remaps show). Rendering is a Dear ImGui overlay drawn in the
 // host frame (drawImGuiOverlay); the state machine itself has no rendering or
@@ -34,7 +34,8 @@
 //   pointer.
 // - B alone (left mouse): activate the item under the pointer; elsewhere, back.
 // - Up/Down (arrow keys, W/S via the Nunchuk stick): move the focus, with
-//   hold repeat. Left/Right step the focused Volume slider, with the same repeat.
+//   hold repeat. Left/Right step the focused Volume slider, with the same repeat,
+//   and change the focused value on the Graphics page.
 // - Pointer (mouse): moving onto an item focuses it.
 
 #include <algorithm>
@@ -48,7 +49,7 @@ enum class Selection : int { None = -1, Resume = 0, Quit = 1, Restart = 2 };
 enum class Phase : std::uint8_t {
     Closed,    // before the first open
     Opening,   // fade in; input ignored
-    List,      // Resume / Controls / Mods / My Progress / Volume slider / Restart from Title / Quit
+    List,      // Resume / Controls / Mods / Graphics / My Progress / Volume slider / Restart from Title / Quit
     Confirm,   // confirming Restart or Quit
     Controls,  // the controls page, with Back
     Mods,      // on/off toggles for the native mods, Level Select, Back
@@ -56,6 +57,7 @@ enum class Phase : std::uint8_t {
     Camera,    // Odyssey camera mod options (docs/dev/ODYSSEY_CAMERA.md)
     Progress,  // My Progress: the personal clear record, one galaxy at a time (native/PROGRESS.md)
     ModFolder, // disc-file mods found in the mods folder: toggles, paging, Back (native/MODS.md)
+    Graphics,  // render resolution, upscaler, sharpening, FXAA, stats (native/GRAPHICS.md)
     Closing,   // fade out before reporting Resume
     BlackOut,  // fade to black before reporting Restart or Quit
     Finished,  // selection() reports the result
@@ -135,6 +137,15 @@ struct CameraOptions {
     bool invertX = false;
     bool invertY = false;
     bool photo = false;  // photo mode (P), independent of the orbit camera
+};
+
+// The Graphics page's options (petari/graphics.hpp, as plain values).
+struct GraphicsOptions {
+    int resolution = 0;  // render height, one of Graphics::kResolutions; 0: the display's
+    int upscaler = 0;    // Graphics::Upscaler
+    int sharpening = 0;  // Graphics::Sharpening
+    bool fxaa = false;
+    int stats = 0;       // Graphics::Stats
 };
 
 // One toggle of the Mods page: what the mod does, and whether it is on.
@@ -235,6 +246,13 @@ public:
     void setVolume(int percent);
     bool takeVolumeChange(int* percent);
     int volume() const { return mVolume; }
+    // The Graphics page's options; changes are reported once (true) and copied
+    // to *options. The caller applies and saves them.
+    void setGraphics(const GraphicsOptions& options);
+    bool takeGraphicsChange(GraphicsOptions* options);
+    const GraphicsOptions& graphics() const { return mGraphics; }
+    // The displayed image in pixels (0: unknown), for the page's render size line.
+    void setGraphicsOutput(int width, int height);
     int levelMission() const { return mLevelMission; }
     Selection selection() const { return mPhase == Phase::Finished ? mResult : Selection::None; }  // HBMGetSelectBtnNum
 
@@ -311,6 +329,15 @@ private:
     void refreshCameraLabels();
     void changeCameraValue(int item, int delta);
     void changeLevelValue(int item, int delta);
+    GraphicsOptions mGraphics;
+    bool mGraphicsChanged = false;
+    int mOutputWidth = 0;
+    int mOutputHeight = 0;
+    char mGraphicsLabels[5][64] = {};
+    char mGraphicsMessage[128] = {};
+    void refreshGraphicsLabels();
+    void changeGraphicsValue(int item, int delta);
+    bool graphicsUpscales() const;
     int mVolume = 100;
     bool mVolumeChanged = false;
     bool mVolumeDrag = false;       // A or B went down with the pointer on the slider and is still held

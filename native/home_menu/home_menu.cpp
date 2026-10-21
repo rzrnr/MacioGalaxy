@@ -1,4 +1,5 @@
 #include "petari/home_menu.hpp"
+#include "petari/graphics.hpp"
 #include "petari/launch_stage.hpp"
 #include "petari/progress.hpp"
 #include "petari/volume.hpp"
@@ -36,15 +37,17 @@ constexpr float kControlsBackTop = 0.68f;
 constexpr float kControlsBackHeight = 0.15f;
 constexpr float kControlsBackHalfWidth = 0.2f;
 
-constexpr const char* kListLabels[] = {"Resume", "Controls", "Mods", "My Progress", "Volume", "Restart from Title", "Quit"};
-constexpr int kListCount = 7;
+constexpr const char* kListLabels[] = {"Resume", "Controls", "Mods", "Graphics", "My Progress", "Volume", "Restart from Title", "Quit"};
+constexpr int kListCount = 8;
 constexpr int kListResume = 0;
 constexpr int kListControls = 1;
 constexpr int kListMods = 2;
-constexpr int kListProgress = 3;
-constexpr int kListVolume = 4;  // a slider, not a button; above the actions that leave the game
-constexpr int kListRestart = 5;
-constexpr int kListQuit = 6;
+constexpr int kListGraphics = 3;
+constexpr int kListProgress = 4;
+constexpr int kListVolume = 5;  // a slider, not a button; above the actions that leave the game
+constexpr int kListRestart = 6;
+constexpr int kListQuit = 7;
+constexpr int kGraphicsValues = 5;  // the Graphics page's value items, then Back
 constexpr int kConfirmAccept = 0;
 constexpr int kConfirmCancel = 1;
 
@@ -134,6 +137,7 @@ void Menu::update(const FrameInput& input) {
     case Phase::Camera:
     case Phase::ModFolder:
     case Phase::Progress:
+    case Phase::Graphics:
         break;
     }
 
@@ -182,6 +186,13 @@ void Menu::update(const FrameInput& input) {
         const std::uint32_t side = input.trigger & (Button::Left | Button::Right);
         if (side == Button::Left || side == Button::Right) {
             changeCameraValue(mFocus, side == Button::Left ? -1 : 1);
+            return;
+        }
+    }
+    if (mPhase == Phase::Graphics && mFocus < kGraphicsValues) {
+        const std::uint32_t side = input.trigger & (Button::Left | Button::Right);
+        if (side == Button::Left || side == Button::Right) {
+            changeGraphicsValue(mFocus, side == Button::Left ? -1 : 1);
             return;
         }
     }
@@ -280,6 +291,93 @@ void Menu::changeCameraValue(int item, int delta) {
     mCameraChanged = true;
     refreshCameraLabels();
     play(item == 1 ? Sound::Focus : Sound::Select);
+}
+
+void Menu::setGraphics(const GraphicsOptions& options) {
+    mGraphics = options;
+    mGraphics.resolution = Graphics::nearestResolution(mGraphics.resolution);
+    mGraphics.upscaler = std::clamp(mGraphics.upscaler, 0, static_cast<int>(Graphics::Upscaler::Count) - 1);
+    mGraphics.sharpening = std::clamp(mGraphics.sharpening, 0, static_cast<int>(Graphics::Sharpening::Count) - 1);
+    mGraphics.stats = std::clamp(mGraphics.stats, 0, static_cast<int>(Graphics::Stats::Count) - 1);
+    mGraphicsChanged = false;
+    refreshGraphicsLabels();
+}
+
+bool Menu::takeGraphicsChange(GraphicsOptions* options) {
+    if (!mGraphicsChanged) {
+        return false;
+    }
+    mGraphicsChanged = false;
+    *options = mGraphics;
+    return true;
+}
+
+void Menu::setGraphicsOutput(int width, int height) {
+    if (width == mOutputWidth && height == mOutputHeight) {
+        return;
+    }
+    mOutputWidth = width;
+    mOutputHeight = height;
+    refreshGraphicsLabels();
+}
+
+// Whether the chosen resolution is upscaled to the displayed image (unknown size: assumed).
+bool Menu::graphicsUpscales() const {
+    if (mGraphics.resolution == Graphics::kDisplay) {
+        return false;
+    }
+    return mOutputHeight <= 0 || mGraphics.resolution < mOutputHeight;
+}
+
+void Menu::refreshGraphicsLabels() {
+    const int resolution = mGraphics.resolution;
+    std::snprintf(mGraphicsLabels[0], sizeof(mGraphicsLabels[0]), "Resolution: %s", Graphics::resolutionName(resolution));
+    if (graphicsUpscales()) {
+        std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "Upscaler: %s",
+                      Graphics::upscalerName(static_cast<Graphics::Upscaler>(mGraphics.upscaler)));
+    } else if (resolution == Graphics::kDisplay || resolution == mOutputHeight) {
+        std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "Upscaler: not needed at 1:1");
+    } else {
+        std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "Downscaler: Area (automatic)");
+    }
+    std::snprintf(mGraphicsLabels[2], sizeof(mGraphicsLabels[2]), "Sharpening: %s",
+                  Graphics::sharpeningName(static_cast<Graphics::Sharpening>(mGraphics.sharpening)));
+    std::snprintf(mGraphicsLabels[3], sizeof(mGraphicsLabels[3]), "Anti-aliasing: %s", mGraphics.fxaa ? "FXAA" : "Off");
+    std::snprintf(mGraphicsLabels[4], sizeof(mGraphicsLabels[4]), "Stats: %s",
+                  Graphics::statsName(static_cast<Graphics::Stats>(mGraphics.stats)));
+    if (mOutputWidth > 0 && mOutputHeight > 0) {
+        int width = 0, height = 0;
+        Graphics::renderSize(resolution, mOutputWidth, mOutputHeight, &width, &height);
+        std::snprintf(mGraphicsMessage, sizeof(mGraphicsMessage), "Renders %d x %d, shown at %d x %d (%s)", width, height, mOutputWidth,
+                      mOutputHeight, height < mOutputHeight ? "upscaled" : height > mOutputHeight ? "supersampled" : "1:1");
+    } else {
+        std::snprintf(mGraphicsMessage, sizeof(mGraphicsMessage), "Left/Right changes a value. Saved in graphics.txt.");
+    }
+}
+
+void Menu::changeGraphicsValue(int item, int delta) {
+    const auto cycle = [delta](int value, int count) { return (value + delta % count + count) % count; };
+    switch (item) {
+    case 0: {
+        int index = 0;
+        while (index < Graphics::kResolutionCount - 1 && Graphics::kResolutions[index] != mGraphics.resolution) index++;
+        mGraphics.resolution = Graphics::kResolutions[cycle(index, Graphics::kResolutionCount)];
+        break;
+    }
+    case 1:
+        if (!graphicsUpscales()) {
+            return;  // no choice: 1:1, or the area filter when supersampling
+        }
+        mGraphics.upscaler = cycle(mGraphics.upscaler, static_cast<int>(Graphics::Upscaler::Count));
+        break;
+    case 2: mGraphics.sharpening = cycle(mGraphics.sharpening, static_cast<int>(Graphics::Sharpening::Count)); break;
+    case 3: mGraphics.fxaa = !mGraphics.fxaa; break;
+    case 4: mGraphics.stats = cycle(mGraphics.stats, static_cast<int>(Graphics::Stats::Count)); break;
+    default: return;
+    }
+    mGraphicsChanged = true;
+    refreshGraphicsLabels();
+    play(item == 3 ? Sound::Select : Sound::Focus);
 }
 
 void Menu::setVolume(int percent) {
@@ -487,6 +585,7 @@ void Menu::startBlackOut() {
     case Phase::Camera:
     case Phase::ModFolder:
     case Phase::Progress:
+    case Phase::Graphics:
     case Phase::Closing:
         blackOut(Selection::Restart);
         break;
@@ -519,6 +618,7 @@ View Menu::view() const {
     case Phase::Camera:
     case Phase::ModFolder:
     case Phase::Progress:
+    case Phase::Graphics:
         view.panelOpacity = 1.0f;
         break;
     case Phase::Closing:
@@ -581,6 +681,13 @@ View Menu::view() const {
             view.items[shown].label = "Next page";
         }
         view.items[shown + (folderPages() > 1 ? 1 : 0)].label = "Back";
+    } else if (mPhase == Phase::Graphics) {
+        view.title = "Graphics";
+        view.message = mGraphicsMessage;
+        for (int i = 0; i < kGraphicsValues; i++) {
+            view.items[i].label = mGraphicsLabels[i];
+        }
+        view.items[kGraphicsValues].label = "Back";
     } else if (mPhase == Phase::Camera) {
         view.title = "Odyssey camera";
         view.message = "Right stick or middle-drag orbits; wheel or Z/X zooms; C recentres. P: photo mode.";
@@ -644,6 +751,9 @@ int Menu::itemCount() const {
     }
     if (mPhase == Phase::Camera) {
         return 6;
+    }
+    if (mPhase == Phase::Graphics) {
+        return kGraphicsValues + 1;
     }
     if (mPhase == Phase::Levels) {
         return 4;
@@ -720,6 +830,13 @@ void Menu::activate(int index) {
         case kListControls:
             play(Sound::Select);
             mPhase = Phase::Controls;
+            mFocus = 0;
+            mRepeatDir = 0;
+            break;
+        case kListGraphics:
+            play(Sound::Select);
+            refreshGraphicsLabels();
+            mPhase = Phase::Graphics;
             mFocus = 0;
             mRepeatDir = 0;
             break;
@@ -819,6 +936,15 @@ void Menu::activate(int index) {
             mFocus = mModCount + 2;
             mRepeatDir = 0;
         }
+    } else if (mPhase == Phase::Graphics) {
+        if (index >= 0 && index < kGraphicsValues) {
+            changeGraphicsValue(index, 1);
+        } else {
+            play(Sound::Cancel);
+            mPhase = Phase::List;
+            mFocus = kListGraphics;
+            mRepeatDir = 0;
+        }
     } else if (mPhase == Phase::Camera) {
         if (index >= 0 && index < 5) {
             changeCameraValue(index, 1);
@@ -889,6 +1015,8 @@ void Menu::back() {
         activate(3);
     } else if (mPhase == Phase::Camera) {
         activate(5);
+    } else if (mPhase == Phase::Graphics) {
+        activate(kGraphicsValues);
     } else {
         play(Sound::ReturnApp);
         close();

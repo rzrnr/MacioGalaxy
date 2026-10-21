@@ -28,6 +28,7 @@ extern "C" void petari_gx_pipeline_report();
 #include "smoke_soak.hpp"
 #include "smoke_stage.hpp"
 #include "soak_telemetry.hpp"
+#include "stats_overlay.hpp"
 #include "petari/asset_diagnostics.hpp"
 #include "petari/display_mode.hpp"
 #include "petari/frame_telemetry.hpp"
@@ -182,6 +183,12 @@ void recordFrame(std::uint64_t entry, FrameStats::Phase phase) {
         frame.phase = FrameStats::Phase::Loading;
     }
     t.recorder->add(frame);
+    StatsOverlay::Sample overlay;
+    overlay.intervalMs = frame.intervalMs;
+    overlay.workMs = frame.us[FrameStats::GameWork] / 1000.0;
+    overlay.drawDoneMs = frame.us[FrameStats::DrawDoneWait] / 1000.0;
+    overlay.presentMs = (frame.us[FrameStats::SeamEndFrame] + frame.us[FrameStats::SeamBeginFrame]) / 1000.0;
+    StatsOverlay::addFrame(overlay);
     if (frame.intervalMs > t.spikeMs && SpikeProfiler::enabled()) {
         SpikeProfiler::keepSpike(frame.index, frame.intervalMs, t.lastEntry, entry);
     }
@@ -645,6 +652,7 @@ extern "C" void petari_host_frame_seam(void) {
     const Rect image = updateImage();
     traceFrame(image);
     PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
+    StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
     const std::uint64_t endStart = Telemetry::nowNs();
     aurora_end_frame();
 

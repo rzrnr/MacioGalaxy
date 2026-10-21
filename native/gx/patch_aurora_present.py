@@ -13,10 +13,12 @@ patch_aurora_allocations.py; run that first).
   defined. Texture-copy state is restored after each display copy.
 - window.cpp: while XFBs are presented, the EFB render target takes the
   displayed image's aspect (16:9 or 4:3, present_aurora.cpp) inside the
-  drawable, so the XFB is shown pixel for pixel whatever the window's shape.
+  drawable, so the XFB is shown pixel for pixel whatever the window's shape,
+  or at the F1 menu's render height (Graphics page).
 - aurora.cpp: aurora_end_frame presents the XFB that VI latched (see
   present_aurora.hpp) instead of the EFB, with VI black and dimming, at the
-  display aspect. The patched file includes "present_aurora.hpp", so the
+  display aspect, through the Graphics page's FXAA, scaling filter (FSR 1,
+  bicubic, bilinear, area) and RCAS sharpening. The patched file includes "present_aurora.hpp", so the
   target needs native/gx/present on its quote include path.
 """
 import sys
@@ -275,11 +277,14 @@ def patch_aurora(text):
         '      } else {\n',
         '      wgpu::BindGroup presentBindGroup;\n'
         '      bool petariDrawImage = true;\n'
+        '      bool petariImage = false;\n'
         '      bool petariDim = false;\n'
         '      if (rmlBindGroup && !rmlOverlay) {\n'
         '        presentBindGroup = rmlBindGroup;\n'
         '      } else if (petariPresent.active) {\n'
-        '        petariDrawImage = petari_present::bind_image(petariPresent, presentBindGroup);\n'
+        '        // Petari: FXAA and the scaling filter of the F1 menu\'s Graphics page.\n'
+        '        petariDrawImage = petari_present::prepare_image(encoder, petariPresent, viewport.width, viewport.height);\n'
+        '        petariImage = petariDrawImage;\n'
         '        petariDim = petariDrawImage && petariPresent.dimOpacity > 0.f;\n'
         '      } else {\n')
     text = replace_once(
@@ -293,7 +298,9 @@ def patch_aurora(text):
         '        set_present_viewport(pass, viewport, webgpu::g_graphicsConfig.surfaceConfiguration.width,\n'
         '                             webgpu::g_graphicsConfig.surfaceConfiguration.height);\n'
         '        // Petari: VI black (or no XFB) leaves the cleared image black.\n'
-        '        if (petariDrawImage) {\n'
+        '        if (petariImage) {\n'
+        '          petari_present::draw_image(pass);\n'
+        '        } else if (petariDrawImage) {\n'
         '          pass.SetPipeline(webgpu::g_CopyPipeline);\n'
         '          pass.SetBindGroup(0, presentBindGroup, 0, nullptr);\n'
         '          pass.Draw(3);\n'
@@ -348,7 +355,9 @@ def patch_window(text):
     text = replace_once(text, 'namespace aurora::window {\n',
                         '// Petari: the displayed image\'s aspect (native/gx/present/present.h); 0 while\n'
                         '// XFBs are not presented.\n'
-                        'extern "C" int petari_present_content_aspect(unsigned* width, unsigned* height);\n\n'
+                        'extern "C" int petari_present_content_aspect(unsigned* width, unsigned* height);\n'
+                        '// Petari: the Graphics page\'s render height (present.h); 0 while XFBs are not presented.\n'
+                        'extern "C" unsigned petari_present_render_height(void);\n\n'
                         'namespace aurora::window {\n')
     text = replace_once(text,
                         '  if (g_frameBufferAspectFit) {\n'
@@ -363,6 +372,13 @@ def patch_window(text):
                         '          fit_frame_buffer_to_aspect(fb_w, fb_h, static_cast<float>(aspectW) / static_cast<float>(aspectH));\n'
                         '      fb_w = fitW;\n'
                         '      fb_h = fitH;\n'
+                        '    }\n'
+                        '    // The F1 menu\'s Graphics page: the EFB has the chosen height at the displayed\n'
+                        '    // image\'s aspect, and the present pass scales it to the window.\n'
+                        '    const unsigned renderHeight = petari_present_render_height();\n'
+                        '    if (renderHeight > 0 && fb_h > 0) {\n'
+                        '      fb_w = std::max(1, static_cast<int>(std::lround(static_cast<double>(fb_w) * renderHeight / fb_h)));\n'
+                        '      fb_h = static_cast<int>(renderHeight);\n'
                         '    }\n'
                         '  }\n'
                         '  if (g_frameBufferAspectFit) {\n'

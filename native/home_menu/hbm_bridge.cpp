@@ -23,6 +23,9 @@
 #ifdef PETARI_HOME_MENU_VOLUME
 #include "petari/volume.hpp"
 #endif
+#ifdef PETARI_HOME_MENU_GRAPHICS
+#include "petari/graphics.hpp"
+#endif
 
 namespace PetariNative::HomeMenu {
 
@@ -256,6 +259,40 @@ void applyVolumeChange() {
 }
 #endif
 
+#ifdef PETARI_HOME_MENU_GRAPHICS
+// The Graphics page, from the graphics settings in effect now.
+void refreshGraphics() {
+    const Graphics::Settings settings = Graphics::current();
+    GraphicsOptions options;
+    options.resolution = settings.resolution;
+    options.upscaler = static_cast<int>(settings.upscaler);
+    options.sharpening = static_cast<int>(settings.sharpening);
+    options.fxaa = settings.fxaa;
+    options.stats = static_cast<int>(settings.stats);
+    instance().setGraphics(options);
+}
+
+// Applies a Graphics page change at once (the present pass reads it next frame)
+// and saves it to graphics.txt.
+void applyGraphicsChange() {
+    GraphicsOptions options;
+    if (!instance().takeGraphicsChange(&options)) {
+        return;
+    }
+    Graphics::Settings settings;
+    settings.resolution = options.resolution;
+    settings.upscaler = static_cast<Graphics::Upscaler>(options.upscaler);
+    settings.sharpening = static_cast<Graphics::Sharpening>(options.sharpening);
+    settings.fxaa = options.fxaa;
+    settings.stats = static_cast<Graphics::Stats>(options.stats);
+    Graphics::set(settings);
+    std::string error;
+    if (!Graphics::save(&error)) {
+        std::fprintf(stderr, "petari: graphics: %s\n", error.c_str());
+    }
+}
+#endif
+
 void init() {
     for (std::uint32_t& hold : gStickHold) {
         hold = 0;
@@ -269,11 +306,20 @@ void init() {
 #ifdef PETARI_HOME_MENU_VOLUME
     instance().setVolume(Volume::percent());
 #endif
+#ifdef PETARI_HOME_MENU_GRAPHICS
+    refreshGraphics();
+#endif
     instance().open();
 }
 
 void calc(const HBMControllerData* controllers) {
     Menu& menu = instance();
+#ifdef PETARI_HOME_MENU_GRAPHICS
+    int outputWidth = 0;
+    int outputHeight = 0;
+    Graphics::outputSize(&outputWidth, &outputHeight);
+    menu.setGraphicsOutput(outputWidth, outputHeight);
+#endif
     menu.update(frameInput(controllers));
 #ifdef PETARI_HOME_MENU_INPUT
     applyModToggles();
@@ -282,6 +328,9 @@ void calc(const HBMControllerData* controllers) {
 #endif
 #ifdef PETARI_HOME_MENU_VOLUME
     applyVolumeChange();
+#endif
+#ifdef PETARI_HOME_MENU_GRAPHICS
+    applyGraphicsChange();
 #endif
     // Level Select's Go, once the menu has closed: the game starts the warp
     // at its next normal gameplay frame (GameScene::update).

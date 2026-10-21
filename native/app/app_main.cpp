@@ -28,6 +28,7 @@
 #include <petari/camera_input.h>
 #include <petari/camera_settings.hpp>
 #include <petari/volume.hpp>
+#include <petari/graphics.hpp>
 #include <petari/display_mode.hpp>
 #include <petari/efb_dump_mark.hpp>
 #include <petari/input.hpp>
@@ -405,6 +406,10 @@ int main(int argc, char** argv) {
     }
     if (!PetariNative::Volume::load(paths.user / "sound.txt", &error)) {
         std::fprintf(stderr, "petari: sound: %s (volume stays at %d%%)\n", error.c_str(), PetariNative::Volume::percent());
+    }
+    // F1 -> Graphics (native/GRAPHICS.md); a damaged file keeps the defaults, which draw as before.
+    if (!PetariNative::Graphics::load(paths.user / "graphics.txt", &error)) {
+        std::fprintf(stderr, "petari: graphics: %s (using the defaults)\n", error.c_str());
     }
     if (PetariNative::CameraSettings::enabled()) std::fputs("PETARI MODS: OdysseyCamera on\n", stderr);
     for (int m = 0; m < static_cast<int>(PetariNative::Mods::Mod::Count); ++m) {

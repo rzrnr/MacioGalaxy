@@ -127,7 +127,7 @@ Keyboard and mouse by default, with game controller support. The main keys:
 **WASD** move, **Space** jump, **F** spin, **Shift** crouch, mouse aims the Star
 Pointer, left click shoots Star Bits, **Q/E** rotate the camera, **Escape**
 pauses, and **`** (the key under Escape) or **F1** opens the native Home menu
-(Controls, Mods, a Volume slider: Left/Right in 5% steps or click and drag it,
+(Controls, Mods, Graphics, a Volume slider: Left/Right in 5% steps or click and drag it,
 Restart, Quit). **Cmd+Return** switches fullscreen; the Mac cursor is
 hidden there while the F1 menu is closed. Everything is listed, and remappable, in
 [native/CONTROLS.md](native/CONTROLS.md). Controller support follows SDL3's
@@ -195,6 +195,9 @@ Detailed test coverage: [native/RELIABILITY.md](native/RELIABILITY.md) and
 - **Tracy** ([wolfpld/tracy](https://github.com/wolfpld/tracy)): BSD 3-Clause License.
 - **xxHash** ([Cyan4973/xxHash](https://github.com/Cyan4973/xxHash)): BSD 2-Clause
   License, Copyright (c) 2012-2021 Yann Collet.
+- **AMD FidelityFX Super Resolution 1.0** ([GPUOpen-Effects/FidelityFX-FSR](https://github.com/GPUOpen-Effects/FidelityFX-FSR)),
+  EASU and RCAS ported to WGSL for the Graphics page (native/GRAPHICS.md): MIT
+  License, Copyright (c) 2021 Advanced Micro Devices, Inc.
 - **SQLite**: public domain.
 
 These dependencies are downloaded at build time, not included in this
