@@ -28,7 +28,8 @@ The branch `guglis-edits` is the official `main` plus these edits:
 | Honeyhive lawn fix | Keeps negative texture LOD biases on arm64, so the grass is textured again | [PR #3](https://github.com/classicrob/MacioGalaxy/pull/3) |
 | Observatory talk fix | The Comet Observatory's NPCs read their progress flags again: the Mail Toad hands over his letters, and the Toads, Rosalina and the Lumas say the lines for the current progress | not yet proposed |
 | FineFur | Mod (F1 → Mods): finer fur on the Honey Queen and the bees at high resolutions | not yet proposed |
-| Graphics page | F1 → Graphics: 120 frames per second with interpolated frames (a prototype); V-Sync, the game's clock following the display, against micro-stutter; render at 480p (the Wii's), 720p, 1080p, 1440p, 4K or the display's resolution; FSR 1, bicubic or bilinear upscaling; RCAS sharpening; FXAA; a stats overlay with FPS and a frame time graph | not yet proposed |
+| Instant pointer | Mod (F1 → Mods): the Star Pointer is drawn where the mouse points in every frame, without the Wii Remote's smoothing | not yet proposed |
+| Graphics page | F1 → Graphics: 120 frames per second with interpolated frames (a prototype); V-Sync (on, low latency, or variable refresh on ProMotion in fullscreen), the game's clock following the display, against micro-stutter; render at 480p (the Wii's), 720p, 1080p, 1440p, 4K or the display's resolution; FSR 1, bicubic or bilinear upscaling; RCAS sharpening; FXAA; a stats overlay with FPS and a frame time graph | not yet proposed |
 
 The edits are rebased onto every new official version. Maintenance notes, in German:
 [guglis/README.md](https://github.com/rzrnr/MacioGalaxy/blob/guglis-edits/guglis/README.md).
