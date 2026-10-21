@@ -15,14 +15,18 @@ twice as smooth; the game does not react faster.
   MacBook Pro (ProMotion, 120 Hz) or an external 120 or 144 Hz monitor. On a
   60 Hz display no extra frames are drawn and the game looks as at 60; the
   setting is kept for when the window is on a faster display (checked once a
-  second).
+  second). The Graphics page then shows "Frame rate: 120 (60 Hz display)" and
+  says why.
 - GPU time for a second frame per step. The extra frame costs about as much as
   the step's own frame (about 2 ms at 720p on an M3 Pro). When a step's frame
   comes late, that step gets no extra frame. A lower Resolution
   (native/GRAPHICS.md) leaves more room.
 
 With Stats on, FPS counts every frame shown, the extra frames too; the frame
-time graph has lines at 60 and 120 frames per second.
+time graph has lines at 60 and 120 frames per second. Stats Detailed adds a
+line at 120: the share of the last second's steps that got an extra frame and
+the share that came too late for one, or why there are none (a display below
+100 Hz; "here" when the scene asks for none, as in movies).
 
 ## What moves at 120
 

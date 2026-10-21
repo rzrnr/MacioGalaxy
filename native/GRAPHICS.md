@@ -49,6 +49,10 @@ overrides single keys, comma separated:
 - **GPU wait** is how long the frame's end waits for the GPU to finish drawing.
   It rises when the GPU is the limit; it is not a GPU timer.
 - **present** is the time to hand the frame to the window and open the next one.
+- At Frame rate 120: **Extra frames** is the share of game steps that got an
+  interpolated frame, **too late** the share whose frame came too late for one
+  (the GPU is the limit: a lower Resolution helps). On a display below 100 Hz
+  the line says so instead (native/FRAME_RATE.md).
 
 The game runs at 60 steps per second; a frame time of 16.7 ms is on target, at
 120 (interpolated) 8.3 ms.

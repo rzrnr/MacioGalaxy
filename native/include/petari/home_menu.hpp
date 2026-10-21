@@ -373,6 +373,9 @@ public:
     const GraphicsOptions& graphics() const { return mGraphics; }
     // The displayed image in pixels (0: unknown), for the page's render size line.
     void setGraphicsOutput(int width, int height);
+    // The refresh rate of the game window's display (0: unknown): below 100 Hz, Frame rate 120
+    // says the display cannot show it.
+    void setGraphicsDisplayHz(int hz);
     // The Cheats page. Calling this adds a "Cheats..." entry to the Mods page,
     // before Back; changes are reported once (true) and copied to *options.
     void setCheats(const CheatOptions& options);
@@ -504,6 +507,7 @@ private:
     bool mGraphicsChanged = false;
     int mOutputWidth = 0;
     int mOutputHeight = 0;
+    int mDisplayHz = 0;
     char mGraphicsLabels[6][64] = {};
     char mGraphicsMessage[128] = {};
     void refreshGraphicsLabels();

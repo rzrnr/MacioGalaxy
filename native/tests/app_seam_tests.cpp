@@ -194,6 +194,7 @@ namespace PetariNative::Graphics {
 Settings current() {
     return Settings{};
 }
+void setFrameRateStatus(const FrameRateStatus&) {}
 }  // namespace PetariNative::Graphics
 
 // The stats overlay (stats_overlay.cpp) draws with ImGui; not under test here.

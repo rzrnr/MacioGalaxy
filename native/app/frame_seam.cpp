@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -63,12 +64,46 @@ CpuRelease gRelease;
 constexpr std::uint64_t kRetraceNs = 16683333;  // 59.94 Hz
 std::uint64_t gStepPresentNs = 0;  // the step's aurora_end_frame, for frame interpolation's extra frame
 std::uint64_t gExtraFrames = 0;    // frame interpolation's presents, in the frame time report
+std::uint64_t gLateSteps = 0;      // steps without an extra frame: presented too late
+std::uint64_t gSlowDisplaySteps = 0;  // or on a display below 100 Hz
+int gDisplayHz = 0;                // the window's display, checked once a second; 0: unknown
+// The last second's steps that asked for an extra frame, for Graphics::setFrameRateStatus.
+struct InterpolationSecond {
+    std::uint64_t start = 0;
+    unsigned asked = 0;
+    unsigned drawn = 0;
+    unsigned late = 0;
+};
+InterpolationSecond gInterpolationSecond;
+
 SDL_Window* gWindow = nullptr;
 int gQuitRequests = 0;
 Rect gLastImage;
 float gLastWindowWidth = -1.0f;
 float gLastWindowHeight = -1.0f;
 bool gWarnedImageRect = false;
+
+// Once a second: the window's display (it can move to another one) and how many of the last
+// second's steps got an extra frame, for the Graphics page and the stats.
+void publishFrameRateStatus(std::uint64_t now) {
+    InterpolationSecond& second = gInterpolationSecond;
+    if (second.start != 0 && now - second.start < 1000000000ull) {
+        return;
+    }
+    if (gWindow != nullptr) {
+        const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(gWindow));
+        gDisplayHz = mode != nullptr && mode->refresh_rate > 0.0f ? static_cast<int>(std::lround(mode->refresh_rate)) : 0;
+    }
+    PetariNative::Graphics::FrameRateStatus status;
+    status.displayHz = gDisplayHz;
+    if (second.asked > 0) {
+        status.interpolatedPercent = static_cast<int>(second.drawn * 100 / second.asked);
+        status.latePercent = static_cast<int>(second.late * 100 / second.asked);
+    }
+    PetariNative::Graphics::setFrameRateStatus(status);
+    second = InterpolationSecond{};
+    second.start = now;
+}
 
 // Opt-in start-up telemetry (PETARI_TRACE_BOOT=1): the first frame that
 // reaches the seam, then one line every kTraceInterval frames. Observation only.
@@ -713,8 +748,10 @@ void reportFrameStats() {
     gTiming.recorder->writeSummary(stderr);
     PetariNative::PresentStats::writeSummary(stderr);
     PetariNative::PresentPacing::writeSummary(stderr);
-    if (gExtraFrames > 0) {
-        std::fprintf(stderr, "Petari frame rate: %llu interpolated frames\n", static_cast<unsigned long long>(gExtraFrames));
+    if (gExtraFrames + gLateSteps + gSlowDisplaySteps > 0) {
+        std::fprintf(stderr, "Petari frame rate: %llu interpolated frames; without one: %llu steps presented late, %llu on a display below 100 Hz\n",
+                     static_cast<unsigned long long>(gExtraFrames), static_cast<unsigned long long>(gLateSteps),
+                     static_cast<unsigned long long>(gSlowDisplaySteps));
     }
     if (gTiming.csvPath != nullptr) {
         if (gTiming.recorder->writeCsv(gTiming.csvPath)) {
@@ -809,6 +846,7 @@ extern "C" void petari_host_frame_mark(int mark) {
 extern "C" void petari_host_frame_seam(void) {
     const std::uint64_t entry = Telemetry::nowNs();
     PetariNative::HostAllocationScope host;
+    publishFrameRateStatus(entry);
     recordRouteFrame(SmokeBackground::enabled);
     observeProgressFrame();
     // Game state is readable here, before the CPU is released.
@@ -893,32 +931,21 @@ extern "C" void petari_host_frame_seam(void) {
 // present and shown half a retrace interval after it, so that presents come evenly; the next
 // step's present comes the same draw time after the next retrace. A step presented in the
 // second half of its interval is late: then there is no extra frame.
-namespace {
-// A display below 100 Hz cannot show the extra frames evenly; an unknown rate is allowed.
-// Checked once a second (the window can move to another display). A background smoke run's
-// window is never seen, so its display does not matter.
-bool displayShows120() {
-    if (SmokeBackground::enabled) {
-        return true;
-    }
-    static std::uint64_t checked = 0;
-    static bool shows = true;
-    const std::uint64_t now = Telemetry::nowNs();
-    if (gWindow != nullptr && (checked == 0 || now - checked > 1000000000ull)) {
-        checked = now;
-        const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(gWindow));
-        shows = mode == nullptr || mode->refresh_rate <= 0.0f || mode->refresh_rate >= 100.0f;
-    }
-    return shows;
-}
-}  // namespace
-
 extern "C" int petari_host_interp_wait(void) {
-    if (PetariNative::Graphics::current().frameRate < 120 || !displayShows120()) {
+    if (PetariNative::Graphics::current().frameRate < 120) {
+        return 0;
+    }
+    ++gInterpolationSecond.asked;
+    // A display below 100 Hz cannot show the extra frames; an unknown rate is allowed. A background
+    // smoke run's window is never seen, so its display does not matter.
+    if (!SmokeBackground::enabled && gDisplayHz > 0 && gDisplayHz < 100) {
+        ++gSlowDisplaySteps;
         return 0;
     }
     const std::uint64_t retrace = Telemetry::lastRetraceNs.load(std::memory_order_relaxed);
     if (retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2) {
+        ++gLateSteps;
+        ++gInterpolationSecond.late;
         return 0;
     }
     return 1;
@@ -946,6 +973,7 @@ extern "C" void petari_host_present_seam(void) {
     aurora_end_frame();
     StatsOverlay::notePresent();
     ++gExtraFrames;
+    ++gInterpolationSecond.drawn;
     handleEvents(aurora_update());
     openFrame();
     if (release) {

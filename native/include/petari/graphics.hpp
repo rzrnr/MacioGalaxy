@@ -106,6 +106,16 @@ bool parse(const std::string& text, std::string* error);  // nothing changes on 
 void setOutputSize(int width, int height);
 void outputSize(int* width, int* height);
 
+// Frame interpolation over the last second (native/FRAME_RATE.md), from the frame seam, for the
+// Graphics page and the stats. Any thread.
+struct FrameRateStatus {
+    int displayHz = 0;             // the game window's display; 0: unknown
+    int interpolatedPercent = -1;  // game steps with an extra frame; -1: no step asked for one
+    int latePercent = 0;           // game steps presented too late for one
+};
+void setFrameRateStatus(const FrameRateStatus& status);
+FrameRateStatus frameRateStatus();
+
 void resetForTesting();
 
 }  // namespace PetariNative::Graphics
