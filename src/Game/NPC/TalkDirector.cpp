@@ -402,7 +402,12 @@ bool TalkDirector::getBranchResult(u16 arg) {
         return MR::isOnLuigiHiding();
     }
 
+#ifdef PETARI_NATIVE
+    // The booleans from mIsKinopioExplorerRescued on; 0x70 is their offset in the Wii's 32-bit layout only.
+    return arg < 28 && (&mIsKinopioExplorerRescued)[arg];
+#else
     return (reinterpret_cast< bool* >(this) + arg)[0x70];
+#endif
 }
 
 void TalkDirector::initBranchResult() {

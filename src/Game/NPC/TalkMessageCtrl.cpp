@@ -199,17 +199,20 @@ void TalkMessageCtrl::rootNodePre(bool arg) {
         case 10:
             cond = MR::isPlayerLuigi();
             break;
+        // The retail game's order (its jump table has cases 0 to 13): the message data uses 11 with
+        // the Comet Observatory's progress flags (letters, Toad Brigade, Rosalina) and 13 with a
+        // message ID. 14 is not in the jump table.
         case 11:
-            cond = MR::isTimeKeepDemoActive();
+            cond = TalkFunction::getBranchAstroGalaxyResult(branch->mNextIdx);
             break;
         case 12:
-            cond = MR::isOnMessageAlreadyRead(branch->mNextIdx);
+            cond = MR::isTimeKeepDemoActive();
             break;
         case 13:
-            cond = MR::isMsgLedPattern();
+            cond = MR::isOnMessageAlreadyRead(branch->mNextIdx);
             break;
         case 14:
-            cond = TalkFunction::getBranchAstroGalaxyResult(branch->mNextIdx);
+            cond = MR::isMsgLedPattern();
             break;
         }
 
