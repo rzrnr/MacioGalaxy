@@ -338,6 +338,16 @@ def patch_aurora(text):
 
 
 def patch_window(text):
+    # A background smoke run (PETARI_SMOKE_BACKGROUND) keeps going while its watch
+    # window (PETARI_SMOKE_WATCH) is minimized, as it does while the window is hidden.
+    text = replace_once(text,
+                        '    case SDL_EVENT_WINDOW_MINIMIZED:\n'
+                        '      time::internal::set_pause_reason(time::internal::PauseReason::Background, true);\n',
+                        '    case SDL_EVENT_WINDOW_MINIMIZED:\n'
+                        '      if (SDL_GetHintBoolean("PETARI_SMOKE_BACKGROUND", false)) {\n'
+                        '        break;\n'
+                        '      }\n'
+                        '      time::internal::set_pause_reason(time::internal::PauseReason::Background, true);\n')
     text = replace_once(text,
                         '  if ((flags & SDL_WINDOW_HIDDEN) != 0u) {\n',
                         '  if ((flags & SDL_WINDOW_HIDDEN) != 0u && !SDL_GetHintBoolean("PETARI_SMOKE_BACKGROUND", false)) {\n')
