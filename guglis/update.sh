@@ -86,3 +86,6 @@ touch "$app"  # Finder and Dock pick up a changed icon
 codesign --force --sign - "$app"
 codesign --verify "$app"
 print -- "Installiert: $app"
+if [[ -n "$(git rev-list fork/$branch..HEAD 2>/dev/null)" ]]; then
+    print -- "Die Sicherung auf dem Fork ist älter. Erneuern: git push --force-with-lease fork $branch"
+fi

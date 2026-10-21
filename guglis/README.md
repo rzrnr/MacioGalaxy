@@ -2,7 +2,8 @@
 
 Meine eigenen Änderungen an MacioGalaxy. Sie liegen als Branch `guglis-edits` über
 dem offiziellen Repo (classicrob/MacioGalaxy, Remote `origin`), jede Änderung als
-eigener Commit. `main` bleibt der unveränderte offizielle Stand.
+eigener Commit. `main` bleibt der unveränderte offizielle Stand. Gesichert ist der
+Branch auf meinem Fork (rzrnr/MacioGalaxy, Remote `fork`).
 
 ## Was drin ist
 
@@ -43,6 +44,10 @@ Das Skript
 
 `--no-tests` überspringt Schritt 3 bis auf den Spiel-Build, `--no-install` Schritt 4.
 Das Spiel muss für Schritt 4 beendet sein.
+
+Nach einem Rebase ist die Sicherung auf dem Fork älter als der lokale Branch. Das
+Skript sagt das am Ende; erneuert wird sie mit
+`git push --force-with-lease fork guglis-edits`.
 
 Wenn ein Edit mit der neuen Version kollidiert, hält das Skript beim Rebase an.
 Dann entweder den Konflikt lösen (oder Claude fragen), `git rebase --continue`
