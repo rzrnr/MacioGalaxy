@@ -27,6 +27,10 @@ public:
     void setupMaterial(DynamicFurParam*) const;
     void setupLayerMaterial(s32) const;
     void createFurMap();
+#ifdef PETARI_NATIVE
+    // FineFur mod: regenerates the random hair map when the mod was switched since the last draw.
+    void syncFurMapSize();
+#endif
 
     /* 0x00 */ JUTTexture* mBodyTexture;
     /* 0x04 */ JUTTexture* mFurTexture;

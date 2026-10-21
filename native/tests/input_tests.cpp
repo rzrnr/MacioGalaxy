@@ -2465,6 +2465,8 @@ void testMods() {
           "mods.txt parses");
     check(!Mods::parse("ShootEnemy=yes\n", &error) && Mods::enabled(Mods::Mod::ShootEnemy), "bad value rejected, nothing changes");
     check(!Mods::parse("Fly=on\n", &error), "unknown mod rejected");
+    check(Mods::parse("FineFur=on\n", &error) && petari_mod_enabled(11) && !petari_mod_take_press(11),
+          "FineFur parses, is mod 11 (kModFineFur in FurDrawer.cpp) and has no button");
     const std::string text = Mods::serialize();
     Mods::resetForTesting();
     check(Mods::parse(text, &error) && Mods::enabled(Mods::Mod::ShootEnemy) && !Mods::enabled(Mods::Mod::CollectStarBits),

@@ -25,6 +25,7 @@ enum class Mod : int {
     GenericWorld,     // plain terrain, sky and object stand-ins (Game/System/GenericWorld.hpp); no button
     HideHud,          // no HUD (counters, meters, pointer); PETARI_HIDE_HUD=1 forces it on (LayoutActor.cpp); no button
     LevelEditor,      // the level editor: a Tab tap enters Edit mode (docs/dev/level-editor/UX.md); off by default
+    FineFur,          // fur's random hair map at 64 x 64 instead of 32 x 32 (finer hairs); no button, applies at once
     Count
 };
 

@@ -127,6 +127,9 @@ void FurCtrl::drawFur() {
     mDrawer->mColorBlend.mRoot = mParam->mSkinAlphaRoot;
     mDrawer->mColorBlend.mCurve = mParam->mSkinAlphaCurve;
     mDrawer->update();
+#ifdef PETARI_NATIVE
+    mDrawer->syncFurMapSize();
+#endif
     mDrawer->setupMaterial(&mDynamicParam);
 
     if (mDrawer->mMixFog) {

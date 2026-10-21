@@ -15,6 +15,7 @@ unmodified game and every test run behave exactly as before.
 | Generic world (`GenericWorld`) | none (a look) | Terrain, sky and objects lose the game's look: plain textures, colours without hue, and plain shapes for common enemies and items: see "Generic world" below. |
 | Hide the HUD (`HideHud`) | none (a look) | No counters, meters, lives icon, pointer cursor or stage banners on screen: see "Hide the HUD" below. |
 | Level editor (`LevelEditor`) | a tap of Tab | Edit the galaxy you are in (docs/dev/level-editor/UX.md). A short tap of Tab, with nothing else pressed, freezes the game into Edit mode where the pause menu could open; another tap plays again. Holding Tab still tilts the remote. Remappable as `LevelEditor` in `controls.txt`. |
+| Fine fur (`FineFur`) | none (a look; it switches at once) | Fur hairs half as wide, for high render resolutions: see "Fine fur" below. |
 
 ## Turning mods on
 
@@ -136,6 +137,25 @@ Known gaps in this version:
   touch the cap (it grows when fully thrown), and gives back the jump-press dive.
   Details and
   sources: docs/dev/CAPPY.md.
+
+## Fine fur
+
+Galaxy draws fur (the Honey Queen, the honey bees and other furry actors) as
+stacked shells of the body, cut by one random 32 x 32 hair map: each texel is a
+hair with a random length. At the Wii's 640 x 480 a hair covers about a pixel. At
+2560 x 1440 the same hair is a strand several pixels wide, and the fur looks coarse
+and stripy. With FineFur the map is 64 x 64 with the same density per texel, so a
+hair is half as wide. The number of shells stays the same, so close up the layers
+still show.
+
+- It switches at once, also during a level: the next frame that draws the fur
+  makes a new map.
+- Fur with an authored density map (`*Density.bti`) keeps that map.
+- The map's random hairs come from the game's random number generator. With the
+  mod off from the start, the map and the random sequence are the Wii's. With it
+  on, a map takes four times as many draws, and every switch draws a new map, so
+  later random events differ from an unmodified run.
+- Each fur map always reserves the 64 x 64 buffer (8 KB instead of 2 KB).
 
 ## Odyssey camera
 
