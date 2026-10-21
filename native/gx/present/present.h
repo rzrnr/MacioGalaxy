@@ -61,6 +61,19 @@ void petari_present_request_readback(const void* copy);
  * (and is then forgotten), 0 while pending or unknown, -1 when `capacity` is too small (width and height
  * are set and the image is kept: call again). Any thread. */
 int petari_present_take_readback(const void* copy, unsigned char* rgba, unsigned capacity, unsigned* width, unsigned* height);
+/* The Graphics page (petari/graphics.hpp), once per frame. */
+enum { PETARI_PRESENT_UPSCALE_FSR1 = 0, PETARI_PRESENT_UPSCALE_BICUBIC = 1, PETARI_PRESENT_UPSCALE_BILINEAR = 2 };
+typedef struct PetariPresentGraphics {
+    unsigned renderHeight;  /* EFB height in lines; 0: the displayed image's own size */
+    int upscaler;           /* PETARI_PRESENT_UPSCALE_*: the filter while the EFB is smaller than the image */
+    float sharpness;        /* FSR 1 RCAS after scaling, linear 0..1; 0: none */
+    int fxaa;               /* FXAA on the game image before it is scaled */
+} PetariPresentGraphics;
+void petari_present_set_graphics(const PetariPresentGraphics* graphics);
+
+/* The render height in effect, for the patched aurora::window::get_window_size:
+ * 0 (the displayed size) until XFBs are presented. Any thread. */
+unsigned petari_present_render_height(void);
 
 #ifdef __cplusplus
 }

@@ -18,6 +18,9 @@ struct Frame {
     uint32_t aspectWidth = 4;      // display aspect for the present viewport
     uint32_t aspectHeight = 3;
     aurora::gfx::TextureHandle xfb;  // the display copy VI latched; kept alive until presented
+    int upscaler = 0;              // PETARI_PRESENT_UPSCALE_* (present.h), the Graphics page's filter
+    float sharpness = 0.0f;        // FSR 1 RCAS, linear 0..1; 0: none
+    bool fxaa = false;
 };
 
 // Main thread, in aurora_end_frame after the FIFO is drained (the command
@@ -31,8 +34,14 @@ aurora::webgpu::Viewport present_viewport(uint32_t surfaceWidth, uint32_t surfac
                                           uint32_t contentHeight) noexcept;
 
 // Render worker: the bind group drawing the XFB with Aurora's copy pipeline.
+// Render worker, before the present pass: runs FXAA if it is on and picks how the
+// XFB is scaled into a viewport of viewWidth x viewHeight pixels (a copy at the
+// same size, the Graphics page's upscaler, or an area filter when shrinking). With
+// FSR 1 or sharpening the scaled image goes to an intermediate texture first.
 // False if nothing is drawn (black).
-bool bind_image(const Frame& frame, wgpu::BindGroup& out) noexcept;
+bool prepare_image(const wgpu::CommandEncoder& encoder, const Frame& frame, float viewWidth, float viewHeight) noexcept;
+// Render worker, in the present pass with its viewport set: draws what prepare_image chose.
+void draw_image(const wgpu::RenderPassEncoder& pass) noexcept;
 
 // Opt-in PETARI_SURFACE_DUMP=<dir> (present_aurora.cpp): copies the final window image (the presented
 // frame plus the Dear ImGui overlay: Home menu, badges) to a PNG. Render worker only. prepare() makes the

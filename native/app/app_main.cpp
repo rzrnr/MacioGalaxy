@@ -48,6 +48,7 @@ extern "C" int petari_present_take_readback(const void* copy, unsigned char* rgb
 #include <petari/editor/edit_api.hpp>
 #include <petari/editor_pick.hpp>
 #include <petari/editor_settings.hpp>
+#include <petari/graphics.hpp>
 #include <petari/display_mode.hpp>
 #include <petari/efb_dump_mark.hpp>
 #include <petari/input.hpp>
@@ -884,6 +885,10 @@ int main(int argc, char** argv) {
     // F1 -> Mods -> Cheats (native/MODS.md); a damaged file keeps the default (Keep 1-Ups on).
     if (!PetariNative::Cheats::load(paths.user / "cheats.txt", &error)) {
         std::fprintf(stderr, "petari: cheats: %s (using the defaults)\n", error.c_str());
+    }
+    // F1 -> Graphics (native/GRAPHICS.md); a damaged file keeps the defaults, which draw as before.
+    if (!PetariNative::Graphics::load(paths.user / "graphics.txt", &error)) {
+        std::fprintf(stderr, "petari: graphics: %s (using the defaults)\n", error.c_str());
     }
     if (PetariNative::CameraSettings::enabled()) std::fputs("PETARI MODS: OdysseyCamera on\n", stderr);
     for (int m = 0; m < static_cast<int>(PetariNative::Mods::Mod::Count); ++m) {

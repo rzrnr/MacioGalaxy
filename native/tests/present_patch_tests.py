@@ -53,7 +53,8 @@ def main():
         out = tmp / 'core/aurora.cpp'
         check(run(present, core, out).returncode == 0, 'aurora.cpp patches')
         text = out.read_text()
-        check('petari_present::take()' in text and 'petari_present::bind_image' in text
+        check('petari_present::take()' in text and 'petari_present::prepare_image' in text
+              and 'petari_present::draw_image' in text
               and 'petari_present::draw_dim' in text, 'present hooks in aurora_end_frame')
         check(text.count('pass.Draw(3);') == core.read_text().count('pass.Draw(3);'),
               'the same draws, now conditional')

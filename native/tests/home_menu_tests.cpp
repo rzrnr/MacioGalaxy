@@ -1184,13 +1184,11 @@ void testImGuiOverlay() {
             HM::Menu confirm = newMenu();
             confirm.setWidescreen(wide != 0);
             openToList(confirm);
-            confirm.update(press(Down));
-            confirm.update(press(Down));
-            confirm.update(press(Down));
-            if (quit) {
+            for (int i = 0; i < (quit ? 7 : 6); i++) {
                 confirm.update(press(Down));
             }
             confirm.update(press(A));
+            check(confirm.phase() == HM::Phase::Confirm, "at the confirmation");
             HM::View view = confirm.view();
             view.dimOpacity = 0.0f;  // leave only the panel and its contents
             view.footer[0] = '\0';
@@ -1540,7 +1538,7 @@ void testProgressPage() {
           "test record parses");
     HM::Menu menu = newMenu();
     openToList(menu);
-    for (int i = 0; i < 3; ++i) menu.update(press(Down));
+    for (int i = 0; i < 4; ++i) menu.update(press(Down));
     sounds.clear();
     menu.update(press(A));
     check(menu.phase() == HM::Phase::Progress && menu.focus() == 0 && played(HM::Sound::Select), "My Progress opens from the list");
@@ -1593,10 +1591,10 @@ void testProgressPage() {
     menu.update(press(Down));
     sounds.clear();
     menu.update(press(A));
-    check(menu.phase() == HM::Phase::List && menu.focus() == 3 && played(HM::Sound::Cancel), "Back returns to the list");
+    check(menu.phase() == HM::Phase::List && menu.focus() == 4 && played(HM::Sound::Cancel), "Back returns to the list");
     menu.update(press(A));
     menu.update(press(Plus | B));
-    check(menu.phase() == HM::Phase::List && menu.focus() == 3, "Escape returns too");
+    check(menu.phase() == HM::Phase::List && menu.focus() == 4, "Escape returns too");
     PR::resetForTesting();
 }
 
@@ -1767,6 +1765,85 @@ void testCheatsPage() {
           "without a file in play the 1-Ups stay unset");
 }
 
+// The Graphics page (native/GRAPHICS.md): Resolution, the scaling filter, sharpening,
+// FXAA and stats, each changed with Left/Right or A; every change is reported once.
+void testGraphicsPage() {
+    HM::Menu menu = newMenu();
+    HM::GraphicsOptions options;
+    options.resolution = 1000;  // not a choice: snapped
+    menu.setGraphics(options);
+    check(menu.graphics().resolution == 1080, "setGraphics snaps the resolution to a choice");
+    options.resolution = 0;
+    menu.setGraphics(options);
+    openToList(menu);
+    for (int i = 0; i < 3; i++) menu.update(press(Down));
+    sounds.clear();
+    menu.update(press(A));
+    check(menu.phase() == HM::Phase::Graphics && menu.focus() == 0 && played(HM::Sound::Select), "Graphics opens from the list");
+    HM::View view = menu.view();
+    check(std::strcmp(view.title, "Graphics") == 0 && view.itemCount == 6 &&
+              std::strcmp(view.items[0].label, "Resolution: Display") == 0 &&
+              std::strcmp(view.items[1].label, "Upscaler: not needed at 1:1") == 0 &&
+              std::strcmp(view.items[2].label, "Sharpening: Off") == 0 && std::strcmp(view.items[3].label, "Anti-aliasing: Off") == 0 &&
+              std::strcmp(view.items[4].label, "Stats: Off") == 0 && std::strcmp(view.items[5].label, "Back") == 0,
+          "the page shows its values and Back");
+    check(view.items[5].rect.y1 < view.panel.y1 && view.items[4].rect.y1 <= view.items[5].rect.y0, "six items fit");
+    check(std::strstr(view.message, "graphics.txt") != nullptr, "the message names the file before the size is known");
+    menu.setGraphicsOutput(2560, 1440);
+    check(std::strstr(menu.view().message, "Renders 2560 x 1440, shown at 2560 x 1440 (1:1)") != nullptr, "the message shows the sizes");
+
+    HM::GraphicsOptions changed;
+    check(!menu.takeGraphicsChange(&changed), "no change yet");
+    menu.update(press(HM::Button::Right));
+    menu.update(press(HM::Button::Right));
+    menu.update(press(HM::Button::Right));
+    check(menu.takeGraphicsChange(&changed) && changed.resolution == 1080 && !menu.takeGraphicsChange(&changed),
+          "Right steps the resolution up, reported once");
+    check(std::strcmp(menu.view().items[0].label, "Resolution: 1080p") == 0 &&
+              std::strcmp(menu.view().items[1].label, "Upscaler: FSR 1") == 0 &&
+              std::strstr(menu.view().message, "Renders 1920 x 1080, shown at 2560 x 1440 (upscaled)") != nullptr,
+          "below the display's resolution FSR 1 upscales");
+    menu.update(press(HM::Button::Right));
+    check(menu.graphics().resolution == 1440 && std::strcmp(menu.view().items[1].label, "Upscaler: not needed at 1:1") == 0,
+          "the display's own height is 1:1");
+    menu.update(press(HM::Button::Right));
+    check(menu.graphics().resolution == 2160 && std::strcmp(menu.view().items[1].label, "Downscaler: Area (automatic)") == 0 &&
+              std::strstr(menu.view().message, "(supersampled)") != nullptr,
+          "4K on a 1440 image is supersampled");
+    check(menu.takeGraphicsChange(&changed) && changed.resolution == 2160, "the resolution change is reported");
+    menu.update(press(Down));
+    sounds.clear();
+    menu.update(press(A));
+    check(menu.graphics().upscaler == 0 && sounds.empty() && !menu.takeGraphicsChange(&changed), "no upscaler choice when supersampling");
+    menu.update(press(Up));
+    menu.update(press(HM::Button::Right));
+    menu.update(press(HM::Button::Right));
+    check(menu.graphics().resolution == 480 && std::strcmp(menu.view().items[0].label, "Resolution: 480p (Wii)") == 0,
+          "the list wraps from 4K over Display to 480p");
+    menu.update(press(Down));
+    menu.update(press(HM::Button::Left));
+    check(menu.graphics().upscaler == 2 && std::strcmp(menu.view().items[1].label, "Upscaler: Bilinear") == 0,
+          "Left steps the upscaler back, wrapping to Bilinear");
+    menu.update(press(A));
+    check(menu.graphics().upscaler == 0, "A steps it on to FSR 1");
+    menu.update(press(Down));
+    menu.update(press(HM::Button::Right));
+    menu.update(press(HM::Button::Right));
+    menu.update(press(Down));
+    menu.update(press(A));
+    menu.update(press(Down));
+    menu.update(press(HM::Button::Left));
+    check(menu.takeGraphicsChange(&changed) && changed.resolution == 480 && changed.upscaler == 0 && changed.sharpening == 2 &&
+              changed.fxaa && changed.stats == 2,
+          "sharpening steps to Medium, FXAA toggles, Stats wraps to Detailed");
+    check(std::strcmp(menu.view().items[2].label, "Sharpening: Medium") == 0 &&
+              std::strcmp(menu.view().items[3].label, "Anti-aliasing: FXAA") == 0 &&
+              std::strcmp(menu.view().items[4].label, "Stats: Detailed") == 0,
+          "the labels follow");
+    menu.update(press(Plus | B));
+    check(menu.phase() == HM::Phase::List && menu.focus() == 3 && played(HM::Sound::Cancel), "Escape returns to the Graphics entry");
+}
+
 // The Volume slider, between My Progress and Restart from Title: Left/Right step 5% with hold
 // repeat and stop at 0 and 100; a click sets it where it lands; dragging with
 // the left button follows the pointer; each change is reported once.
@@ -1776,11 +1853,11 @@ void testVolumeSlider() {
     check(menu.volume() == 85, "setVolume snaps to 5% steps");
     menu.setVolume(100);
     openToList(menu);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         menu.update(press(Down));
         menu.update(none());
     }
-    check(menu.focus() == 4 && menu.view().items[4].focused, "Down reaches the slider");
+    check(menu.focus() == 5 && menu.view().items[5].focused, "Down reaches the slider");
 
     int percent = -1;
     check(!menu.takeVolumeChange(&percent), "no change before input");
@@ -1792,8 +1869,8 @@ void testVolumeSlider() {
     check(menu.volume() == 95 && playedCount(HM::Sound::Focus) == 1, "Left steps down 5% with a tick");
     check(menu.takeVolumeChange(&percent) && percent == 95, "the change is reported");
     check(!menu.takeVolumeChange(&percent), "and only once");
-    check(std::fabs(menu.view().items[4].slider - 0.95f) < 1e-6f, "the view shows the new fill");
-    check(menu.phase() == HM::Phase::List && menu.focus() == 4, "Left on the slider keeps the menu where it is");
+    check(std::fabs(menu.view().items[5].slider - 0.95f) < 1e-6f, "the view shows the new fill");
+    check(menu.phase() == HM::Phase::List && menu.focus() == 5, "Left on the slider keeps the menu where it is");
 
     for (int i = 0; i < 23; i++) {
         menu.update(hold(Left));
@@ -1804,7 +1881,7 @@ void testVolumeSlider() {
     for (int i = 0; i < 6 * 30; i++) {
         menu.update(hold(Left));
     }
-    check(menu.volume() == 0 && std::strcmp(menu.view().items[4].label, "Volume") == 0, "holding Left stops at 0");
+    check(menu.volume() == 0 && std::strcmp(menu.view().items[5].label, "Volume") == 0, "holding Left stops at 0");
     menu.update(none());
     menu.update(press(A));
     check(menu.volume() == 5, "A without the pointer steps up");
@@ -1812,19 +1889,19 @@ void testVolumeSlider() {
     // Left/Right elsewhere in the list do not touch the volume.
     menu.update(press(Up));
     menu.update(press(Right));
-    check(menu.volume() == 5 && menu.focus() == 3, "Right on My Progress leaves the volume alone");
+    check(menu.volume() == 5 && menu.focus() == 4, "Right on My Progress leaves the volume alone");
     menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Right));
-    check(menu.volume() == 5 && menu.focus() == 5, "Right on Restart leaves the volume alone");
+    check(menu.volume() == 5 && menu.focus() == 6, "Right on Restart leaves the volume alone");
 
     // Clicks and drags map the pointer through the track.
-    const HM::Rect item = menu.view().items[4].rect;
+    const HM::Rect item = menu.view().items[5].rect;
     const HM::Rect track = HM::sliderTrack(item);
     const float y = (item.y0 + item.y1) * 0.5f;
     check(track.x0 > item.x0 && track.x1 < item.x1 && track.y0 > item.y0 && track.y1 < item.y1, "the track lies inside the item");
     menu.update(pointer(track.x0 + (track.x1 - track.x0) * 0.62f, y, B));
-    check(menu.volume() == 60 && menu.focus() == 4, "a click at 62% of the track sets 60%");
+    check(menu.volume() == 60 && menu.focus() == 5, "a click at 62% of the track sets 60%");
     HM::FrameInput drag = pointer(track.x0 + (track.x1 - track.x0) * 0.2f, y);
     drag.hold = B;
     menu.update(drag);
@@ -1855,7 +1932,7 @@ void testVolumeSlider() {
     framesUntilSelection(menu);
     menu.setVolume(40);
     openToList(menu);
-    check(std::fabs(menu.view().items[4].slider - 0.4f) < 1e-6f && !menu.takeVolumeChange(&percent), "reopening shows the saved volume");
+    check(std::fabs(menu.view().items[5].slider - 0.4f) < 1e-6f && !menu.takeVolumeChange(&percent), "reopening shows the saved volume");
 }
 
 void testCameraPage() {
@@ -1928,6 +2005,7 @@ int main() {
     testLevelSelect();
     testCameraPage();
     testCheatsPage();
+    testGraphicsPage();
     testVolumeSlider();
     testBridgeInput();
     testWrapper();

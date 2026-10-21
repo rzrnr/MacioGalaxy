@@ -23,6 +23,7 @@
 
 #include "../app/host.hpp"
 #include "../app/spike_profiler.hpp"
+#include "../app/stats_overlay.hpp"
 #include "../app/smoke.hpp"
 #include "petari/app.hpp"
 #include "petari/agent_replay.hpp"
@@ -184,6 +185,12 @@ namespace PetariNative::App::Display {
 void handleEvent(const SDL_Event&) {}
 void update() {}
 }  // namespace PetariNative::App::Display
+
+// The stats overlay (stats_overlay.cpp) draws with ImGui; not under test here.
+namespace PetariNative::App::StatsOverlay {
+void addFrame(const Sample&) {}
+void draw(SDL_Window*, float, float, float, float) {}
+}  // namespace PetariNative::App::StatsOverlay
 
 namespace PetariNative::App::Smoke {
 Observation smokeObservation;

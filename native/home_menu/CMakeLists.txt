@@ -70,6 +70,12 @@ if(TARGET petari_volume)
     target_link_libraries(petari_home_menu PUBLIC petari_volume)
     target_compile_definitions(petari_home_menu PRIVATE PETARI_HOME_MENU_VOLUME=1)
 endif()
+# The Graphics page sets what the present pass draws (native/gx adds petari_graphics
+# first). Standalone builds keep the page's values in the menu only.
+if(TARGET petari_graphics)
+    target_link_libraries(petari_home_menu PUBLIC petari_graphics)
+    target_compile_definitions(petari_home_menu PRIVATE PETARI_HOME_MENU_GRAPHICS=1)
+endif()
 
 # The Dear ImGui overlay. Uses aurora's imgui target (IMGUI_USER_CONFIG and all);
 # a standalone build compiles ImGui's core from aurora's fetched sources.

@@ -2,6 +2,7 @@
 // (petari/app.hpp), fed from the native VI and SC state. No Aurora headers.
 
 #include <petari/app.hpp>
+#include <petari/graphics.hpp>
 #include <petari/latency_probe.hpp>
 #include <petari/platform/sc.hpp>
 #include <petari/platform/vi.hpp>
@@ -39,6 +40,18 @@ void composeFrame(void*) {
     video.aspectWidth = wide ? 16 : 4;
     video.aspectHeight = wide ? 9 : 3;
     petari_present_set_video(&video);
+
+    // The F1 menu's Graphics page: render height, upscaler, sharpening and FXAA.
+    namespace Graphics = PetariNative::Graphics;
+    const Graphics::Settings settings = Graphics::current();
+    PetariPresentGraphics graphics{};
+    graphics.renderHeight = static_cast<unsigned>(settings.resolution);
+    graphics.upscaler = settings.upscaler == Graphics::Upscaler::Bilinear  ? PETARI_PRESENT_UPSCALE_BILINEAR
+                        : settings.upscaler == Graphics::Upscaler::Bicubic ? PETARI_PRESENT_UPSCALE_BICUBIC
+                                                                           : PETARI_PRESENT_UPSCALE_FSR1;
+    graphics.sharpness = Graphics::sharpness(settings.sharpening);
+    graphics.fxaa = settings.fxaa ? 1 : 0;
+    petari_present_set_graphics(&graphics);
 }
 
 bool imageRect(PetariNative::App::Rect* rect, void*) {

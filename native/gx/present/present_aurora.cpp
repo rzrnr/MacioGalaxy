@@ -94,6 +94,28 @@ void requestAreaResizeIfSettled() {
   }
 }
 
+// The F1 menu's Graphics page (petari_present_set_graphics). The requested render
+// height takes effect in take(), which resizes the frame buffer; gRenderHeight is
+// the height in effect (0: the displayed size), read by the patched window size
+// (any thread).
+std::atomic<unsigned> gRequestedHeight{0};
+std::atomic<unsigned> gRenderHeight{0};
+std::atomic<int> gUpscaler{PETARI_PRESENT_UPSCALE_FSR1};
+std::atomic<float> gSharpness{0.0f};
+std::atomic<bool> gFxaa{false};
+
+// Main thread, once per frame.
+void applyRenderHeight() {
+  const unsigned requested = gRequestedHeight.load();
+  if (requested == gRenderHeight.load()) {
+    return;
+  }
+  gRenderHeight.store(requested);
+  if (gAspectEnabled.load()) {
+    aurora::window::request_frame_buffer_resize();
+  }
+}
+
 // 1x1 black with kDimOpacity alpha (premultiplied), for draw_dim.
 wgpu::Texture gDimTexture;
 wgpu::TextureView gDimView;
@@ -535,7 +557,11 @@ Frame takeImpl() noexcept {
 Frame take() noexcept {
   requestAreaResizeIfSettled();
   serviceReadbacks();
+  applyRenderHeight();
   Frame frame = takeImpl();
+  frame.upscaler = gUpscaler.load();
+  frame.sharpness = gSharpness.load();
+  frame.fxaa = gFxaa.load();
   if (frame.active && hashConfig().enabled) {
     static uint64_t presented = 0;
     const uint64_t index = presented++;
@@ -620,12 +646,492 @@ std::function<void()> surface_dump_encode(const wgpu::CommandEncoder& encoder, c
   };
 }
 
-bool bind_image(const Frame& frame, wgpu::BindGroup& out) noexcept {
+// --- The Graphics page's scaling filters, FSR 1 and FXAA (native/GRAPHICS.md). Render worker only. ---
+// Without FSR 1 or sharpening the XFB is drawn straight into the present viewport: with Aurora's copy
+// pipeline when the sizes match or the bilinear upscaler is chosen, otherwise with a Catmull-Rom bicubic
+// filter when enlarging or an area (box) filter in linear light when shrinking a supersampled image.
+// FSR 1's EASU upscaler and RCAS sharpening need the scaled image in a texture of the viewport's size
+// first; RCAS (or a copy) then draws it into the window. FXAA runs before scaling, at the XFB's size.
+//
+// fs_easu and fs_rcas port AMD FidelityFX Super Resolution 1.0 (ffx_fsr1.h, the 32-bit FsrEasuF and
+// FsrRcasF paths) to WGSL. Copyright (c) 2021 Advanced Micro Devices, Inc. All rights reserved.
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+// associated documentation files (the "Software"), to deal in the Software without restriction,
+// including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions: The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS",
+// WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+// OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+// CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
+constexpr const char* kImageShader = R"(
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var srcSampler: sampler;
+
+struct Params {
+    outputSize: vec2<f32>,  // EASU: the viewport's size in pixels
+    sharpness: f32,         // RCAS: linear 0..1
+    unused: f32,
+};
+@group(0) @binding(2) var<uniform> params: Params;
+
+struct VertexOutput {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+var<private> positions: array<vec2<f32>, 3> = array<vec2<f32>, 3>(vec2(-1.0, 1.0), vec2(-1.0, -3.0), vec2(3.0, 1.0));
+var<private> uvs: array<vec2<f32>, 3> = array<vec2<f32>, 3>(vec2(0.0, 0.0), vec2(0.0, 2.0), vec2(2.0, 0.0));
+
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
+    var out: VertexOutput;
+    out.pos = vec4<f32>(positions[index], 0.0, 1.0);
+    out.uv = uvs[index];
+    return out;
+}
+
+fn texel(p: vec2<i32>, size: vec2<i32>) -> vec3<f32> {
+    return textureLoad(src, clamp(p, vec2<i32>(0), size - vec2<i32>(1)), 0).rgb;
+}
+
+@fragment
+fn fs_bilinear(in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(textureSampleLevel(src, srcSampler, in.uv, 0.0).rgb, 1.0);
+}
+
+// Catmull-Rom weights of the taps at -1, 0, 1 and 2 for a sample t texels past tap 0.
+fn catmull_rom(t: f32) -> vec4<f32> {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    return vec4<f32>(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
+}
+
+@fragment
+fn fs_bicubic(in: VertexOutput) -> @location(0) vec4<f32> {
+    let size = vec2<i32>(textureDimensions(src));
+    let p = in.uv * vec2<f32>(size) - vec2<f32>(0.5);
+    let base = vec2<i32>(floor(p));
+    var wx = catmull_rom(p.x - floor(p.x));
+    var wy = catmull_rom(p.y - floor(p.y));
+    var color = vec3<f32>(0.0);
+    for (var j = 0; j < 4; j++) {
+        var row = vec3<f32>(0.0);
+        for (var i = 0; i < 4; i++) {
+            row += wx[i] * texel(base + vec2<i32>(i - 1, j - 1), size);
+        }
+        color += wy[j] * row;
+    }
+    return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+}
+
+// Each output pixel averages the source texels it covers, weighted by coverage.
+@fragment
+fn fs_area(in: VertexOutput) -> @location(0) vec4<f32> {
+    let size = vec2<i32>(textureDimensions(src));
+    let footprint = max(fwidth(in.uv) * vec2<f32>(size), vec2<f32>(1.0));
+    let center = in.uv * vec2<f32>(size);
+    let lo = center - footprint * 0.5;
+    let hi = center + footprint * 0.5;
+    let first = vec2<i32>(floor(lo));
+    let last = min(vec2<i32>(ceil(hi)) - vec2<i32>(1), first + vec2<i32>(7));
+    var sum = vec3<f32>(0.0);
+    var weight = 0.0;
+    for (var y = first.y; y <= last.y; y++) {
+        let wy = min(hi.y, f32(y + 1)) - max(lo.y, f32(y));
+        for (var x = first.x; x <= last.x; x++) {
+            let w = wy * (min(hi.x, f32(x + 1)) - max(lo.x, f32(x)));
+            sum += w * pow(texel(vec2<i32>(x, y), size), vec3<f32>(2.2));
+            weight += w;
+        }
+    }
+    return vec4<f32>(pow(sum / max(weight, 1e-6), vec3<f32>(1.0 / 2.2)), 1.0);
+}
+
+fn luma(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.299, 0.587, 0.114));
+}
+
+fn bilinear(uv: vec2<f32>) -> vec3<f32> {
+    return textureSampleLevel(src, srcSampler, uv, 0.0).rgb;
+}
+
+// FXAA: where the corners' luma shows an edge, blend along the edge with up to four
+// bilinear taps, and keep the wider blend only if it stays in the local luma range.
+@fragment
+fn fs_fxaa(in: VertexOutput) -> @location(0) vec4<f32> {
+    let size = vec2<i32>(textureDimensions(src));
+    let p = vec2<i32>(in.pos.xy);
+    let rgbM = texel(p, size);
+    let lumaM = luma(rgbM);
+    let lumaNW = luma(texel(p + vec2<i32>(-1, -1), size));
+    let lumaNE = luma(texel(p + vec2<i32>(1, -1), size));
+    let lumaSW = luma(texel(p + vec2<i32>(-1, 1), size));
+    let lumaSE = luma(texel(p + vec2<i32>(1, 1), size));
+    let lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+    let lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+    if (lumaMax - lumaMin < max(0.0312, lumaMax * 0.125)) {
+        return vec4<f32>(rgbM, 1.0);
+    }
+    var dir = vec2<f32>((lumaSW + lumaSE) - (lumaNW + lumaNE), (lumaNW + lumaSW) - (lumaNE + lumaSE));
+    let reduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.03125, 1.0 / 128.0);
+    dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + reduce), vec2<f32>(-8.0), vec2<f32>(8.0)) / vec2<f32>(size);
+    let uv = (vec2<f32>(p) + vec2<f32>(0.5)) / vec2<f32>(size);
+    let rgbA = 0.5 * (bilinear(uv - dir / 6.0) + bilinear(uv + dir / 6.0));
+    let rgbB = 0.5 * rgbA + 0.25 * (bilinear(uv - dir * 0.5) + bilinear(uv + dir * 0.5));
+    let lumaB = luma(rgbB);
+    if (lumaB < lumaMin || lumaB > lumaMax) {
+        return vec4<f32>(rgbA, 1.0);
+    }
+    return vec4<f32>(rgbB, 1.0);
+}
+
+// ffx_a.h's approximations, as FSR 1 uses them.
+fn prx_lo_rcp(a: f32) -> f32 {
+    return bitcast<f32>(0x7ef07ebbu - bitcast<u32>(a));
+}
+fn prx_med_rcp(a: f32) -> f32 {
+    let b = bitcast<f32>(0x7ef19fffu - bitcast<u32>(a));
+    return b * (-b * a + 2.0);
+}
+fn prx_lo_rsq(a: f32) -> f32 {
+    return bitcast<f32>(0x5f347d74u - (bitcast<u32>(a) >> 1u));
+}
+
+// FsrEasuTapF: one tap of the 12-tap kernel, a windowed Lanczos 2 approximation
+// stretched along the local edge direction.
+fn easu_tap(aC: ptr<function, vec3<f32>>, aW: ptr<function, f32>, off: vec2<f32>, dir: vec2<f32>, len: vec2<f32>, lob: f32,
+            clp: f32, c: vec3<f32>) {
+    var v = vec2<f32>(off.x * dir.x + off.y * dir.y, off.x * (-dir.y) + off.y * dir.x);
+    v *= len;
+    let d2 = min(v.x * v.x + v.y * v.y, clp);
+    var wB = 2.0 / 5.0 * d2 - 1.0;
+    var wA = lob * d2 - 1.0;
+    wB *= wB;
+    wA *= wA;
+    wB = 25.0 / 16.0 * wB - (25.0 / 16.0 - 1.0);
+    let w = wB * wA;
+    *aC += c * w;
+    *aW += w;
+}
+
+// FsrEasuSetF: direction and length from the '+' around one of the four centre texels,
+// weighted by its bilinear weight w.
+fn easu_set(dir: ptr<function, vec2<f32>>, len: ptr<function, f32>, w: f32, lA: f32, lB: f32, lC: f32, lD: f32, lE: f32) {
+    let dc = lD - lC;
+    let cb = lC - lB;
+    var lenX = prx_lo_rcp(max(abs(dc), abs(cb)));
+    let dirX = lD - lB;
+    (*dir).x += dirX * w;
+    lenX = clamp(abs(dirX) * lenX, 0.0, 1.0);
+    lenX *= lenX;
+    *len += lenX * w;
+    let ec = lE - lC;
+    let ca = lC - lA;
+    var lenY = prx_lo_rcp(max(abs(ec), abs(ca)));
+    let dirY = lE - lA;
+    (*dir).y += dirY * w;
+    lenY = clamp(abs(dirY) * lenY, 0.0, 1.0);
+    lenY *= lenY;
+    *len += lenY * w;
+}
+
+// FsrEasuF: edge-adaptive upscaling from the XFB to the viewport's size.
+@fragment
+fn fs_easu(in: VertexOutput) -> @location(0) vec4<f32> {
+    let inputSize = vec2<f32>(textureDimensions(src));
+    let ip = floor(in.pos.xy);
+    // FsrEasuCon with the viewport covering the whole input.
+    let scale = inputSize / params.outputSize;
+    let rcpIn = vec2<f32>(1.0) / inputSize;
+    var pp = ip * scale + (0.5 * scale - vec2<f32>(0.5));
+    let fp = floor(pp);
+    pp -= fp;
+    //    b c
+    //  e f g h
+    //  i j k l
+    //    n o
+    let p0 = fp * rcpIn + vec2<f32>(rcpIn.x, -rcpIn.y);
+    let p1 = p0 + vec2<f32>(-rcpIn.x, 2.0 * rcpIn.y);
+    let p2 = p0 + vec2<f32>(rcpIn.x, 2.0 * rcpIn.y);
+    let p3 = p0 + vec2<f32>(0.0, 4.0 * rcpIn.y);
+    let bczzR = textureGather(0, src, srcSampler, p0);
+    let bczzG = textureGather(1, src, srcSampler, p0);
+    let bczzB = textureGather(2, src, srcSampler, p0);
+    let ijfeR = textureGather(0, src, srcSampler, p1);
+    let ijfeG = textureGather(1, src, srcSampler, p1);
+    let ijfeB = textureGather(2, src, srcSampler, p1);
+    let klhgR = textureGather(0, src, srcSampler, p2);
+    let klhgG = textureGather(1, src, srcSampler, p2);
+    let klhgB = textureGather(2, src, srcSampler, p2);
+    let zzonR = textureGather(0, src, srcSampler, p3);
+    let zzonG = textureGather(1, src, srcSampler, p3);
+    let zzonB = textureGather(2, src, srcSampler, p3);
+    // Luma times 2.
+    let bczzL = bczzB * 0.5 + (bczzR * 0.5 + bczzG);
+    let ijfeL = ijfeB * 0.5 + (ijfeR * 0.5 + ijfeG);
+    let klhgL = klhgB * 0.5 + (klhgR * 0.5 + klhgG);
+    let zzonL = zzonB * 0.5 + (zzonR * 0.5 + zzonG);
+    let bL = bczzL.x;
+    let cL = bczzL.y;
+    let iL = ijfeL.x;
+    let jL = ijfeL.y;
+    let fL = ijfeL.z;
+    let eL = ijfeL.w;
+    let kL = klhgL.x;
+    let lL = klhgL.y;
+    let hL = klhgL.z;
+    let gL = klhgL.w;
+    let oL = zzonL.z;
+    let nL = zzonL.w;
+    var dir = vec2<f32>(0.0);
+    var len = 0.0;
+    easu_set(&dir, &len, (1.0 - pp.x) * (1.0 - pp.y), bL, eL, fL, gL, jL);
+    easu_set(&dir, &len, pp.x * (1.0 - pp.y), cL, fL, gL, hL, kL);
+    easu_set(&dir, &len, (1.0 - pp.x) * pp.y, fL, iL, jL, kL, nL);
+    easu_set(&dir, &len, pp.x * pp.y, gL, jL, kL, lL, oL);
+    // Normalize with approximation, and clean up close to zero.
+    let dir2 = dir * dir;
+    var dirR = dir2.x + dir2.y;
+    let zero = dirR < 1.0 / 32768.0;
+    dirR = select(prx_lo_rsq(dirR), 1.0, zero);
+    dir.x = select(dir.x, 1.0, zero);
+    dir *= dirR;
+    // From {0 to 2} to {0 to 1}, shaped with a square.
+    len = len * 0.5;
+    len *= len;
+    // Stretch the kernel from 1.0 (vertical, horizontal) to sqrt(2) (diagonal).
+    let stretch = (dir.x * dir.x + dir.y * dir.y) * prx_lo_rcp(max(abs(dir.x), abs(dir.y)));
+    let len2 = vec2<f32>(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);
+    let lob = 0.5 + ((1.0 / 4.0 - 0.04) - 0.5) * len;
+    let clp = prx_lo_rcp(lob);
+    // Min and max of the four nearest, for deringing.
+    let f = vec3<f32>(ijfeR.z, ijfeG.z, ijfeB.z);
+    let g = vec3<f32>(klhgR.w, klhgG.w, klhgB.w);
+    let j = vec3<f32>(ijfeR.y, ijfeG.y, ijfeB.y);
+    let k = vec3<f32>(klhgR.x, klhgG.x, klhgB.x);
+    let min4 = min(min(f, min(g, j)), k);
+    let max4 = max(max(f, max(g, j)), k);
+    var aC = vec3<f32>(0.0);
+    var aW = 0.0;
+    easu_tap(&aC, &aW, vec2<f32>(0.0, -1.0) - pp, dir, len2, lob, clp, vec3<f32>(bczzR.x, bczzG.x, bczzB.x));  // b
+    easu_tap(&aC, &aW, vec2<f32>(1.0, -1.0) - pp, dir, len2, lob, clp, vec3<f32>(bczzR.y, bczzG.y, bczzB.y));  // c
+    easu_tap(&aC, &aW, vec2<f32>(-1.0, 1.0) - pp, dir, len2, lob, clp, vec3<f32>(ijfeR.x, ijfeG.x, ijfeB.x));  // i
+    easu_tap(&aC, &aW, vec2<f32>(0.0, 1.0) - pp, dir, len2, lob, clp, j);                                        // j
+    easu_tap(&aC, &aW, vec2<f32>(0.0, 0.0) - pp, dir, len2, lob, clp, f);                                        // f
+    easu_tap(&aC, &aW, vec2<f32>(-1.0, 0.0) - pp, dir, len2, lob, clp, vec3<f32>(ijfeR.w, ijfeG.w, ijfeB.w));  // e
+    easu_tap(&aC, &aW, vec2<f32>(1.0, 1.0) - pp, dir, len2, lob, clp, k);                                        // k
+    easu_tap(&aC, &aW, vec2<f32>(2.0, 1.0) - pp, dir, len2, lob, clp, vec3<f32>(klhgR.y, klhgG.y, klhgB.y));   // l
+    easu_tap(&aC, &aW, vec2<f32>(2.0, 0.0) - pp, dir, len2, lob, clp, vec3<f32>(klhgR.z, klhgG.z, klhgB.z));   // h
+    easu_tap(&aC, &aW, vec2<f32>(1.0, 0.0) - pp, dir, len2, lob, clp, g);                                        // g
+    easu_tap(&aC, &aW, vec2<f32>(1.0, 2.0) - pp, dir, len2, lob, clp, vec3<f32>(zzonR.z, zzonG.z, zzonB.z));   // o
+    easu_tap(&aC, &aW, vec2<f32>(0.0, 2.0) - pp, dir, len2, lob, clp, vec3<f32>(zzonR.w, zzonG.w, zzonB.w));   // n
+    return vec4<f32>(min(max4, max(min4, aC / aW)), 1.0);
+}
+
+// FsrRcasF: sharpening of the scaled image, drawn 1:1 into the viewport. The limiters'
+// divisions are guarded against black and white rings, where FSR divides by zero.
+@fragment
+fn fs_rcas(in: VertexOutput) -> @location(0) vec4<f32> {
+    let size = vec2<i32>(textureDimensions(src));
+    let sp = vec2<i32>(floor(in.uv * vec2<f32>(size)));
+    //    b
+    //  d e f
+    //    h
+    let b = texel(sp + vec2<i32>(0, -1), size);
+    let d = texel(sp + vec2<i32>(-1, 0), size);
+    let e = texel(sp, size);
+    let f = texel(sp + vec2<i32>(1, 0), size);
+    let h = texel(sp + vec2<i32>(0, 1), size);
+    let mn4 = min(min(b, d), min(f, h));
+    let mx4 = max(max(b, d), max(f, h));
+    let peakC = vec2<f32>(1.0, -4.0);
+    let hitMin = min(mn4, e) / max(4.0 * mx4, vec3<f32>(1e-6));
+    let hitMax = (peakC.x - max(mx4, e)) / min(4.0 * mn4 + peakC.y, vec3<f32>(-1e-6));
+    let lobeRGB = max(-hitMin, hitMax);
+    let lobe = max(-(0.25 - 1.0 / 16.0), min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0)) * params.sharpness;
+    let rcpL = prx_med_rcp(4.0 * lobe + 1.0);
+    return vec4<f32>((lobe * (b + d + h + f) + e) * rcpL, 1.0);
+}
+)";
+
+enum ImageFilter { FilterBilinear, FilterBicubic, FilterArea, FilterFxaa, FilterEasu, FilterRcas, FilterCount };
+constexpr const char* kFilterEntries[FilterCount] = {"fs_bilinear", "fs_bicubic", "fs_area", "fs_fxaa", "fs_easu", "fs_rcas"};
+constexpr bool kFilterSampler[FilterCount] = {true, false, false, true, true, false};
+constexpr bool kFilterParams[FilterCount] = {false, false, false, false, true, true};
+
+// The filters for one render target format.
+struct ImagePipelines {
+  wgpu::TextureFormat format = wgpu::TextureFormat::Undefined;
+  wgpu::RenderPipeline filters[FilterCount];
+};
+ImagePipelines gSurfacePipelines;       // into the window
+ImagePipelines gIntermediatePipelines;  // into gFxaaTexture and gScaledTexture
+constexpr wgpu::TextureFormat kIntermediateFormat = wgpu::TextureFormat::RGBA8Unorm;
+wgpu::ShaderModule gImageModule;
+wgpu::Sampler gImageSampler;
+wgpu::Buffer gImageParams;  // Params in kImageShader
+wgpu::Texture gFxaaTexture;    // the XFB after FXAA, at its size
+wgpu::TextureView gFxaaView;
+wgpu::Texture gScaledTexture;  // the scaled image, at the viewport's size, for RCAS
+wgpu::TextureView gScaledView;
+
+// What draw_image draws this frame.
+struct ImageDraw {
+  wgpu::RenderPipeline pipeline;
+  wgpu::BindGroup bindGroup;
+};
+ImageDraw gImageDraw;
+
+const ImagePipelines& imagePipelines(ImagePipelines& pipelines, wgpu::TextureFormat format) {
+  using aurora::webgpu::g_device;
+  if (pipelines.format == format) {
+    return pipelines;
+  }
+  PetariNative::HostAllocationScope host;
+  if (!gImageModule) {
+    const wgpu::ShaderSourceWGSL wgsl{wgpu::ShaderSourceWGSL::Init{.code = kImageShader}};
+    const wgpu::ShaderModuleDescriptor moduleDescriptor{.nextInChain = &wgsl, .label = "Petari image filters"};
+    gImageModule = g_device.CreateShaderModule(&moduleDescriptor);
+    const wgpu::SamplerDescriptor samplerDescriptor{
+        .label = "Petari image sampler",
+        .addressModeU = wgpu::AddressMode::ClampToEdge,
+        .addressModeV = wgpu::AddressMode::ClampToEdge,
+        .magFilter = wgpu::FilterMode::Linear,
+        .minFilter = wgpu::FilterMode::Linear,
+    };
+    gImageSampler = g_device.CreateSampler(&samplerDescriptor);
+    const wgpu::BufferDescriptor paramsDescriptor{
+        .label = "Petari image params", .usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst, .size = 16};
+    gImageParams = g_device.CreateBuffer(&paramsDescriptor);
+  }
+  for (int filter = 0; filter < FilterCount; filter++) {
+    const wgpu::ColorTargetState target{.format = format, .writeMask = wgpu::ColorWriteMask::All};
+    const wgpu::FragmentState fragment{
+        .module = gImageModule, .entryPoint = kFilterEntries[filter], .targetCount = 1, .targets = &target};
+    const wgpu::RenderPipelineDescriptor descriptor{
+        .label = kFilterEntries[filter],
+        .vertex = wgpu::VertexState{.module = gImageModule, .entryPoint = "vs_main"},
+        .primitive = wgpu::PrimitiveState{.topology = wgpu::PrimitiveTopology::TriangleList},
+        .multisample = wgpu::MultisampleState{.count = 1, .mask = UINT32_MAX},
+        .fragment = &fragment,
+    };
+    pipelines.filters[filter] = g_device.CreateRenderPipeline(&descriptor);
+  }
+  pipelines.format = format;
+  return pipelines;
+}
+
+wgpu::BindGroup imageBindGroup(const ImagePipelines& pipelines, ImageFilter filter, const wgpu::TextureView& view) {
+  std::array<wgpu::BindGroupEntry, 3> entries;
+  size_t count = 0;
+  entries[count++] = wgpu::BindGroupEntry{.binding = 0, .textureView = view};
+  if (kFilterSampler[filter]) {
+    entries[count++] = wgpu::BindGroupEntry{.binding = 1, .sampler = gImageSampler};
+  }
+  if (kFilterParams[filter]) {
+    entries[count++] = wgpu::BindGroupEntry{.binding = 2, .buffer = gImageParams, .size = 16};
+  }
+  const wgpu::BindGroupDescriptor descriptor{.label = "Petari image",
+                                             .layout = pipelines.filters[filter].GetBindGroupLayout(0),
+                                             .entryCount = count,
+                                             .entries = entries.data()};
+  return aurora::webgpu::g_device.CreateBindGroup(&descriptor);
+}
+
+// A render target texture of the intermediate format, recreated when the size changes.
+void ensureTarget(wgpu::Texture& texture, wgpu::TextureView& view, uint32_t width, uint32_t height, const char* label) {
+  if (texture && texture.GetWidth() == width && texture.GetHeight() == height) {
+    return;
+  }
+  PetariNative::HostAllocationScope host;
+  const wgpu::TextureDescriptor descriptor{
+      .label = label,
+      .usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding,
+      .dimension = wgpu::TextureDimension::e2D,
+      .size = {width, height, 1},
+      .format = kIntermediateFormat,
+  };
+  texture = aurora::webgpu::g_device.CreateTexture(&descriptor);
+  view = texture.CreateView();
+}
+
+// One full-target pass of a filter from source into target.
+void runFilter(const wgpu::CommandEncoder& encoder, ImageFilter filter, const wgpu::TextureView& source,
+               const wgpu::TextureView& target, const char* label) {
+  const ImagePipelines& pipelines = imagePipelines(gIntermediatePipelines, kIntermediateFormat);
+  const wgpu::RenderPassColorAttachment attachment{.view = target, .loadOp = wgpu::LoadOp::Clear, .storeOp = wgpu::StoreOp::Store};
+  const wgpu::RenderPassDescriptor descriptor{.label = label, .colorAttachmentCount = 1, .colorAttachments = &attachment};
+  const auto pass = encoder.BeginRenderPass(&descriptor);
+  pass.SetPipeline(pipelines.filters[filter]);
+  pass.SetBindGroup(0, imageBindGroup(pipelines, filter, source), 0, nullptr);
+  pass.Draw(3);
+  pass.End();
+}
+
+bool prepare_image(const wgpu::CommandEncoder& encoder, const Frame& frame, float viewWidth, float viewHeight) noexcept {
   if (frame.black || !frame.xfb) {
     return false;
   }
-  out = aurora::webgpu::create_copy_bind_group(xfb_source(*frame.xfb));
+  using namespace aurora::webgpu;
+  PetariNative::HostAllocationScope host;
+  TextureWithSampler source = xfb_source(*frame.xfb);
+  imagePipelines(gIntermediatePipelines, kIntermediateFormat);  // the shared sampler and params buffer
+  if (frame.fxaa) {
+    ensureTarget(gFxaaTexture, gFxaaView, source.size.width, source.size.height, "Petari FXAA image");
+    runFilter(encoder, FilterFxaa, source.view, gFxaaView, "Petari FXAA pass");
+    source.texture = gFxaaTexture;
+    source.view = gFxaaView;
+    source.format = kIntermediateFormat;
+  }
+  const uint32_t width = std::max<uint32_t>(1, static_cast<uint32_t>(std::lround(viewWidth)));
+  const uint32_t height = std::max<uint32_t>(1, static_cast<uint32_t>(std::lround(viewHeight)));
+  const bool sameSize = width == source.size.width && height == source.size.height;
+  const bool enlarge = !sameSize && viewWidth > static_cast<float>(source.size.width);
+  const bool easu = enlarge && frame.upscaler == PETARI_PRESENT_UPSCALE_FSR1;
+  const bool sharpen = frame.sharpness > 0.0f;
+  const ImageFilter scaler = sameSize ? FilterBilinear
+                             : enlarge ? (easu ? FilterEasu : frame.upscaler == PETARI_PRESENT_UPSCALE_BILINEAR ? FilterBilinear : FilterBicubic)
+                                       : FilterArea;
+  const float params[4] = {static_cast<float>(width), static_cast<float>(height), frame.sharpness, 0.0f};
+  g_queue.WriteBuffer(gImageParams, 0, params, sizeof(params));
+
+  if (!easu && !sharpen) {
+    // Straight into the window.
+    if (scaler == FilterBilinear) {
+      gImageDraw.pipeline = g_CopyPipeline;
+      gImageDraw.bindGroup = create_copy_bind_group(source);
+    } else {
+      const ImagePipelines& pipelines = imagePipelines(gSurfacePipelines, g_graphicsConfig.surfaceConfiguration.format);
+      gImageDraw.pipeline = pipelines.filters[scaler];
+      gImageDraw.bindGroup = imageBindGroup(pipelines, scaler, source.view);
+    }
+    return true;
+  }
+  // Scaled at the viewport's size first, then RCAS (or a copy) into the window.
+  ensureTarget(gScaledTexture, gScaledView, width, height, "Petari scaled image");
+  runFilter(encoder, scaler, source.view, gScaledView, easu ? "Petari FSR 1 EASU pass" : "Petari scale pass");
+  if (sharpen) {
+    const ImagePipelines& pipelines = imagePipelines(gSurfacePipelines, g_graphicsConfig.surfaceConfiguration.format);
+    gImageDraw.pipeline = pipelines.filters[FilterRcas];
+    gImageDraw.bindGroup = imageBindGroup(pipelines, FilterRcas, gScaledView);
+  } else {
+    gImageDraw.pipeline = g_CopyPipeline;
+    gImageDraw.bindGroup = create_copy_bind_group(TextureWithSampler{.texture = gScaledTexture,
+                                                                     .view = gScaledView,
+                                                                     .size = {width, height, 1},
+                                                                     .format = kIntermediateFormat,
+                                                                     .sampler = present_source().sampler});
+  }
   return true;
+}
+
+void draw_image(const wgpu::RenderPassEncoder& pass) noexcept {
+  pass.SetPipeline(gImageDraw.pipeline);
+  pass.SetBindGroup(0, gImageDraw.bindGroup, 0, nullptr);
+  pass.Draw(3);
 }
 
 void draw_dim(const wgpu::RenderPassEncoder& pass, const Frame& frame) noexcept {
@@ -770,6 +1276,17 @@ int petari_present_content_area_pixels(unsigned* width, unsigned* height) {
   *width = gAreaPixelWidth.load();
   *height = gAreaPixelHeight.load();
   return *width != 0 && *height != 0;
+}
+
+void petari_present_set_graphics(const PetariPresentGraphics* graphics) {
+  petari_present::gRequestedHeight.store(graphics->renderHeight);
+  petari_present::gUpscaler.store(graphics->upscaler);
+  petari_present::gSharpness.store(graphics->sharpness > 0.0f ? std::min(graphics->sharpness, 1.0f) : 0.0f);
+  petari_present::gFxaa.store(graphics->fxaa != 0);
+}
+
+unsigned petari_present_render_height(void) {
+  return petari_present::gAspectEnabled.load() ? petari_present::gRenderHeight.load() : 0;
 }
 
 int petari_present_image_rect(float* x, float* y, float* width, float* height) {

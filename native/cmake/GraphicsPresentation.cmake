@@ -26,9 +26,16 @@ endforeach()
 target_sources(aurora_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/present/present_aurora.cpp")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/present/present_aurora.cpp" TARGET_DIRECTORY aurora_core PROPERTIES
     COMPILE_OPTIONS "-iquote${aurora_SOURCE_DIR}/lib")
+# The F1 menu's Graphics page settings (petari/graphics.hpp), read by the present pass.
+add_library(petari_graphics STATIC present/graphics.cpp)
+target_include_directories(petari_graphics PUBLIC "${CMAKE_SOURCE_DIR}/native/include")
+target_compile_features(petari_graphics PUBLIC cxx_std_17)
 add_library(petari_present STATIC present/present_host.cpp)
-target_link_libraries(petari_present PUBLIC petari_platform_vi petari_platform_sc)
+target_link_libraries(petari_present PUBLIC petari_platform_vi petari_platform_sc petari_graphics)
 if(_petari_build_testing)
+    add_executable(petari_graphics_tests "${CMAKE_SOURCE_DIR}/native/tests/graphics_tests.cpp")
+    target_link_libraries(petari_graphics_tests PRIVATE petari_graphics)
+    add_test(NAME native_graphics COMMAND petari_graphics_tests)
     add_test(NAME native_present_patch COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/native/tests/present_patch_tests.py" "${aurora_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
