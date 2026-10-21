@@ -40,6 +40,7 @@ char gFps[32] = "";
 char gTimes[96] = "";
 char gParts[128] = "";
 char gRender[128] = "";
+char gInterpolation[96] = "";  // at Frame rate 120: how many steps get an extra frame, or why none
 bool gFresh = false;
 
 Clock::time_point gTitleTime;
@@ -95,6 +96,18 @@ void refreshTexts(int outputWidth, int outputHeight) {
     }
     std::snprintf(gRender, sizeof(gRender), "%d x %d -> %d x %d   %s%s%s", width, height, outputWidth, outputHeight, filter, sharpen,
                   settings.fxaa ? "   FXAA" : "");
+    gInterpolation[0] = '\0';
+    if (settings.frameRate >= 120) {
+        const Graphics::FrameRateStatus status = Graphics::frameRateStatus();
+        if (status.displayHz > 0 && status.displayHz < 100) {
+            std::snprintf(gInterpolation, sizeof(gInterpolation), "120: no extra frames on this %d Hz display", status.displayHz);
+        } else if (status.interpolatedPercent < 0) {
+            std::snprintf(gInterpolation, sizeof(gInterpolation), "120: no extra frames here");
+        } else {
+            std::snprintf(gInterpolation, sizeof(gInterpolation), "Extra frames %d%%   too late %d%%", status.interpolatedPercent,
+                          status.latePercent);
+        }
+    }
 }
 
 void updateTitle(SDL_Window* window, bool show) {
@@ -205,11 +218,13 @@ void draw(SDL_Window* window, float imageX, float imageY, float imageWidth, floa
     const float big = h * 0.034f * shrink;
     const float small = h * 0.022f * shrink;
     const float pad = small * 0.8f;
+    const bool interpolation = gInterpolation[0] != '\0';
     const float width = std::max({font->CalcTextSizeA(small, 1.0e9f, 0.0f, gParts).x, font->CalcTextSizeA(small, 1.0e9f, 0.0f, gRender).x,
-                                  font->CalcTextSizeA(small, 1.0e9f, 0.0f, gTimes).x}) +
+                                  font->CalcTextSizeA(small, 1.0e9f, 0.0f, gTimes).x,
+                                  font->CalcTextSizeA(small, 1.0e9f, 0.0f, gInterpolation).x}) +
                         pad * 2.0f;
     const float graphHeight = h * 0.07f * shrink;
-    const float height = pad * 2.0f + big + small * 3.0f + graphHeight + small * 1.6f;
+    const float height = pad * 2.0f + big + small * 3.0f + graphHeight + small * 1.6f + (interpolation ? small * 1.2f : 0.0f);
     const ImVec2 origin(left(width), imageY + margin);
     const ImVec2 max(origin.x + width, origin.y + height);
     list->AddRectFilled(origin, max, panelFill, h * 0.012f);
@@ -224,6 +239,10 @@ void draw(SDL_Window* window, float imageX, float imageY, float imageWidth, floa
     list->AddText(font, small, ImVec2(origin.x + pad, y), text, gParts);
     y += small * 1.2f;
     list->AddText(font, small, ImVec2(origin.x + pad, y), color(0.78f, 0.82f, 0.92f, 0.97f), gRender);
+    if (interpolation) {
+        y += small * 1.2f;
+        list->AddText(font, small, ImVec2(origin.x + pad, y), color(0.78f, 0.82f, 0.92f, 0.97f), gInterpolation);
+    }
     list->PopClipRect();
 }
 

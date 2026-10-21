@@ -1330,6 +1330,14 @@ void testGraphicsPage() {
     check(menu.takeGraphicsChange(&changed) && changed.frameRate == 120 && !menu.takeGraphicsChange(&changed) &&
               std::strcmp(menu.view().items[0].label, "Frame rate: 120 (interpolated)") == 0 && played(HM::Sound::Select),
           "Right switches to 120 frames per second, reported once");
+    menu.setGraphicsDisplayHz(60);
+    check(std::strcmp(menu.view().items[0].label, "Frame rate: 120 (60 Hz display)") == 0 &&
+              std::strstr(menu.view().message, "this one shows 60 Hz") != nullptr,
+          "on a 60 Hz display 120 says it cannot be shown");
+    menu.setGraphicsDisplayHz(120);
+    check(std::strcmp(menu.view().items[0].label, "Frame rate: 120 (interpolated)") == 0 &&
+              std::strstr(menu.view().message, "Renders 2560 x 1440") != nullptr,
+          "on a 120 Hz display it is interpolated");
     menu.update(press(A));
     check(menu.takeGraphicsChange(&changed) && changed.frameRate == 60, "A switches back to 60");
     menu.update(press(Down));

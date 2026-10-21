@@ -136,6 +136,19 @@ void testOutputSize() {
     check(width == 2560 && height == 1440, "the output size is kept");
 }
 
+void testFrameRateStatus() {
+    Graphics::resetForTesting();
+    Graphics::FrameRateStatus status = Graphics::frameRateStatus();
+    check(status.displayHz == 0 && status.interpolatedPercent == -1 && status.latePercent == 0, "no frame rate status before the seam");
+    Graphics::FrameRateStatus set;
+    set.displayHz = 120;
+    set.interpolatedPercent = 92;
+    set.latePercent = 8;
+    Graphics::setFrameRateStatus(set);
+    status = Graphics::frameRateStatus();
+    check(status.displayHz == 120 && status.interpolatedPercent == 92 && status.latePercent == 8, "the frame rate status is kept");
+}
+
 }  // namespace
 
 int main() {
@@ -143,6 +156,7 @@ int main() {
     testParse();
     testFile();
     testOutputSize();
+    testFrameRateStatus();
     std::printf("native graphics tests passed (%d checks)\n", checks);
     return 0;
 }

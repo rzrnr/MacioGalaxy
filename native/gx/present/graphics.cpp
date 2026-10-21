@@ -21,6 +21,9 @@ std::atomic<bool> gFxaa{false};
 std::atomic<int> gStats{static_cast<int>(Stats::Off)};
 std::atomic<int> gOutputWidth{0};
 std::atomic<int> gOutputHeight{0};
+std::atomic<int> gDisplayHz{0};
+std::atomic<int> gInterpolatedPercent{-1};
+std::atomic<int> gLatePercent{0};
 std::mutex gStoreLock;
 std::filesystem::path gStore;  // under gStoreLock; empty before load
 
@@ -212,11 +215,26 @@ void outputSize(int* width, int* height) {
     *height = gOutputHeight.load(std::memory_order_relaxed);
 }
 
+void setFrameRateStatus(const FrameRateStatus& status) {
+    gDisplayHz.store(status.displayHz, std::memory_order_relaxed);
+    gInterpolatedPercent.store(status.interpolatedPercent, std::memory_order_relaxed);
+    gLatePercent.store(status.latePercent, std::memory_order_relaxed);
+}
+
+FrameRateStatus frameRateStatus() {
+    FrameRateStatus status;
+    status.displayHz = gDisplayHz.load(std::memory_order_relaxed);
+    status.interpolatedPercent = gInterpolatedPercent.load(std::memory_order_relaxed);
+    status.latePercent = gLatePercent.load(std::memory_order_relaxed);
+    return status;
+}
+
 void resetForTesting() {
     std::lock_guard<std::mutex> guard(gStoreLock);
     gStore.clear();
     set(Settings{});
     setOutputSize(0, 0);
+    setFrameRateStatus(FrameRateStatus{});
 }
 
 }  // namespace PetariNative::Graphics

@@ -321,6 +321,7 @@ void calc(const HBMControllerData* controllers) {
     int outputHeight = 0;
     Graphics::outputSize(&outputWidth, &outputHeight);
     menu.setGraphicsOutput(outputWidth, outputHeight);
+    menu.setGraphicsDisplayHz(Graphics::frameRateStatus().displayHz);
 #endif
     menu.update(frameInput(controllers));
 #ifdef PETARI_HOME_MENU_INPUT

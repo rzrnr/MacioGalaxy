@@ -322,6 +322,14 @@ void Menu::setGraphicsOutput(int width, int height) {
     refreshGraphicsLabels();
 }
 
+void Menu::setGraphicsDisplayHz(int hz) {
+    if (hz == mDisplayHz) {
+        return;
+    }
+    mDisplayHz = hz;
+    refreshGraphicsLabels();
+}
+
 // Whether the chosen resolution is upscaled to the displayed image (unknown size: assumed).
 bool Menu::graphicsUpscales() const {
     if (mGraphics.resolution == Graphics::kDisplay) {
@@ -332,8 +340,13 @@ bool Menu::graphicsUpscales() const {
 
 void Menu::refreshGraphicsLabels() {
     const int resolution = mGraphics.resolution;
-    std::snprintf(mGraphicsLabels[0], sizeof(mGraphicsLabels[0]), "Frame rate: %s",
-                  mGraphics.frameRate >= 120 ? "120 (interpolated)" : "60");
+    if (mGraphics.frameRate < 120) {
+        std::snprintf(mGraphicsLabels[0], sizeof(mGraphicsLabels[0]), "Frame rate: 60");
+    } else if (mDisplayHz > 0 && mDisplayHz < 100) {
+        std::snprintf(mGraphicsLabels[0], sizeof(mGraphicsLabels[0]), "Frame rate: 120 (%d Hz display)", mDisplayHz);
+    } else {
+        std::snprintf(mGraphicsLabels[0], sizeof(mGraphicsLabels[0]), "Frame rate: 120 (interpolated)");
+    }
     std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "Resolution: %s", Graphics::resolutionName(resolution));
     if (graphicsUpscales()) {
         std::snprintf(mGraphicsLabels[2], sizeof(mGraphicsLabels[2]), "Upscaler: %s",
@@ -348,7 +361,10 @@ void Menu::refreshGraphicsLabels() {
     std::snprintf(mGraphicsLabels[4], sizeof(mGraphicsLabels[4]), "Anti-aliasing: %s", mGraphics.fxaa ? "FXAA" : "Off");
     std::snprintf(mGraphicsLabels[5], sizeof(mGraphicsLabels[5]), "Stats: %s",
                   Graphics::statsName(static_cast<Graphics::Stats>(mGraphics.stats)));
-    if (mOutputWidth > 0 && mOutputHeight > 0) {
+    if (mGraphics.frameRate >= 120 && mDisplayHz > 0 && mDisplayHz < 100) {
+        std::snprintf(mGraphicsMessage, sizeof(mGraphicsMessage),
+                      "120 frames per second need a display at 100 Hz or more; this one shows %d Hz.", mDisplayHz);
+    } else if (mOutputWidth > 0 && mOutputHeight > 0) {
         int width = 0, height = 0;
         Graphics::renderSize(resolution, mOutputWidth, mOutputHeight, &width, &height);
         std::snprintf(mGraphicsMessage, sizeof(mGraphicsMessage), "Renders %d x %d, shown at %d x %d (%s)", width, height, mOutputWidth,
