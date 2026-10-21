@@ -986,6 +986,15 @@ int main(int argc, char** argv) {
         SDL_GetWindowPosition(window, &x, &y);
         std::fprintf(stderr, "PETARI SMOKE BACKGROUND: accessory activation policy; hidden window at %d,%d; flags=0x%llx\n",
                      x, y, static_cast<unsigned long long>(SDL_GetWindowFlags(window)));
+        // PETARI_SMOKE_WATCH=1 shows the window to follow the run: above other windows, still never
+        // focused and with physical input isolated. Moving, resizing and minimizing it stay possible.
+        if (const char* watch = std::getenv("PETARI_SMOKE_WATCH"); watch && watch[0] == '1') {
+            if (!SDL_SetWindowAlwaysOnTop(window, true) || !SDL_ShowWindow(window)) {
+                std::fprintf(stderr, "petari: could not show the watch window: %s\n", SDL_GetError());
+            } else {
+                std::fputs("PETARI SMOKE BACKGROUND: watch window shown, on top and nonfocusable\n", stderr);
+            }
+        }
         App::Events::assertFocus();
     }
     // The native menus draw with the game's own fonts from the disc; without them
