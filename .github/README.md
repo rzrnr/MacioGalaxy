@@ -27,6 +27,7 @@ The branch `guglis-edits` is the official `main` plus these edits:
 | Fullscreen | Cmd+Return switches to real fullscreen and hides the Mac cursor | [PR #2](https://github.com/classicrob/MacioGalaxy/pull/2) |
 | Honeyhive lawn fix | Keeps negative texture LOD biases on arm64, so the grass is textured again | [PR #3](https://github.com/classicrob/MacioGalaxy/pull/3) |
 | FineFur | Mod (F1 → Mods): finer fur on the Honey Queen and the bees at high resolutions | not yet proposed |
+| Graphics page | F1 → Graphics: render at 480p (the Wii's), 720p, 1080p, 1440p, 4K or the display's resolution; FSR 1, bicubic or bilinear upscaling; RCAS sharpening; FXAA; a stats overlay with FPS and a frame time graph | not yet proposed |
 
 The edits are rebased onto every new official version. Maintenance notes, in German:
 [guglis/README.md](https://github.com/rzrnr/MacioGalaxy/blob/guglis-edits/guglis/README.md).
@@ -37,4 +38,5 @@ Everything here builds on the projects listed under
 [Credits and licenses](https://github.com/classicrob/MacioGalaxy#credits-and-licenses) upstream.
 The app icon's background is the [Pinwheel Galaxy (M101)](https://commons.wikimedia.org/wiki/File:M101_hires_STScI-PRC2006-10a.jpg),
 credit [ESA/Hubble](https://esahubble.org/), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
-cropped and tinted.
+cropped and tinted. The Graphics page's FSR 1 shaders port
+[AMD FidelityFX Super Resolution 1.0](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (MIT).

@@ -15,6 +15,7 @@ Branch auf meinem Fork (rzrnr/MacioGalaxy, Remote `fork`).
 | CoreAudio-Linkfix | Ohne ihn bricht der Build auf diesem Mac beim Linken ab | noch nicht vorgeschlagen |
 | FineFur | Mod (F1 → Mods → „Fine fur“): Fell mit halb so breiten Haaren, schaltet sofort um. Details in `native/MODS.md` | noch nicht vorgeschlagen |
 | Zuschau-Fenster | `PETARI_SMOKE_WATCH=1` zeigt Testläufe in einem Fenster ohne Fokus und ohne Eingabe | noch nicht vorgeschlagen |
+| Grafik-Seite | F1 → Graphics: Renderauflösung Display, 480p (Wii), 720p, 1080p, 1440p oder 4K; Upscaling mit FSR 1, Bicubic oder Bilinear; RCAS-Schärfe; FXAA; Statistik-Overlay mit FPS, Frame-Zeit-Graph und FPS im Fenstertitel. Details in `native/GRAPHICS.md` | noch nicht vorgeschlagen |
 | App-Icon | Die gebaute App bekommt ein eigenes Icon: ein goldener Stern vor der Feuerradgalaxie M101 (Bildnachweis unten). Quelle ist das Icon-Composer-Paket `guglis/icon/SuperMarioGalaxy.icon`, das beim Bauen kompiliert wird | noch nicht vorgeschlagen |
 
 `git log --oneline origin/main..guglis-edits` zeigt die Commits.
