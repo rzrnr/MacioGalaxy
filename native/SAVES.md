@@ -91,6 +91,36 @@ but his separate adventure has no collected stars yet. Grand Finale is reached
 through its observatory NPC, rather than one of the six dome maps. Hungry Luma
 and other observatory destinations also use their own entrances.
 
+## Take a save to Dolphin or Nebula, and back
+
+The port writes `GameData.bin` with the game's own code, so its numbers are in
+the Mac's byte order; the Wii, Dolphin and Nebula (Windows) keep the same file
+in the Wii's. `native/tools/convert_save.py` turns one into the other: it swaps
+every field by its width, as the game's save code writes it, recomputes the
+checksum, and checks each result by converting it back. **Quit Petari first.**
+
+```sh
+python3 native/tools/convert_save.py export ~/Desktop/GameData.bin
+```
+
+writes your save in the Wii's order. Put it, for the US disc (RMGE01), at
+
+- Dolphin: `<Dolphin user directory>/Wii/title/00010000/524d4745/data/GameData.bin`
+  (Dolphin: right-click the game, Open Wii Save Folder)
+- Nebula: `%LOCALAPPDATA%\Nebula\saves\title\00010000\524d4745\data\GameData.bin`
+
+and back on the Mac:
+
+```sh
+python3 native/tools/convert_save.py import ~/Downloads/GameData.bin
+```
+
+installs a Wii-order save as yours, after a copy of the old one in
+`save-backups`. `inspect FILE` says which order a file is in; `to-wii` and
+`to-native` convert any file. Only `GameData.bin` is converted: `banner.bin`,
+the Wii Menu's icon of the save, is written again by the game when it saves.
+`progress.json` (mission times and the My Progress page) stays on the Mac.
+
 ## Fix a save made before 2026-10-01 (Hungry Lumas)
 
 Saves made from these variants before 2026-10-01 have the stars but not the
