@@ -27,7 +27,11 @@ enum class Upscaler : int { Fsr1, Bicubic, Bilinear, Count };
 enum class Sharpening : int { Off, Low, Medium, High, Count };
 enum class Stats : int { Off, Fps, Detailed, Count };
 
+// FrameRate: 60, or 120 with an extra, interpolated frame between two game steps (native/FRAME_RATE.md).
+constexpr int kFrameRates[] = {60, 120};
+
 struct Settings {
+    int frameRate = 60;         // one of kFrameRates
     int resolution = kDisplay;  // one of kResolutions
     Upscaler upscaler = Upscaler::Fsr1;
     Sharpening sharpening = Sharpening::Off;

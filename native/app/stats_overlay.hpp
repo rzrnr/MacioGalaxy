@@ -17,6 +17,8 @@ struct Sample {
 };
 
 void addFrame(const Sample& sample);
+// Each present: the step's at the seam, and frame interpolation's extra frames.
+void notePresent();
 
 // Between aurora_begin_frame and aurora_end_frame, with the game image in window
 // points. Also tells the Graphics page the image's size in pixels.

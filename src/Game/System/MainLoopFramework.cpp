@@ -319,6 +319,20 @@ void MainLoopFramework::endFrame() {
     }
 }
 
+#ifdef PETARI_NATIVE
+void MainLoopFramework::drawExtraFrame(void (*pDraw)(void*), void* pUser, void* pXfb) {
+    clearEfb(mClearColor);
+    preGX();
+    pDraw(pUser);
+    endGX();
+    prepareCopyDisp();
+    GXCopyDisp(pXfb, GX_FALSE);
+    GXPixModeSync();
+    ::waitDrawDoneAndSetAlarm();
+    GXFlush();
+}
+#endif
+
 void MainLoopFramework::waitBlanking(int tickCount) {
     while (tickCount-- > 0) {
         ::waitForTick(mTickDuration, mRetraceCount);

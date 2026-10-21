@@ -26,9 +26,18 @@ public:
 
 class J3DShapeX : public J3DShape {};
 
+#ifdef PETARI_NATIVE
+extern void (*gJ3DModelViewCalcHook)(J3DModel*);  // J3DModel.cpp
+#endif
+
 class J3DShapePacketX : public J3DShapePacket {};
 
 void J3DModelX::viewCalc2() {
+#ifdef PETARI_NATIVE
+    if (gJ3DModelViewCalcHook != nullptr) {
+        gJ3DModelViewCalcHook(this);
+    }
+#endif
     J3DMtxBuffer2* buffer = static_cast< J3DMtxBuffer2* >(mMtxBuffer);
     buffer->swapDrawMtx();
     buffer->swapNrmMtx();
@@ -54,6 +63,11 @@ void J3DModelX::copyAnmMtxBuffer(const J3DModelX* model) {
 }
 
 void J3DModelX::viewCalc3(u32 view, MtxPtr mtx) {
+#ifdef PETARI_NATIVE
+    if (gJ3DModelViewCalcHook != nullptr) {
+        gJ3DModelViewCalcHook(this);
+    }
+#endif
     J3DMtxBuffer2* buffer = static_cast< J3DMtxBuffer2* >(mMtxBuffer);
     buffer->rotationMtx(*mExtraMtxBuffer[view + _DC]);
 
@@ -75,6 +89,11 @@ void J3DModelX::viewCalc3(u32 view, MtxPtr mtx) {
 }
 
 void J3DModelX::viewCalcRef(u32 view, J3DModel* model) {
+#ifdef PETARI_NATIVE
+    if (gJ3DModelViewCalcHook != nullptr) {
+        gJ3DModelViewCalcHook(this);
+    }
+#endif
     J3DMtxBuffer2* buffer = static_cast< J3DMtxBuffer2* >(mMtxBuffer);
     buffer->rotationMtx(*mExtraMtxBuffer[view + _DC]);
     buffer->calcDrawMtx2(getMtxCalcMode(), mBaseScale, mBaseTransformMtx, model->getMtxBuffer());
@@ -83,6 +102,11 @@ void J3DModelX::viewCalcRef(u32 view, J3DModel* model) {
 }
 
 void J3DModelX::viewCalcRefPos(u32 view, J3DModel* model, const TVec3f& pos, const TVec3f& normal) {
+#ifdef PETARI_NATIVE
+    if (gJ3DModelViewCalcHook != nullptr) {
+        gJ3DModelViewCalcHook(this);
+    }
+#endif
     J3DMtxBuffer2* buffer = static_cast< J3DMtxBuffer2* >(mMtxBuffer);
     buffer->rotationMtx(*mExtraMtxBuffer[view + _DC]);
     buffer->calcDrawMtx3(getMtxCalcMode(), mBaseScale, mBaseTransformMtx, model->getMtxBuffer(), pos, normal);

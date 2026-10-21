@@ -78,7 +78,7 @@ enum class Phase : std::uint8_t {
     Progress,  // My Progress: the personal clear record, one galaxy at a time (native/PROGRESS.md)
     ModFolder, // disc-file mods found in the mods folder: toggles, paging, Back (native/MODS.md)
     Cheats,    // 1-Ups and whether loading keeps them (native/MODS.md)
-    Graphics,  // render resolution, upscaler, sharpening, FXAA, stats (native/GRAPHICS.md)
+    Graphics,  // frame rate, render resolution, upscaler, sharpening, FXAA, stats (native/GRAPHICS.md)
     Closing,   // fade out before reporting Resume
     BlackOut,  // fade to black before reporting Restart or Quit
     Finished,  // selection() reports the result
@@ -175,6 +175,7 @@ struct CameraOptions {
 
 // The Graphics page's options (petari/graphics.hpp, as plain values).
 struct GraphicsOptions {
+    int frameRate = 60;  // 60, or 120 with interpolated extra frames
     int resolution = 0;  // render height, one of Graphics::kResolutions; 0: the display's
     int upscaler = 0;    // Graphics::Upscaler
     int sharpening = 0;  // Graphics::Sharpening
@@ -503,7 +504,7 @@ private:
     bool mGraphicsChanged = false;
     int mOutputWidth = 0;
     int mOutputHeight = 0;
-    char mGraphicsLabels[5][64] = {};
+    char mGraphicsLabels[6][64] = {};
     char mGraphicsMessage[128] = {};
     void refreshGraphicsLabels();
     void changeGraphicsValue(int item, int delta);

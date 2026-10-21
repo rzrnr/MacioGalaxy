@@ -67,6 +67,11 @@ public:
     void calcCombinationRatio();
     static u32 frameToTick(f32);
     static void setForOSResetSystem();
+#ifdef PETARI_NATIVE
+    // Frame interpolation (Game/System/FrameInterpolation.hpp): one extra frame, drawn by pDraw and
+    // copied to pXfb, without the XFB rotation, the render counter or the tick bookkeeping.
+    void drawExtraFrame(void (*pDraw)(void*), void* pUser, void* pXfb);
+#endif
 
     /* 0x0 */ Color8 mClearColor;
     /* 0x4 */ u32 mClearZ;
