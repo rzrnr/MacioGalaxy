@@ -142,7 +142,7 @@ struct CameraOptions {
 // The Graphics page's options (petari/graphics.hpp, as plain values).
 struct GraphicsOptions {
     int frameRate = 60;  // 60, or 120 with interpolated extra frames
-    bool vsync = true;   // frames follow the display's refreshes
+    int vsync = 1;       // Graphics::VSync
     int resolution = 0;  // render height, one of Graphics::kResolutions; 0: the display's
     int upscaler = 0;    // Graphics::Upscaler
     int sharpening = 0;  // Graphics::Sharpening
@@ -258,6 +258,8 @@ public:
     // The refresh rate of the game window's display (0: unknown): below 100 Hz, Frame rate 120
     // says the display cannot show it.
     void setGraphicsDisplayHz(int hz);
+    // Whether V-Sync Variable is in effect (a ProMotion or Adaptive-Sync display in fullscreen).
+    void setGraphicsVariableRefresh(bool active);
     int levelMission() const { return mLevelMission; }
     Selection selection() const { return mPhase == Phase::Finished ? mResult : Selection::None; }  // HBMGetSelectBtnNum
 
@@ -339,6 +341,7 @@ private:
     int mOutputWidth = 0;
     int mOutputHeight = 0;
     int mDisplayHz = 0;
+    bool mVariableRefresh = false;
     char mGraphicsLabels[7][64] = {};
     char mGraphicsMessage[128] = {};
     void refreshGraphicsLabels();

@@ -296,6 +296,7 @@ void Menu::changeCameraValue(int item, int delta) {
 void Menu::setGraphics(const GraphicsOptions& options) {
     mGraphics = options;
     mGraphics.frameRate = mGraphics.frameRate >= 120 ? 120 : 60;
+    mGraphics.vsync = std::clamp(mGraphics.vsync, 0, static_cast<int>(Graphics::VSync::Count) - 1);
     mGraphics.resolution = Graphics::nearestResolution(mGraphics.resolution);
     mGraphics.upscaler = std::clamp(mGraphics.upscaler, 0, static_cast<int>(Graphics::Upscaler::Count) - 1);
     mGraphics.sharpening = std::clamp(mGraphics.sharpening, 0, static_cast<int>(Graphics::Sharpening::Count) - 1);
@@ -330,6 +331,14 @@ void Menu::setGraphicsDisplayHz(int hz) {
     refreshGraphicsLabels();
 }
 
+void Menu::setGraphicsVariableRefresh(bool active) {
+    if (active == mVariableRefresh) {
+        return;
+    }
+    mVariableRefresh = active;
+    refreshGraphicsLabels();
+}
+
 // Whether the chosen resolution is upscaled to the displayed image (unknown size: assumed).
 bool Menu::graphicsUpscales() const {
     if (mGraphics.resolution == Graphics::kDisplay) {
@@ -347,7 +356,8 @@ void Menu::refreshGraphicsLabels() {
     } else {
         std::snprintf(mGraphicsLabels[0], sizeof(mGraphicsLabels[0]), "Frame rate: 120 (interpolated)");
     }
-    std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "V-Sync: %s", mGraphics.vsync ? "On" : "Off");
+    std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "V-Sync: %s",
+                  Graphics::vsyncName(static_cast<Graphics::VSync>(mGraphics.vsync)));
     std::snprintf(mGraphicsLabels[2], sizeof(mGraphicsLabels[2]), "Resolution: %s", Graphics::resolutionName(resolution));
     if (graphicsUpscales()) {
         std::snprintf(mGraphicsLabels[3], sizeof(mGraphicsLabels[3]), "Upscaler: %s",
@@ -365,6 +375,9 @@ void Menu::refreshGraphicsLabels() {
     if (mGraphics.frameRate >= 120 && mDisplayHz > 0 && mDisplayHz < 100) {
         std::snprintf(mGraphicsMessage, sizeof(mGraphicsMessage),
                       "120 frames per second need a display at 100 Hz or more; this one shows %d Hz.", mDisplayHz);
+    } else if (mGraphics.vsync == static_cast<int>(Graphics::VSync::Variable) && !mVariableRefresh) {
+        std::snprintf(mGraphicsMessage, sizeof(mGraphicsMessage),
+                      "Variable needs a ProMotion or Adaptive-Sync display in fullscreen; here it works as On.");
     } else if (mOutputWidth > 0 && mOutputHeight > 0) {
         int width = 0, height = 0;
         Graphics::renderSize(resolution, mOutputWidth, mOutputHeight, &width, &height);
@@ -379,7 +392,7 @@ void Menu::changeGraphicsValue(int item, int delta) {
     const auto cycle = [delta](int value, int count) { return (value + delta % count + count) % count; };
     switch (item) {
     case 0: mGraphics.frameRate = mGraphics.frameRate >= 120 ? 60 : 120; break;
-    case 1: mGraphics.vsync = !mGraphics.vsync; break;
+    case 1: mGraphics.vsync = cycle(mGraphics.vsync, static_cast<int>(Graphics::VSync::Count)); break;
     case 2: {
         int index = 0;
         while (index < Graphics::kResolutionCount - 1 && Graphics::kResolutions[index] != mGraphics.resolution) index++;
@@ -399,7 +412,7 @@ void Menu::changeGraphicsValue(int item, int delta) {
     }
     mGraphicsChanged = true;
     refreshGraphicsLabels();
-    play(item == 0 || item == 1 || item == 5 ? Sound::Select : Sound::Focus);
+    play(item == 0 || item == 5 ? Sound::Select : Sound::Focus);
 }
 
 void Menu::setVolume(int percent) {

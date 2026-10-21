@@ -26,15 +26,18 @@ enum class Upscaler : int { Fsr1, Bicubic, Bilinear, Count };
 // FSR 1's RCAS sharpening after scaling, at any resolution.
 enum class Sharpening : int { Off, Low, Medium, High, Count };
 enum class Stats : int { Off, Fps, Detailed, Count };
+// V-Sync (native/FRAME_RATE.md): Off, frames at once on the game's own clock; On, the clock
+// follows the display and each frame waits for its refresh; LowLatency, as On, with the clock
+// moved as close to the refreshes as the frames' draw times allow; Variable, on a ProMotion or
+// Adaptive-Sync display in fullscreen the display follows the game's clock (elsewhere as On).
+enum class VSync : int { Off, On, LowLatency, Variable, Count };
 
 // FrameRate: 60, or 120 with an extra, interpolated frame between two game steps (native/FRAME_RATE.md).
 constexpr int kFrameRates[] = {60, 120};
 
 struct Settings {
     int frameRate = 60;         // one of kFrameRates
-    // V-Sync: the game's frames follow the display's refreshes and wait for them
-    // (petari/display_sync.hpp, native/FRAME_RATE.md).
-    bool vsync = true;
+    VSync vsync = VSync::On;
     int resolution = kDisplay;  // one of kResolutions
     Upscaler upscaler = Upscaler::Fsr1;
     Sharpening sharpening = Sharpening::Off;
@@ -93,6 +96,9 @@ inline const char* upscalerName(Upscaler upscaler) {
 inline const char* sharpeningName(Sharpening sharpening) {
     return sharpening == Sharpening::Low ? "Low" : sharpening == Sharpening::Medium ? "Medium" : sharpening == Sharpening::High ? "High" : "Off";
 }
+inline const char* vsyncName(VSync vsync) {
+    return vsync == VSync::Off ? "Off" : vsync == VSync::LowLatency ? "Low latency" : vsync == VSync::Variable ? "Variable" : "On";
+}
 inline const char* statsName(Stats stats) {
     return stats == Stats::Fps ? "FPS" : stats == Stats::Detailed ? "Detailed" : "Off";
 }
@@ -113,6 +119,7 @@ void outputSize(int* width, int* height);
 // Graphics page and the stats. Any thread.
 struct FrameRateStatus {
     int displayHz = 0;             // the game window's display; 0: unknown
+    bool variableRefresh = false;  // the display follows the game (V-Sync Variable in effect)
     int interpolatedPercent = -1;  // game steps with an extra frame; -1: no step asked for one
     int latePercent = 0;           // game steps presented too late for one
 };

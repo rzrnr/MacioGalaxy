@@ -246,12 +246,13 @@ void* viThreadMain(void*) {
         makeRetraceThreadRealtime(period);
     }
     auto next = Clock::now();
-    std::uint64_t lastRetrace = mach_absolute_time();
+    std::uint64_t lastRetrace = mach_absolute_time();  // on the refresh grid while synced, without the phase
     while (true) {
         next += period;
         const std::uint64_t synced = syncedDeadline(lastRetrace, fieldRate);
+        const std::uint64_t phase = synced != 0 ? PetariNative::DisplaySync::phaseTicks.load(std::memory_order_relaxed) : 0;
         if (synced != 0) {
-            mach_wait_until(synced);
+            mach_wait_until(synced + phase);
         } else if (legacy) {
             std::mutex sleepLock;
             std::condition_variable sleeper;
@@ -267,7 +268,8 @@ void* viThreadMain(void*) {
         } else if (woke > next) {
             Telemetry::add(Telemetry::ViTimerLate, std::chrono::duration_cast<std::chrono::nanoseconds>(woke - next).count());
         }
-        lastRetrace = mach_absolute_time();
+        lastRetrace = synced != 0 ? synced : mach_absolute_time();
+        PetariNative::DisplaySync::retracePhaseTicks.store(phase, std::memory_order_relaxed);
         PetariNative::DisplaySync::synced.store(synced != 0, std::memory_order_relaxed);
         if (synced != 0) {
             PetariNative::DisplaySync::syncedRetraces.fetch_add(1, std::memory_order_relaxed);

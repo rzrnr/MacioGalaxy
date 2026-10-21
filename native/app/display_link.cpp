@@ -6,7 +6,10 @@
 
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreVideo/CoreVideo.h>
+#include <SDL3/SDL_properties.h>
 #include <mach/mach_time.h>
+#include <objc/message.h>
+#include <objc/runtime.h>
 
 #include <algorithm>
 #include <atomic>
@@ -29,6 +32,10 @@ std::uint64_t gLastShown = 0;
 std::uint64_t gHeldCounts[4] = {};  // 1, 2, 3, 4 or more refreshes
 std::uint64_t gReplaced = 0;        // replaced by a later present before its refresh
 std::uint64_t gPresentCount = 0;
+// The intervals between presents, in half milliseconds up to 50 ms, for the report's percentiles:
+// the frame times the stats overlay shows.
+std::uint64_t gIntervalBins[101] = {};
+std::uint64_t gLastPresentTicks = 0;
 std::atomic<std::uint64_t> gRefreshes{0};
 
 double ticksPerSecond() {
@@ -99,8 +106,36 @@ void follow(SDL_Window* window, bool sync) {
     DisplaySync::enabled.store(sync, std::memory_order_relaxed);
 }
 
+bool variableRefresh(SDL_Window* window) {
+    if (window == nullptr) {
+        return false;
+    }
+    const auto nsWindow = static_cast<id>(SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr));
+    if (nsWindow == nullptr) {
+        return false;
+    }
+    const auto sendObject = reinterpret_cast<id (*)(id, SEL)>(objc_msgSend);
+    const auto sendDouble = reinterpret_cast<double (*)(id, SEL)>(objc_msgSend);
+    const id screen = sendObject(nsWindow, sel_registerName("screen"));
+    const SEL minimum = sel_registerName("minimumRefreshInterval");
+    const SEL maximum = sel_registerName("maximumRefreshInterval");
+    if (screen == nullptr || !class_respondsToSelector(object_getClass(screen), minimum) ||
+        !class_respondsToSelector(object_getClass(screen), maximum)) {
+        return false;
+    }
+    const double shortest = sendDouble(screen, minimum);
+    const double longest = sendDouble(screen, maximum);
+    return shortest > 0.0 && longest > shortest * 1.5;
+}
+
 void notePresent() {
-    const std::uint64_t shown = DisplaySync::refreshShowing(mach_absolute_time());
+    const std::uint64_t now = mach_absolute_time();
+    if (gLastPresentTicks != 0) {
+        const double ms = static_cast<double>(now - gLastPresentTicks) * 1e3 / ticksPerSecond();
+        ++gIntervalBins[std::min<int>(static_cast<int>(ms * 2.0), 100)];
+    }
+    gLastPresentTicks = now;
+    const std::uint64_t shown = DisplaySync::refreshShowing(now);
     if (shown == 0 || gLink == nullptr) {
         gLastShown = 0;
         return;
@@ -117,6 +152,29 @@ void notePresent() {
 }
 
 void writeReport() {
+    std::uint64_t intervals = 0;
+    for (const std::uint64_t bin : gIntervalBins) {
+        intervals += bin;
+    }
+    if (intervals > 0) {
+        const auto percentile = [&](double share) {
+            std::uint64_t seen = 0;
+            for (int i = 0; i <= 100; i++) {
+                seen += gIntervalBins[i];
+                if (seen >= share * intervals) {
+                    return i * 0.5 + 0.25;
+                }
+            }
+            return 50.0;
+        };
+        int longest = 100;
+        while (longest > 0 && gIntervalBins[longest] == 0) {
+            --longest;
+        }
+        std::fprintf(stderr, "Petari present intervals: %llu; median %.2f ms, 95%% %.2f ms, 99%% %.2f ms, longest %s%.1f ms\n",
+                     static_cast<unsigned long long>(intervals), percentile(0.5), percentile(0.95), percentile(0.99),
+                     longest == 100 ? "over " : "", longest * 0.5 + (longest == 100 ? 0.0 : 0.5));
+    }
     const std::uint64_t refreshes = gRefreshes.load(std::memory_order_relaxed);
     if (refreshes == 0) {
         return;

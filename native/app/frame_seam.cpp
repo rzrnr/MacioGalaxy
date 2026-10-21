@@ -51,49 +51,102 @@ PresentHooks gPresent;
 CpuRelease gRelease;
 constexpr std::uint64_t kRetraceNs = 16683333;  // 59.94 Hz
 std::uint64_t gStepPresentNs = 0;  // the step's aurora_end_frame, for frame interpolation's extra frame
+std::uint64_t gStepReadyNs = 0;    // when the step's frame was ready to present (before a V-Sync wait)
 std::uint64_t gExtraFrames = 0;    // frame interpolation's presents, in the frame time report
 std::uint64_t gLateSteps = 0;      // steps without an extra frame: presented too late
 std::uint64_t gSlowDisplaySteps = 0;  // or on a display below 100 Hz
 int gDisplayHz = 0;                // the window's display, checked once a second; 0: unknown
-// V-Sync (petari/display_sync.hpp): while VI follows the display's refreshes, frames are
-// presented in FIFO order on refreshes instead of at once.
-bool gPresentSynced = false;
-std::uint64_t gExtraFrameNs = 4000000;  // the extra frame's draw, averaged, for the V-Sync gate
+// V-Sync (Graphics::VSync, petari/display_sync.hpp, native/FRAME_RATE.md). The mode and whether
+// Variable is in effect are decided once a second (publishFrameRateStatus).
+PetariNative::Graphics::VSync gVsyncMode = PetariNative::Graphics::VSync::On;
+bool gVariableActive = false;  // Variable on a variable-refresh display in fullscreen: it follows the game's clock
+bool gPresentSynced = false;   // the retraces follow the display's refreshes (On, Low latency)
+bool gPresentFifo = false;     // frames are presented in FIFO order on refreshes (synced or Variable)
+// The extra frame's draw, averaged, for the V-Sync gate. A sample counts at most 12 ms, and every
+// step left without an extra frame takes a sixteenth off: one long draw (a shader compile) once
+// made it so large that no extra frame was drawn again, and so none could bring it down.
+std::uint64_t gExtraFrameNs = 4000000;
 std::uint64_t gExtraStartNs = 0;
 std::uint64_t gStepRetraceNs = 0;  // the retrace that started this game step
+std::uint64_t gStepGridNs = 0;     // synced: the refresh that retrace belongs to (Low latency raises it later)
+std::uint64_t gVariableDelayNs = 8000000;  // Variable: the step's frame is presented this long after its retrace
+unsigned gCleanSteps = 0;          // steps since a frame missed its time (Low latency, Variable)
 
-// With V-Sync, each frame has its refresh, a fixed number of refreshes after the step's retrace
-// whatever its draw time: slot 0, the step's frame, one retrace after the retrace (on a 120 Hz
-// display the second refresh after it); slot 1, the extra frame, half a retrace later. A frame
-// is presented between 1 ms after the refresh before its own (so that it is not shown on that
-// one) and 3 ms before its own (so that it is drawn and taken in time). syncedPresentDue is the
-// start of that window, syncedPresentEnd its end; 0 without V-Sync, and syncedPresentDue is 0
-// for a window that opens at the retrace (one refresh per retrace: no wait needed).
-std::uint64_t syncedPresentWindow(int slot, bool end) {
-    namespace Sync = PetariNative::DisplaySync;
-    static const double nsPerTick = [] {
+double nsPerTick() {
+    static const double ns = [] {
         mach_timebase_info_data_t timebase;
         mach_timebase_info(&timebase);
         return static_cast<double>(timebase.numer) / timebase.denom;
     }();
+    return ns;
+}
+
+// When a step's frames are presented. slot 0 is the step's frame, slot 1 the extra frame.
+// - Synced (On, Low latency): each frame has its refresh, a fixed number of refreshes after the
+//   refresh of the step's retrace whatever its draw time: the step's frame one retrace later (on a
+//   120 Hz display the second refresh), the extra frame half a retrace after that. A frame is
+//   presented between 1 ms after the refresh before its own (so that it is not shown on that one)
+//   and 3 ms before its own (so that it is drawn and taken in time). Presenting it at the end of
+//   that window instead leaves the extra frame less time: measured, it lost more of them.
+// - Variable: the display shows a frame when it comes, so the frames are presented at fixed
+//   times after the step's retrace: gVariableDelayNs, and half a retrace later.
+// presentDue is the start of the window (0: at once), presentEnd its end; both 0 for V-Sync Off.
+std::uint64_t presentWindow(int slot, bool end) {
+    namespace Sync = PetariNative::DisplaySync;
+    if (gVariableActive) {
+        if (gStepRetraceNs == 0) {
+            return 0;
+        }
+        const std::uint64_t due = gStepRetraceNs + gVariableDelayNs + static_cast<std::uint64_t>(slot) * (kRetraceNs / 2);
+        return end ? due + 1000000 : due;
+    }
     const int every = Sync::every.load(std::memory_order_relaxed);
-    if (!gPresentSynced || every < 1 || gStepRetraceNs == 0) {
+    if (!gPresentSynced || every < 1 || gStepGridNs == 0) {
         return 0;
     }
-    const std::uint64_t period = static_cast<std::uint64_t>(Sync::periodTicks.load(std::memory_order_relaxed) * nsPerTick);
+    const std::uint64_t period = static_cast<std::uint64_t>(Sync::periodTicks.load(std::memory_order_relaxed) * nsPerTick());
     const std::uint64_t refreshes = static_cast<std::uint64_t>(every - 1 + slot * (every / 2));
     if (end) {
-        return gStepRetraceNs + (refreshes + 1) * period - 3000000;
+        return gStepGridNs + (refreshes + 1) * period - 3000000;
     }
-    return refreshes == 0 ? 0 : gStepRetraceNs + refreshes * period + 1000000;
+    return refreshes == 0 ? 0 : gStepGridNs + refreshes * period + 1000000;
 }
 
-std::uint64_t syncedPresentDue(int slot) {
-    return syncedPresentWindow(slot, false);
+std::uint64_t presentDue(int slot) {
+    return presentWindow(slot, false);
 }
 
-std::uint64_t syncedPresentEnd(int slot) {
-    return syncedPresentWindow(slot, true);
+std::uint64_t presentEnd(int slot) {
+    return presentWindow(slot, true);
+}
+
+// Low latency and Variable find the shortest wait the draw times allow: each frame that misses its
+// time takes some back at once, and every second (60 steps) without a miss gives a little.
+// Low latency raises the retraces later after their refresh (DisplaySync::phaseTicks), up to
+// 7 ms before the step's frame is due; Variable presents the step's frame sooner after its retrace.
+void adjustPacing(bool missed) {
+    namespace Sync = PetariNative::DisplaySync;
+    if (gPresentSynced && gVsyncMode == PetariNative::Graphics::VSync::LowLatency) {
+        const double period = static_cast<double>(Sync::periodTicks.load(std::memory_order_relaxed)) * nsPerTick();
+        const double longest = std::max(0.0, Sync::every.load(std::memory_order_relaxed) * period - 7000000.0);
+        double phase = static_cast<double>(Sync::phaseTicks.load(std::memory_order_relaxed)) * nsPerTick();
+        if (missed) {
+            phase = std::max(0.0, phase - 1000000.0);
+            gCleanSteps = 0;
+        } else if (++gCleanSteps >= 60) {
+            gCleanSteps = 0;
+            phase = std::min(longest, phase + 250000.0);
+        }
+        Sync::phaseTicks.store(static_cast<std::uint64_t>(phase / nsPerTick()), std::memory_order_relaxed);
+    } else if (gVariableActive) {
+        if (missed) {
+            gVariableDelayNs = std::min<std::uint64_t>(gVariableDelayNs + 500000, 14000000);
+            gCleanSteps = 0;
+        } else if (++gCleanSteps >= 60) {
+            gCleanSteps = 0;
+            gVariableDelayNs = std::max<std::uint64_t>(gVariableDelayNs - 100000, 3000000);
+        }
+    }
 }
 
 void waitUntil(std::uint64_t due) {
@@ -130,9 +183,24 @@ void publishFrameRateStatus(std::uint64_t now) {
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(gWindow));
         gDisplayHz = mode != nullptr && mode->refresh_rate > 0.0f ? static_cast<int>(std::lround(mode->refresh_rate)) : 0;
     }
-    DisplayLink::follow(gWindow, PetariNative::Graphics::current().vsync);
+    namespace Graphics = PetariNative::Graphics;
+    gVsyncMode = Graphics::current().vsync;
+    // PETARI_VARIABLE_REFRESH=1: Variable as on a variable-refresh display in fullscreen, for
+    // measuring its pacing in a background smoke run.
+    static const bool forceVariable = [] {
+        const char* value = std::getenv("PETARI_VARIABLE_REFRESH");
+        return value != nullptr && value[0] == '1';
+    }();
+    gVariableActive = gVsyncMode == Graphics::VSync::Variable &&
+                      (forceVariable || (Display::fullscreen() && DisplayLink::variableRefresh(gWindow)));
+    DisplayLink::follow(gWindow, gVsyncMode == Graphics::VSync::On || gVsyncMode == Graphics::VSync::LowLatency ||
+                                     (gVsyncMode == Graphics::VSync::Variable && !gVariableActive));
+    if (gVsyncMode != Graphics::VSync::LowLatency) {
+        PetariNative::DisplaySync::phaseTicks.store(0, std::memory_order_relaxed);
+    }
     PetariNative::Graphics::FrameRateStatus status;
     status.displayHz = gDisplayHz;
+    status.variableRefresh = gVariableActive;
     if (second.asked > 0) {
         status.interpolatedPercent = static_cast<int>(second.drawn * 100 / second.asked);
         status.latePercent = static_cast<int>(second.late * 100 / second.asked);
@@ -708,6 +776,8 @@ extern "C" void petari_host_frame_mark(int mark) {
         // The retrace that ended the wait, if one came after the seam.
         const std::uint64_t retrace = Telemetry::lastRetraceNs.load(std::memory_order_relaxed);
         gStepRetraceNs = retrace;
+        const double phase = static_cast<double>(PetariNative::DisplaySync::retracePhaseTicks.load(std::memory_order_relaxed)) * nsPerTick();
+        gStepGridNs = retrace > phase ? retrace - static_cast<std::uint64_t>(phase) : retrace;
         gTiming.retraceWake = retrace > gTiming.lastExit && retrace <= now ? now - retrace : 0;
     } else if (mark == PETARI_FRAME_MARK_END_FRAME) {
         gTiming.endFrame = now;
@@ -718,11 +788,12 @@ extern "C" void petari_host_frame_seam(void) {
     const std::uint64_t entry = Telemetry::nowNs();
     PetariNative::HostAllocationScope host;
     publishFrameRateStatus(entry);
-    // FIFO presents only while the retraces follow the display: on the timer's own 59.94 Hz
-    // they would drift against the refreshes and wait for them.
-    if (const bool synced = PetariNative::DisplaySync::synced.load(std::memory_order_relaxed); synced != gPresentSynced) {
-        gPresentSynced = synced;
-        aurora_enable_vsync(synced);
+    // FIFO presents only while the retraces follow the display, or the display follows the game
+    // (Variable): on the timer's own 59.94 Hz they would drift against fixed refreshes.
+    gPresentSynced = PetariNative::DisplaySync::synced.load(std::memory_order_relaxed);
+    if (const bool fifo = gPresentSynced || gVariableActive; fifo != gPresentFifo) {
+        gPresentFifo = fifo;
+        aurora_enable_vsync(fifo);
     }
     recordRouteFrame(SmokeBackground::enabled);
     observeProgressFrame();
@@ -760,7 +831,10 @@ extern "C" void petari_host_frame_seam(void) {
     traceFrame(image);
     PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
-    waitUntil(syncedPresentDue(0));
+    const std::uint64_t ready = Telemetry::nowNs();
+    gStepReadyNs = ready;
+    waitUntil(presentDue(0));
+    adjustPacing(gVariableActive ? ready > presentEnd(0) : ready > presentEnd(0) && presentEnd(0) != 0);
     const std::uint64_t endStart = Telemetry::nowNs();
     gStepPresentNs = endStart;
     aurora_end_frame();
@@ -784,7 +858,7 @@ extern "C" void petari_host_frame_seam(void) {
 }
 
 // Frame interpolation (native/FRAME_RATE.md): the extra frame is drawn right after the step's
-// present. With V-Sync it is presented in its window (syncedPresentDue(1) to syncedPresentEnd(1))
+// present. With V-Sync it is presented in its window (presentDue(1) to presentEnd(1))
 // and shown on the refresh after the step's frame. Without, it is shown half a
 // retrace interval after the step's, so that presents come evenly, and a step presented in the
 // second half of its interval is late: then there is no extra frame.
@@ -803,15 +877,20 @@ extern "C" int petari_host_interp_wait(void) {
     const std::uint64_t now = Telemetry::nowNs();
     // With V-Sync the extra frame goes on the refresh after the step's by itself; it only has to
     // be drawn before the next retrace. Without, it is shown half a retrace after the step's.
-    // With V-Sync the extra frame must be drawn before its window closes (syncedPresentEnd(1)). After
-    // a step's frame that missed its own window (it is shown a refresh late) there is none: it would
+    // With V-Sync the extra frame must be drawn before its window closes (presentEnd(1)). After a
+    // step's frame that missed its own window (it is shown a refresh late) there is none: it would
     // wait behind that frame and push every later frame a refresh back.
-    const bool late = gPresentSynced ? gStepRetraceNs == 0 || gStepPresentNs > syncedPresentEnd(0) ||
-                                           now + gExtraFrameNs + 500000 > syncedPresentEnd(1)
+    const bool late = gVariableActive  ? gStepRetraceNs == 0 || now + gExtraFrameNs + 500000 > presentEnd(1)
+                      : gPresentSynced ? gStepGridNs == 0 || gStepReadyNs > presentEnd(0) ||
+                                             now + gExtraFrameNs + 500000 > presentEnd(1)
                                      : retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2;
     if (late) {
         ++gLateSteps;
         ++gInterpolationSecond.late;
+        gExtraFrameNs -= gExtraFrameNs / 16;
+        if (gPresentSynced && gStepReadyNs <= presentEnd(0)) {
+            adjustPacing(true);  // no time left for the extra frame: Low latency waits less close
+        }
         return 0;
     }
     gExtraStartNs = now;
@@ -834,9 +913,9 @@ extern "C" void petari_host_present_seam(void) {
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
     const std::uint64_t now = Telemetry::nowNs();
     if (now > gExtraStartNs) {
-        gExtraFrameNs = (gExtraFrameNs * 3 + (now - gExtraStartNs)) / 4;
+        gExtraFrameNs = (gExtraFrameNs * 3 + std::min<std::uint64_t>(now - gExtraStartNs, 12000000)) / 4;
     }
-    waitUntil(gPresentSynced ? syncedPresentDue(1) : gStepPresentNs + kRetraceNs / 2);
+    waitUntil(gPresentFifo ? presentDue(1) : gStepPresentNs + kRetraceNs / 2);
     aurora_end_frame();
     StatsOverlay::notePresent();
     DisplayLink::notePresent();

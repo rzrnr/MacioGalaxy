@@ -166,6 +166,9 @@ void setImage(const Rect& image, float width, float height) {
 
 // Fullscreen and cursor (display_mode.cpp) need a real window; not under test here.
 namespace PetariNative::App::Display {
+bool fullscreen() {
+    return false;
+}
 void handleEvent(const SDL_Event&) {}
 void update() {}
 }  // namespace PetariNative::App::Display
@@ -182,6 +185,9 @@ void setFrameRateStatus(const FrameRateStatus&) {}
 // The display link (display_link.cpp) needs a real display; not under test here.
 namespace PetariNative::App::DisplayLink {
 void follow(SDL_Window*, bool) {}
+bool variableRefresh(SDL_Window*) {
+    return false;
+}
 void notePresent() {}
 void writeReport() {}
 }  // namespace PetariNative::App::DisplayLink

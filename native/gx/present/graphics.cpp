@@ -14,7 +14,7 @@ namespace PetariNative::Graphics {
 namespace {
 
 std::atomic<int> gFrameRate{60};
-std::atomic<bool> gVsync{true};
+std::atomic<int> gVsync{static_cast<int>(VSync::On)};
 std::atomic<int> gResolution{kDisplay};
 std::atomic<int> gUpscaler{static_cast<int>(Upscaler::Fsr1)};
 std::atomic<int> gSharpening{static_cast<int>(Sharpening::Off)};
@@ -25,6 +25,7 @@ std::atomic<int> gOutputHeight{0};
 std::atomic<int> gDisplayHz{0};
 std::atomic<int> gInterpolatedPercent{-1};
 std::atomic<int> gLatePercent{0};
+std::atomic<bool> gVariableRefresh{false};
 std::mutex gStoreLock;
 std::filesystem::path gStore;  // under gStoreLock; empty before load
 
@@ -62,11 +63,11 @@ bool parseLine(const std::string& key, const std::string& value, Settings* setti
         }
         settings->frameRate = v == "120" ? 120 : 60;
     } else if (key == "VSync") {
-        if (v != "on" && v != "off") {
-            *message = "VSync must be on or off";
+        if (v != "on" && v != "off" && v != "lowlatency" && v != "variable") {
+            *message = "VSync must be off, on, lowlatency or variable";
             return false;
         }
-        settings->vsync = v == "on";
+        settings->vsync = v == "off" ? VSync::Off : v == "lowlatency" ? VSync::LowLatency : v == "variable" ? VSync::Variable : VSync::On;
     } else if (key == "Resolution") {
         const int resolution = parseResolution(v);
         if (resolution < 0) {
@@ -107,7 +108,7 @@ bool parseLine(const std::string& key, const std::string& value, Settings* setti
 Settings current() {
     Settings settings;
     settings.frameRate = gFrameRate.load(std::memory_order_relaxed);
-    settings.vsync = gVsync.load(std::memory_order_relaxed);
+    settings.vsync = static_cast<VSync>(gVsync.load(std::memory_order_relaxed));
     settings.resolution = gResolution.load(std::memory_order_relaxed);
     settings.upscaler = static_cast<Upscaler>(gUpscaler.load(std::memory_order_relaxed));
     settings.sharpening = static_cast<Sharpening>(gSharpening.load(std::memory_order_relaxed));
@@ -118,7 +119,7 @@ Settings current() {
 
 void set(const Settings& settings) {
     gFrameRate.store(settings.frameRate >= 120 ? 120 : 60, std::memory_order_relaxed);
-    gVsync.store(settings.vsync, std::memory_order_relaxed);
+    gVsync.store(std::clamp(static_cast<int>(settings.vsync), 0, static_cast<int>(VSync::Count) - 1), std::memory_order_relaxed);
     gResolution.store(nearestResolution(settings.resolution), std::memory_order_relaxed);
     gUpscaler.store(std::clamp(static_cast<int>(settings.upscaler), 0, static_cast<int>(Upscaler::Count) - 1),
                     std::memory_order_relaxed);
@@ -133,7 +134,9 @@ std::string serialize() {
     std::ostringstream out;
     out << "# Petari graphics settings (F1 -> Graphics; native/GRAPHICS.md)\n"
         << "FrameRate=" << settings.frameRate << "\n"
-        << "VSync=" << (settings.vsync ? "on" : "off") << "\n"
+        << "VSync="
+        << (settings.vsync == VSync::Off ? "off" : settings.vsync == VSync::LowLatency ? "lowlatency" : settings.vsync == VSync::Variable ? "variable" : "on")
+        << "\n"
         << "Resolution=";
     if (settings.resolution == kDisplay) {
         out << "display";
@@ -229,6 +232,7 @@ void setFrameRateStatus(const FrameRateStatus& status) {
     gDisplayHz.store(status.displayHz, std::memory_order_relaxed);
     gInterpolatedPercent.store(status.interpolatedPercent, std::memory_order_relaxed);
     gLatePercent.store(status.latePercent, std::memory_order_relaxed);
+    gVariableRefresh.store(status.variableRefresh, std::memory_order_relaxed);
 }
 
 FrameRateStatus frameRateStatus() {
@@ -236,6 +240,7 @@ FrameRateStatus frameRateStatus() {
     status.displayHz = gDisplayHz.load(std::memory_order_relaxed);
     status.interpolatedPercent = gInterpolatedPercent.load(std::memory_order_relaxed);
     status.latePercent = gLatePercent.load(std::memory_order_relaxed);
+    status.variableRefresh = gVariableRefresh.load(std::memory_order_relaxed);
     return status;
 }
 

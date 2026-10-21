@@ -265,7 +265,7 @@ void refreshGraphics() {
     const Graphics::Settings settings = Graphics::current();
     GraphicsOptions options;
     options.frameRate = settings.frameRate;
-    options.vsync = settings.vsync;
+    options.vsync = static_cast<int>(settings.vsync);
     options.resolution = settings.resolution;
     options.upscaler = static_cast<int>(settings.upscaler);
     options.sharpening = static_cast<int>(settings.sharpening);
@@ -283,7 +283,7 @@ void applyGraphicsChange() {
     }
     Graphics::Settings settings;
     settings.frameRate = options.frameRate;
-    settings.vsync = options.vsync;
+    settings.vsync = static_cast<Graphics::VSync>(options.vsync);
     settings.resolution = options.resolution;
     settings.upscaler = static_cast<Graphics::Upscaler>(options.upscaler);
     settings.sharpening = static_cast<Graphics::Sharpening>(options.sharpening);
@@ -323,7 +323,9 @@ void calc(const HBMControllerData* controllers) {
     int outputHeight = 0;
     Graphics::outputSize(&outputWidth, &outputHeight);
     menu.setGraphicsOutput(outputWidth, outputHeight);
-    menu.setGraphicsDisplayHz(Graphics::frameRateStatus().displayHz);
+    const Graphics::FrameRateStatus frameRate = Graphics::frameRateStatus();
+    menu.setGraphicsDisplayHz(frameRate.displayHz);
+    menu.setGraphicsVariableRefresh(frameRate.variableRefresh);
 #endif
     menu.update(frameInput(controllers));
 #ifdef PETARI_HOME_MENU_INPUT

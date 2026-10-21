@@ -1374,11 +1374,19 @@ void testGraphicsPage() {
     menu.update(press(Down));
     sounds.clear();
     menu.update(press(A));
-    check(menu.takeGraphicsChange(&changed) && !changed.vsync && std::strcmp(menu.view().items[1].label, "V-Sync: Off") == 0 &&
-              played(HM::Sound::Select),
-          "A switches V-Sync off");
+    check(menu.takeGraphicsChange(&changed) && changed.vsync == 2 && std::strcmp(menu.view().items[1].label, "V-Sync: Low latency") == 0 &&
+              played(HM::Sound::Focus),
+          "A steps V-Sync to Low latency");
     menu.update(press(HM::Button::Right));
-    check(menu.takeGraphicsChange(&changed) && changed.vsync, "Right switches it on again");
+    check(menu.takeGraphicsChange(&changed) && changed.vsync == 3 && std::strcmp(menu.view().items[1].label, "V-Sync: Variable") == 0 &&
+              std::strstr(menu.view().message, "works as On") != nullptr,
+          "Right steps it to Variable, which says when it works as On");
+    menu.setGraphicsVariableRefresh(true);
+    check(std::strstr(menu.view().message, "works as On") == nullptr, "on a variable-refresh display in fullscreen it does not");
+    menu.update(press(HM::Button::Right));
+    menu.update(press(HM::Button::Right));
+    check(menu.takeGraphicsChange(&changed) && changed.vsync == 1 && std::strcmp(menu.view().items[1].label, "V-Sync: On") == 0,
+          "and wraps over Off back to On");
     menu.update(press(Down));
     menu.update(press(HM::Button::Right));
     menu.update(press(HM::Button::Right));

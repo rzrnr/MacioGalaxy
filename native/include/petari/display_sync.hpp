@@ -28,6 +28,10 @@ inline std::atomic<bool> synced{false};               // the latest retrace was 
 inline std::atomic<int> every{0};                     // refreshes per retrace while synced
 inline std::atomic<std::uint64_t> refreshCount{0};    // refreshes reported so far, the latest included
 inline std::atomic<std::uint64_t> syncedRetraces{0};  // retraces raised on a refresh, for the report
+// V-Sync Low latency: how long after its refresh a retrace is raised (the frame seam moves it as
+// the draw times allow), and the phase the latest retrace was raised with.
+inline std::atomic<std::uint64_t> phaseTicks{0};
+inline std::atomic<std::uint64_t> retracePhaseTicks{0};
 
 // The display link thread, at every refresh. The display refreshes on a regular grid, but the
 // reported times scatter around it (a quarter millisecond on average, up to almost one on an

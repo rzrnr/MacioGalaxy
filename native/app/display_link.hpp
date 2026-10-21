@@ -12,6 +12,10 @@ namespace PetariNative::App::DisplayLink {
 // display or moves it to another display; sync: V-Sync, VI follows the refreshes.
 void follow(SDL_Window* window, bool sync);
 
+// Whether the window's display can refresh at a variable rate (ProMotion, Adaptive-Sync):
+// NSScreen's maximum refresh interval longer than its minimum. Game thread.
+bool variableRefresh(SDL_Window* window);
+
 // Each present (game thread), for the cadence counts in the frame time report.
 void notePresent();
 

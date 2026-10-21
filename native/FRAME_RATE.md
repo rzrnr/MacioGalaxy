@@ -37,7 +37,16 @@ handed to the window as soon as it is drawn. A Mac display refreshes at 60 or
 seconds out of every half minute or so frames meet the refreshes unevenly, one
 shown twice and the next one skipped. That is felt as micro-stutter.
 
-With V-Sync on (the default):
+F1 → Graphics → **V-Sync** has four choices (`VSync=` in `graphics.txt`):
+
+| V-Sync | What it does | For |
+| --- | --- | --- |
+| Off | The game's own 59.94 Hz clock; each frame goes to the window as soon as it is drawn. | the lowest latency, uneven |
+| On (default) | The game's clock follows the display, and each frame is shown on a fixed refresh. | smooth on any 60 or 120 Hz display |
+| Low latency | As On, with the clock moved as close to the refreshes as the draw times allow, found by the game itself. | smooth with less latency, at Frame rate 60 most |
+| Variable | On a ProMotion or Adaptive-Sync display in fullscreen the display follows the game's own clock: each frame is shown when it is ready. Elsewhere as On, and the Graphics page says so. | the MacBook display in fullscreen |
+
+On and Low latency:
 
 - A display link (`native/app/display_link.cpp`) reports every refresh of the
   window's display, and the retrace clock (`native/platform/vi/vi_host.cpp`,
@@ -55,11 +64,24 @@ With V-Sync on (the default):
 - The display link's refresh times scatter around the display's real, regular
   refreshes (by a quarter of a millisecond on average, up to almost one on an
   M3 Pro's 120 Hz display); the clock keeps a smoothed grid of them.
+- Low latency raises each retrace later after its refresh: a quarter of a
+  millisecond more after every second (60 steps) in which every frame was in
+  time, a millisecond less after a frame that was not, never closer than 7 ms
+  before the step's frame is due. The game then starts a step closer to the
+  refresh that shows it.
 - Displays at other rates (75, 100, 144 Hz) keep the game's own timer, as with
   V-Sync off. So does the game when the display link stops.
 
-V-Sync off gives the lowest latency, as before this option: frames go to the
-display at once, unevenly.
+Variable:
+
+- The game keeps its own 59.94 Hz clock, frames are presented in FIFO order,
+  and the step's frame is presented a fixed time after its retrace, the extra
+  frame half a retrace later. That time starts at 8 ms; a frame that is late
+  adds half a millisecond, a second without one takes a tenth away (3 to 14 ms).
+- It needs a display whose refresh can vary (NSScreen's maximum refresh
+  interval longer than its minimum: ProMotion, Adaptive-Sync) and the game in
+  fullscreen; macOS only lets a fullscreen game drive the refresh.
+  `PETARI_VARIABLE_REFRESH=1` uses it anywhere, for measuring its pacing.
 
 ## What moves at 120
 
@@ -102,6 +124,10 @@ about 4,000 game steps each):
 Without V-Sync the other frames stay one or three refreshes, and the extra
 frames' refreshes vary with the draw times; with V-Sync each extra frame has
 its refresh.
+
+With FXAA the frames cost more: at 1440p 5 to 9% of the steps get no extra
+frame, at 4K about a third. There two frames per step no longer fit the GPU's
+16.7 ms, whatever the V-Sync mode; a lower Resolution with FSR 1 helps.
 
 ## How it works
 
