@@ -74,9 +74,15 @@ if pgrep -x Petari >/dev/null; then
     print -u2 -- "Das Spiel läuft noch. Beenden und dann guglis/update.sh --no-tests starten."
     exit 1
 fi
-# Nur Programm und Shader-Seeds; Info.plist (Name, Spielpfad) und Icons der App bleiben.
+# Programm, Shader-Seeds und Icon; die Info.plist der App (Name, Spielpfad) bleibt.
 ditto "$built_app/Contents/MacOS/Petari" "$app/Contents/MacOS/Petari"
 rsync -a --delete "$built_app/Contents/Resources/pipeline-seeds/" "$app/Contents/Resources/pipeline-seeds/"
+for icon in Assets.car SuperMarioGalaxy.icns; do
+    if [[ -f "$built_app/Contents/Resources/$icon" ]]; then
+        ditto "$built_app/Contents/Resources/$icon" "$app/Contents/Resources/$icon"
+    fi
+done
+touch "$app"  # Finder and Dock pick up a changed icon
 codesign --force --sign - "$app"
 codesign --verify "$app"
 print -- "Installiert: $app"

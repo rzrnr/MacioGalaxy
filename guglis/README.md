@@ -14,15 +14,17 @@ eigener Commit. `main` bleibt der unveränderte offizielle Stand.
 | CoreAudio-Linkfix | Ohne ihn bricht der Build auf diesem Mac beim Linken ab | privat |
 | FineFur | Mod (F1 → Mods → „Fine fur“): Fell mit halb so breiten Haaren, schaltet sofort um. Details in `native/MODS.md` | privat |
 | Zuschau-Fenster | `PETARI_SMOKE_WATCH=1` zeigt Testläufe in einem Fenster ohne Fokus und ohne Eingabe | privat |
+| App-Icon | Die gebaute App bekommt ein eigenes Icon: ein goldener Stern vor der Feuerradgalaxie M101 (Bildnachweis unten). Quelle ist das Icon-Composer-Paket `guglis/icon/SuperMarioGalaxy.icon`, das beim Bauen kompiliert wird | privat |
 
 `git log --oneline origin/main..guglis-edits` zeigt die Commits.
 
 Außerhalb des Repos, das überlebt Updates von selbst:
 
 - Getauschte Maustasten: `controls.txt` in `~/Library/Application Support/Petari`.
-- Name, Icon und Spielpfad der App: Info.plist und Resources von
-  `/Applications/Super Mario Galaxy.app`. `update.sh` ersetzt dort nur das Programm
-  und die Shader-Seeds. Die Icon-Quellen liegen in `~/Documents/Claude/AppIcons`.
+- Name und Spielpfad der App: die Info.plist von `/Applications/Super Mario Galaxy.app`.
+  `update.sh` ersetzt dort nur Programm, Icon und Shader-Seeds.
+- Das frühere Icon aus dem offiziellen Cover liegt nur lokal in
+  `~/Documents/Claude/AppIcons`. Es gehört nicht ins Repo.
 
 ## Neue offizielle Version übernehmen
 
@@ -36,8 +38,8 @@ Das Skript
    `guglis-edits-vor-<Datum>`,
 2. setzt die Guglis Edits auf den neuen offiziellen Stand (`git rebase origin/main`),
 3. baut das Spiel und die Tests und lässt die Tests laufen,
-4. ersetzt Programm und Shader-Seeds in `/Applications/Super Mario Galaxy.app` und
-   signiert die App neu.
+4. ersetzt Programm, Icon und Shader-Seeds in `/Applications/Super Mario Galaxy.app`
+   und signiert die App neu.
 
 `--no-tests` überspringt Schritt 3 bis auf den Spiel-Build, `--no-install` Schritt 4.
 Das Spiel muss für Schritt 4 beendet sein.
@@ -79,3 +81,15 @@ Tabelle von „privat“ auf „vorgeschlagen“ umstellen.
 Der Edit bleibt dabei auch in `guglis-edits`. Ändert sich ein Vorschlag nach
 Rückmeldungen, kommt die Korrektur in beide Branches: als Commit auf den
 PR-Branch und mit `git cherry-pick` auf `guglis-edits`.
+
+## Bildnachweis
+
+Hintergrund des App-Icons: [Pinwheel Galaxy (M101)](https://commons.wikimedia.org/wiki/File:M101_hires_STScI-PRC2006-10a.jpg),
+Credit: [ESA/Hubble](https://esahubble.org/), Lizenz [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Geändert: Ausschnitt um den Kern, blau getönt und zum Rand abgedunkelt.
+Der Stern ist selbst gezeichnet. Beides erzeugt `guglis/icon/make_layers.swift`
+aus der 3840-px-Fassung des Bildes:
+
+```sh
+swift guglis/icon/make_layers.swift <M101 3840px.jpg> guglis/icon/SuperMarioGalaxy.icon/Assets
+```

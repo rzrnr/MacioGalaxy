@@ -60,6 +60,8 @@ if(NOT _petari_app_standalone)
         MACOSX_BUNDLE_BUNDLE_VERSION "0.1.0"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
         MACOSX_BUNDLE_INFO_STRING "Petari: native Super Mario Galaxy for macOS")
+    # Guglis Edits (guglis/README.md): the Super Mario Galaxy app icon.
+    include("${CMAKE_SOURCE_DIR}/guglis/icon/app_icon.cmake" OPTIONAL)
     set(PETARI_PIPELINE_STAGE_SEEDS "${CMAKE_SOURCE_DIR}/build/pipeline-seeds" CACHE PATH
         "Offline-generated per-stage Aurora configuration manifests")
     # Clones start from the tracked pack (native/data/pipeline-seeds.v*.xz). Locally generated seeds (no
