@@ -8,6 +8,7 @@ unmodified game and every test run behave exactly as before.
 | Collect visible Star Bits (`CollectStarBits`) | G, controller L3 (left stick click) | Every Star Bit on screen flies to Mario, as if the pointer had touched each one |
 | Fire a Star Bit at the nearest enemy (`ShootEnemy`) | V (no controller default) | Shoots one Star Bit at the nearest enemy on screen |
 | Odyssey movement (`OdysseyMovement`) | none (a mode; it uses the normal Jump, Crouch and Spin buttons) | Mario moves with Super Mario Odyssey's physics and moveset: see "Odyssey movement" below. |
+| Fine fur (`FineFur`) | none (a look; it switches at once) | Fur hairs half as wide, for high render resolutions: see "Fine fur" below. |
 
 ## Turning mods on
 
@@ -73,6 +74,25 @@ Known gaps in this version:
   that way).
 - Spin repeats about four times a second at most (the keyboard F emulates a
   Wii Remote shake), so the fastest roll boosts are slower than SMO's.
+
+## Fine fur
+
+Galaxy draws fur (the Honey Queen, the honey bees and other furry actors) as
+stacked shells of the body, cut by one random 32 x 32 hair map: each texel is a
+hair with a random length. At the Wii's 640 x 480 a hair covers about a pixel. At
+2560 x 1440 the same hair is a strand several pixels wide, and the fur looks coarse
+and stripy. With FineFur the map is 64 x 64 with the same density per texel, so a
+hair is half as wide. The number of shells stays the same, so close up the layers
+still show.
+
+- It switches at once, also during a level: the next frame that draws the fur
+  makes a new map.
+- Fur with an authored density map (`*Density.bti`) keeps that map.
+- The map's random hairs come from the game's random number generator. With the
+  mod off from the start, the map and the random sequence are the Wii's. With it
+  on, a map takes four times as many draws, and every switch draws a new map, so
+  later random events differ from an unmodified run.
+- Each fur map always reserves the 64 x 64 buffer (8 KB instead of 2 KB).
 
 ## Odyssey camera
 

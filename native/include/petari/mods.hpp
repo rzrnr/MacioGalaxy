@@ -15,6 +15,7 @@ enum class Mod : int {
     CollectStarBits,  // one button collects every Star Bit on screen
     ShootEnemy,       // one button fires a Star Bit at the nearest enemy on screen
     OdysseyMovement,  // Mario moves with Super Mario Odyssey's physics (docs/dev/ODYSSEY_MOVEMENT.md); no button
+    FineFur,          // fur's random hair map at 64 x 64 instead of 32 x 32 (finer hairs); no button, applies at once
     Count
 };
 

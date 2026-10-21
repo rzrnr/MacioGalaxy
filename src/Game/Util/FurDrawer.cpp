@@ -7,6 +7,21 @@
 #include <JSystem/JUtility/JUTTexture.hpp>
 #include <cmath>
 
+#ifdef PETARI_NATIVE
+// FineFur mod (native/MODS.md): the random hair map is 64 x 64 instead of 32 x 32 at the
+// same density per texel, so each hair is half as wide; at high render resolutions the
+// Wii's map shows coarse strands. The buffer always holds the larger map, so the mod
+// switches at once (syncFurMapSize). Off, the map and its random draws are the Wii's.
+extern "C" bool petari_mod_enabled(int mod);
+namespace {
+    constexpr int kModFineFur = 3;  // PetariNative::Mods::Mod::FineFur
+    constexpr u16 kFineFurMapSize = 64;
+    u16 furMapSize() {
+        return petari_mod_enabled(kModFineFur) ? kFineFurMapSize : 32;
+    }
+}  // namespace
+#endif
+
 FurDrawer::FurDrawer(u32 numLayers, ResTIMG* pBody, ResTIMG* pIndirect)
     : mBodyTexture(), mFurTexture(), mIndirectTexture(), mNumLayers(numLayers), mLength(3.0f, 1.0f), mIndirect(0.2f, 1.5f), mBrightness(40.0f, 4.5f),
       mAlpha(210.0f, 1.8f), mFurUVScale(1.0f), mBodyUVScale(1.0f), mColorBlend(0.0f, 1.0f), mCullMode(GX_CULL_BACK), mMatIntensity(255),
@@ -20,11 +35,19 @@ FurDrawer::FurDrawer(u32 numLayers, ResTIMG* pBody, ResTIMG* pIndirect)
         mUseIndirect = 0;
     }
 
+#ifdef PETARI_NATIVE
+    u32 size = GXGetTexBufferSize(kFineFurMapSize, kFineFurMapSize, GX_TF_IA8, GX_FALSE, 1);
+    ResTIMG* pImage = reinterpret_cast< ResTIMG* >(new (32) u8[size + sizeof(ResTIMG)]);
+    pImage->mFormat = GX_TF_IA8;
+    pImage->mWidth = furMapSize();
+    pImage->mHeight = furMapSize();
+#else
     u32 size = GXGetTexBufferSize(32, 32, GX_TF_IA8, GX_FALSE, 1);
     ResTIMG* pImage = reinterpret_cast< ResTIMG* >(new (32) u8[size + sizeof(ResTIMG)]);
     pImage->mFormat = GX_TF_IA8;
     pImage->mWidth = 32;
     pImage->mHeight = 32;
+#endif
     pImage->mWrapS = GX_REPEAT;
     pImage->mWrapT = GX_REPEAT;
     pImage->mPaletteName = GX_TLUT0;
@@ -316,3 +339,24 @@ void FurDrawer::createFurMap() {
 
     DCStoreRange(pPixels, count * sizeof(u16));
 }
+
+#ifdef PETARI_NATIVE
+void FurDrawer::syncFurMapSize() {
+    // Authored density maps (FurMulti's *Density.bti) keep their own size.
+    if (mUseDensityMap) {
+        return;
+    }
+
+    const u16 size = furMapSize();
+    ResTIMG* pImage = const_cast< ResTIMG* >(mFurTexture->getTexInfo());
+
+    if (pImage->mWidth == size) {
+        return;
+    }
+
+    pImage->mWidth = size;
+    pImage->mHeight = size;
+    mFurTexture->storeTIMG(pImage, static_cast< u8 >(0));
+    createFurMap();
+}
+#endif
