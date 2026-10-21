@@ -19,7 +19,7 @@ Please report problems with the edits below here, not upstream and not to Petari
 
 ## The edits
 
-The branch `guglis-edits` is the official `main` plus one commit per edit:
+The branch `guglis-edits` is the official `main` plus these edits:
 
 | Edit | What it does | Upstream |
 | --- | --- | --- |
@@ -27,13 +27,9 @@ The branch `guglis-edits` is the official `main` plus one commit per edit:
 | Fullscreen | Cmd+Return switches to real fullscreen and hides the Mac cursor | [PR #2](https://github.com/classicrob/MacioGalaxy/pull/2) |
 | Honeyhive lawn fix | Keeps negative texture LOD biases on arm64, so the grass is textured again | [PR #3](https://github.com/classicrob/MacioGalaxy/pull/3) |
 | FineFur | Mod (F1 → Mods): finer fur on the Honey Queen and the bees at high resolutions | not yet proposed |
-| App icon | A golden star over Hubble's Pinwheel Galaxy | not yet proposed |
-| Watch window | `PETARI_SMOKE_WATCH=1` shows test runs on screen, without taking input | not yet proposed |
-| CoreAudio link fix | A build fix my Mac needs | not yet proposed |
 
-`guglis/update.sh` puts the edits on top of the newest official version, then builds, tests
-and installs the app. `guglis/propose.sh` turns single edits into pull request branches.
-Details, in German: [guglis/README.md](https://github.com/rzrnr/MacioGalaxy/blob/guglis-edits/guglis/README.md).
+The edits are rebased onto every new official version. Maintenance notes, in German:
+[guglis/README.md](https://github.com/rzrnr/MacioGalaxy/blob/guglis-edits/guglis/README.md).
 
 ## Credits
 
