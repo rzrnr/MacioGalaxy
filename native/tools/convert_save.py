@@ -14,9 +14,15 @@ recomputes the checksum (MR::calcCheckSum over u16 words).
   convert_save.py bundle [OUT.zip]       one file to send: your save in Wii order,
                                          guglis/SPIELSTAND_WINDOWS.md and this tool
                                          (default: Desktop, dated)
-  convert_save.py import IN              a Wii-order save -> your native save
-                                         (quit the game first; the old save is
-                                         kept in save-backups)
+  convert_save.py bundle --from FILE [OUT.zip]
+                                         the same for any save, e.g. Nebula's on
+                                         Windows (a Wii-order file goes in as is)
+  convert_save.py import IN              a Wii-order save (or a bundle zip) -> your
+                                         native save (quit the game first; the old
+                                         save is kept in save-backups)
+
+import and export work on the Mac's save; inspect, to-wii, to-native and
+bundle --from work anywhere Python 3 runs, Windows included.
 
 Where the Wii-order file goes (US disc, RMGE01):
   Dolphin:  <Dolphin user dir>/Wii/title/00010000/524d4745/data/GameData.bin
@@ -226,28 +232,53 @@ def write_new(path: Path, data: bytes):
 
 
 def write_bundle(save: Path, output: Path) -> bytes:
-    """A zip with the save in Wii order (as GameData.bin), the Windows guide and this tool."""
-    wii = convert_checked(save.read_bytes(), BE)
-    guide = Path(__file__).resolve().parents[2] / "guglis/SPIELSTAND_WINDOWS.md"
+    """A zip with the save in Wii order (as GameData.bin), the Windows guide and this tool. A save
+    already in Wii order (Nebula's, Dolphin's) goes in as it is, after the format check."""
+    data = save.read_bytes()
+    if byte_order(data) == BE:
+        check(data, BE)
+        wii, origin = data, "Wii-Format (Nebula, Dolphin)"
+    else:
+        wii, origin = convert_checked(data, BE), "Mac (MacioGalaxy)"
+    here = Path(__file__).resolve()
+    guides = [here.parents[2] / "guglis/SPIELSTAND_WINDOWS.md", here.parent / "SPIELSTAND_WINDOWS.md"]
+    guide = next((path for path in guides if path.is_file()), None)
     saved = datetime.datetime.fromtimestamp(save.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-    note = (f"Super Mario Galaxy: Spielstand vom Mac, zuletzt im Spiel gespeichert {saved}.\n"
+    note = (f"Super Mario Galaxy: Spielstand aus {origin}, zuletzt im Spiel gespeichert {saved}.\n"
             f"{describe(wii)}\n\n"
-            "GameData.bin ist schon im Wii-Format (Nebula, Dolphin, Wii). Wie er in Nebula kommt:\n"
-            "SPIELSTAND_WINDOWS.md. convert_save.py ist das Tool, mit dem er gemacht wurde.\n")
+            "GameData.bin ist im Wii-Format (Nebula, Dolphin, Wii). In Nebula: hineinkopieren, siehe\n"
+            "SPIELSTAND_WINDOWS.md. Auf dem Mac: convert_save.py import <diese ZIP>.\n")
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(output.name + ".writing")
     with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("GameData.bin", wii)
         archive.writestr("LIESMICH.txt", note)
-        if guide.is_file():
+        if guide is not None:
             archive.write(guide, "SPIELSTAND_WINDOWS.md")
-        archive.write(Path(__file__).resolve(), "convert_save.py")
+        archive.write(here, "convert_save.py")
     temporary.replace(output)
     return wii
 
 
 def game_running() -> bool:
-    return subprocess.run(["pgrep", "-x", "Petari"], capture_output=True).returncode == 0
+    """Whether the Mac app runs (only asked on the Mac: elsewhere there is none to quit)."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        return subprocess.run(["pgrep", "-x", "Petari"], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+def read_save(path: Path) -> bytes:
+    """A GameData.bin, or the one inside a bundle zip."""
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            names = [name for name in archive.namelist() if name.rsplit("/", 1)[-1] == "GameData.bin"]
+            if len(names) != 1:
+                raise ValueError(f"{path} holds {len(names)} GameData.bin files, not one")
+            return archive.read(names[0])
+    return path.read_bytes()
 
 
 def main() -> int:
@@ -260,7 +291,9 @@ def main() -> int:
         sub.add_argument("input", type=Path)
         sub.add_argument("output", type=Path)
     commands.add_parser("export").add_argument("output", type=Path)
-    commands.add_parser("bundle").add_argument("output", type=Path, nargs="?")
+    bundle = commands.add_parser("bundle")
+    bundle.add_argument("--from", dest="source", type=Path, help="this save instead of the Mac's")
+    bundle.add_argument("output", type=Path, nargs="?")
     commands.add_parser("import").add_argument("input", type=Path)
     args = parser.parse_args()
     save = args.user / SAVE_RELATIVE
@@ -273,15 +306,15 @@ def main() -> int:
             write_new(args.output, convert_checked(source.read_bytes(), want))
             print(f"Wrote {args.output}: {describe(args.output.read_bytes())}")
         elif args.command == "bundle":
-            output = args.output or Path.home() / "Desktop" / f"Mario Galaxy Spielstand {time.strftime('%Y-%m-%d %H-%M')}.zip"
-            wii = write_bundle(save, output)
+            output = args.output or Path.home() / "Desktop" / f"Mario Galaxy Spielstand{' Windows' if args.source else ''} {time.strftime('%Y-%m-%d %H-%M')}.zip"
+            wii = write_bundle(args.source or save, output)
             print(f"Wrote {output}: {describe(wii)}")
-            if game_running():
+            if args.source is None and game_running():
                 print("Note: the game is running; this is the save as last written by the game.")
         elif args.command == "import":
             if game_running():
                 raise ValueError("Super Mario Galaxy is running; quit it first")
-            out = convert_checked(args.input.read_bytes(), LE)
+            out = convert_checked(read_save(args.input), LE)
             if save.exists():
                 backups = args.user / "save-backups"
                 backups.mkdir(exist_ok=True)
