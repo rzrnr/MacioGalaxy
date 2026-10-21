@@ -108,11 +108,14 @@ anfassen; das Spiel schreibt es beim Speichern selbst.
 
 ## Auf dem Mac exportieren (für den Weg Mac → Windows)
 
-Mit beendetem Spiel:
+Am einfachsten: `guglis/Spielstand exportieren.command` im Finder doppelklicken
+(am besten mit beendetem Spiel). Auf dem Schreibtisch liegt dann eine einzige
+Datei, `Mario Galaxy Spielstand <Datum>.zip`, mit `GameData.bin` im Wii-Format,
+`LIESMICH.txt` (wann gespeichert, welche Spieldateien), dieser Anleitung und
+`convert_save.py`. Diese ZIP auf den Windows-Rechner bringen und entpacken.
 
-```sh
-python3 ~/Documents/Claude/MacioGalaxy/native/tools/convert_save.py export ~/Desktop/GameData.bin
-```
+Im Terminal geht dasselbe mit `convert_save.py bundle`; nur die Datei gibt
+`convert_save.py export ~/Desktop/GameData.bin`.
 
 ## Was nicht mitkommt
 

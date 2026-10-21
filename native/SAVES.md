@@ -116,7 +116,9 @@ python3 native/tools/convert_save.py import ~/Downloads/GameData.bin
 ```
 
 installs a Wii-order save as yours, after a copy of the old one in
-`save-backups`. `inspect FILE` says which order a file is in; `to-wii` and
+`save-backups`. `bundle` writes one zip to the Desktop for the Windows machine:
+the save in the Wii's order, guglis/SPIELSTAND_WINDOWS.md and the tool
+(double-click `guglis/Spielstand exportieren.command` for the same). `inspect FILE` says which order a file is in; `to-wii` and
 `to-native` convert any file. Only `GameData.bin` is converted: `banner.bin`,
 the Wii Menu's icon of the save, is written again by the game when it saves.
 `progress.json` (mission times and the My Progress page) stays on the Mac.

@@ -11,6 +11,9 @@ recomputes the checksum (MR::calcCheckSum over u16 words).
   convert_save.py to-wii IN OUT          native save -> Wii order (Dolphin, Nebula)
   convert_save.py to-native IN OUT       Wii order -> native save
   convert_save.py export OUT             your native save -> OUT in Wii order
+  convert_save.py bundle [OUT.zip]       one file to send: your save in Wii order,
+                                         guglis/SPIELSTAND_WINDOWS.md and this tool
+                                         (default: Desktop, dated)
   convert_save.py import IN              a Wii-order save -> your native save
                                          (quit the game first; the old save is
                                          kept in save-backups)
@@ -24,12 +27,13 @@ input byte for byte. banner.bin (the Wii Menu's save icon) is not converted;
 the game writes it again when it saves.
 """
 import argparse
-import os
+import datetime
 import shutil
 import struct
 import subprocess
 import sys
 import time
+import zipfile
 from pathlib import Path
 
 USER = Path.home() / "Library/Application Support/Petari"
@@ -221,6 +225,27 @@ def write_new(path: Path, data: bytes):
     temporary.replace(path)
 
 
+def write_bundle(save: Path, output: Path) -> bytes:
+    """A zip with the save in Wii order (as GameData.bin), the Windows guide and this tool."""
+    wii = convert_checked(save.read_bytes(), BE)
+    guide = Path(__file__).resolve().parents[2] / "guglis/SPIELSTAND_WINDOWS.md"
+    saved = datetime.datetime.fromtimestamp(save.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    note = (f"Super Mario Galaxy: Spielstand vom Mac, zuletzt im Spiel gespeichert {saved}.\n"
+            f"{describe(wii)}\n\n"
+            "GameData.bin ist schon im Wii-Format (Nebula, Dolphin, Wii). Wie er in Nebula kommt:\n"
+            "SPIELSTAND_WINDOWS.md. convert_save.py ist das Tool, mit dem er gemacht wurde.\n")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_name(output.name + ".writing")
+    with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("GameData.bin", wii)
+        archive.writestr("LIESMICH.txt", note)
+        if guide.is_file():
+            archive.write(guide, "SPIELSTAND_WINDOWS.md")
+        archive.write(Path(__file__).resolve(), "convert_save.py")
+    temporary.replace(output)
+    return wii
+
+
 def game_running() -> bool:
     return subprocess.run(["pgrep", "-x", "Petari"], capture_output=True).returncode == 0
 
@@ -235,6 +260,7 @@ def main() -> int:
         sub.add_argument("input", type=Path)
         sub.add_argument("output", type=Path)
     commands.add_parser("export").add_argument("output", type=Path)
+    commands.add_parser("bundle").add_argument("output", type=Path, nargs="?")
     commands.add_parser("import").add_argument("input", type=Path)
     args = parser.parse_args()
     save = args.user / SAVE_RELATIVE
@@ -246,6 +272,12 @@ def main() -> int:
             want = LE if args.command == "to-native" else BE
             write_new(args.output, convert_checked(source.read_bytes(), want))
             print(f"Wrote {args.output}: {describe(args.output.read_bytes())}")
+        elif args.command == "bundle":
+            output = args.output or Path.home() / "Desktop" / f"Mario Galaxy Spielstand {time.strftime('%Y-%m-%d %H-%M')}.zip"
+            wii = write_bundle(save, output)
+            print(f"Wrote {output}: {describe(wii)}")
+            if game_running():
+                print("Note: the game is running; this is the save as last written by the game.")
         elif args.command == "import":
             if game_running():
                 raise ValueError("Super Mario Galaxy is running; quit it first")
