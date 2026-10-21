@@ -19,8 +19,8 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 for commit in "$@"; do
-    if git diff-tree --no-commit-id --name-only -r "$commit" | grep -q '^guglis/'; then
-        print -u2 -- "$commit ändert guglis/. Das gehört nicht ins offizielle Repo."
+    if git diff-tree --no-commit-id --name-only -r "$commit" | grep -qE '^(guglis/|\.github/README\.md$)'; then
+        print -u2 -- "$commit ändert guglis/ oder .github/README.md. Das gehört nicht ins offizielle Repo."
         exit 1
     fi
 done

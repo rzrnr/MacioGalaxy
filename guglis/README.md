@@ -64,10 +64,11 @@ Zurück zu einem gesicherten Stand: `git switch -C guglis-edits guglis-edits-vor
 ## Eine neue eigene Änderung
 
 Auf `guglis-edits` arbeiten, die Änderung als eigenen Commit festhalten und hier in
-die Tabelle eintragen, zunächst als privat. Je kleiner ein Edit die offiziellen
+die Tabelle eintragen, zunächst als privat. Die kurze englische Tabelle in
+`.github/README.md` (die Seite, die GitHub für den Fork zeigt) bekommt dieselbe Zeile. Je kleiner ein Edit die offiziellen
 Dateien berührt, desto seltener kollidiert er bei Updates. Commits für einen
 möglichen Vorschlag schreibt man wie fürs offizielle Repo: auf Englisch, ohne
-Änderungen an `guglis/`.
+Änderungen an `guglis/` und `.github/README.md`.
 
 ## Einen Edit doch vorschlagen
 
