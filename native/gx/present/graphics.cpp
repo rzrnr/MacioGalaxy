@@ -13,6 +13,7 @@
 namespace PetariNative::Graphics {
 namespace {
 
+std::atomic<int> gFrameRate{60};
 std::atomic<int> gResolution{kDisplay};
 std::atomic<int> gUpscaler{static_cast<int>(Upscaler::Fsr1)};
 std::atomic<int> gSharpening{static_cast<int>(Sharpening::Off)};
@@ -50,7 +51,13 @@ int parseResolution(const std::string& value) {
 // One "Key=value" line into settings; false with a message on a bad value.
 bool parseLine(const std::string& key, const std::string& value, Settings* settings, std::string* message) {
     const std::string v = lower(value);
-    if (key == "Resolution") {
+    if (key == "FrameRate") {
+        if (v != "60" && v != "120") {
+            *message = "FrameRate must be 60 or 120";
+            return false;
+        }
+        settings->frameRate = v == "120" ? 120 : 60;
+    } else if (key == "Resolution") {
         const int resolution = parseResolution(v);
         if (resolution < 0) {
             *message = "Resolution must be display, 480, 720, 1080, 1440 or 2160";
@@ -89,6 +96,7 @@ bool parseLine(const std::string& key, const std::string& value, Settings* setti
 
 Settings current() {
     Settings settings;
+    settings.frameRate = gFrameRate.load(std::memory_order_relaxed);
     settings.resolution = gResolution.load(std::memory_order_relaxed);
     settings.upscaler = static_cast<Upscaler>(gUpscaler.load(std::memory_order_relaxed));
     settings.sharpening = static_cast<Sharpening>(gSharpening.load(std::memory_order_relaxed));
@@ -98,6 +106,7 @@ Settings current() {
 }
 
 void set(const Settings& settings) {
+    gFrameRate.store(settings.frameRate >= 120 ? 120 : 60, std::memory_order_relaxed);
     gResolution.store(nearestResolution(settings.resolution), std::memory_order_relaxed);
     gUpscaler.store(std::clamp(static_cast<int>(settings.upscaler), 0, static_cast<int>(Upscaler::Count) - 1),
                     std::memory_order_relaxed);
@@ -111,6 +120,7 @@ std::string serialize() {
     const Settings settings = current();
     std::ostringstream out;
     out << "# Petari graphics settings (F1 -> Graphics; native/GRAPHICS.md)\n"
+        << "FrameRate=" << settings.frameRate << "\n"
         << "Resolution=";
     if (settings.resolution == kDisplay) {
         out << "display";

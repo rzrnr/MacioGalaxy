@@ -3,6 +3,7 @@
 #include <aurora/aurora.h>
 #include <aurora/event.h>
 
+#include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
 
 #include <atomic>
@@ -32,6 +33,7 @@ extern "C" void petari_gx_pipeline_report();
 #include "petari/asset_diagnostics.hpp"
 #include "petari/display_mode.hpp"
 #include "petari/frame_telemetry.hpp"
+#include "petari/graphics.hpp"
 #include "petari/home_menu.hpp"
 #include "petari/host_allocation.hpp"
 #include "petari/test_fixture.hpp"
@@ -42,6 +44,9 @@ namespace {
 
 PresentHooks gPresent;
 CpuRelease gRelease;
+constexpr std::uint64_t kRetraceNs = 16683333;  // 59.94 Hz
+std::uint64_t gStepPresentNs = 0;  // the step's aurora_end_frame, for frame interpolation's extra frame
+std::uint64_t gExtraFrames = 0;    // frame interpolation's presents, in the frame time report
 SDL_Window* gWindow = nullptr;
 int gQuitRequests = 0;
 Rect gLastImage;
@@ -584,6 +589,9 @@ void reportFrameStats() {
         return;
     }
     gTiming.recorder->writeSummary(stderr);
+    if (gExtraFrames > 0) {
+        std::fprintf(stderr, "Petari frame rate: %llu interpolated frames\n", static_cast<unsigned long long>(gExtraFrames));
+    }
     if (gTiming.csvPath != nullptr) {
         if (gTiming.recorder->writeCsv(gTiming.csvPath)) {
             std::fprintf(stderr, "Petari frame times: per-frame rows written to %s\n", gTiming.csvPath);
@@ -654,7 +662,9 @@ extern "C" void petari_host_frame_seam(void) {
     PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
     const std::uint64_t endStart = Telemetry::nowNs();
+    gStepPresentNs = endStart;
     aurora_end_frame();
+    StatsOverlay::notePresent();
 
     const std::uint64_t beginStart = Telemetry::nowNs();
     handleEvents(aurora_update());
@@ -670,4 +680,68 @@ extern "C" void petari_host_frame_seam(void) {
     gTiming.seamNs[2] = reacquireStart - beginStart;
     gTiming.seamNs[3] = exit - reacquireStart;
     gTiming.lastExit = exit;
+}
+
+// Frame interpolation (native/FRAME_RATE.md): the extra frame is drawn right after the step's
+// present and shown half a retrace interval after it, so that presents come evenly; the next
+// step's present comes the same draw time after the next retrace. A step presented in the
+// second half of its interval is late: then there is no extra frame.
+namespace {
+// A display below 100 Hz cannot show the extra frames evenly; an unknown rate is allowed.
+// Checked once a second (the window can move to another display). A background smoke run's
+// window is never seen, so its display does not matter.
+bool displayShows120() {
+    if (SmokeBackground::enabled) {
+        return true;
+    }
+    static std::uint64_t checked = 0;
+    static bool shows = true;
+    const std::uint64_t now = Telemetry::nowNs();
+    if (gWindow != nullptr && (checked == 0 || now - checked > 1000000000ull)) {
+        checked = now;
+        const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(gWindow));
+        shows = mode == nullptr || mode->refresh_rate <= 0.0f || mode->refresh_rate >= 100.0f;
+    }
+    return shows;
+}
+}  // namespace
+
+extern "C" int petari_host_interp_wait(void) {
+    if (PetariNative::Graphics::current().frameRate < 120 || !displayShows120()) {
+        return 0;
+    }
+    const std::uint64_t retrace = Telemetry::lastRetraceNs.load(std::memory_order_relaxed);
+    if (retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2) {
+        return 0;
+    }
+    return 1;
+}
+
+// The extra frame's present: as the seam, without route recording, progress, frame statistics
+// or smoke drivers, which run once per game step.
+extern "C" void petari_host_present_seam(void) {
+    PetariNative::HostAllocationScope host;
+    const bool release = gRelease.begin != nullptr && gRelease.end != nullptr;
+    if (release) {
+        gRelease.begin();
+    }
+    if (gPresent.composeFrame != nullptr) {
+        gPresent.composeFrame(gPresent.user);
+    }
+    const Rect image = updateImage();
+    PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
+    StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
+    const std::uint64_t due = gStepPresentNs + kRetraceNs / 2;
+    const std::uint64_t now = Telemetry::nowNs();
+    if (now < due) {
+        SDL_DelayPrecise(due - now);
+    }
+    aurora_end_frame();
+    StatsOverlay::notePresent();
+    ++gExtraFrames;
+    handleEvents(aurora_update());
+    openFrame();
+    if (release) {
+        gRelease.end();
+    }
 }

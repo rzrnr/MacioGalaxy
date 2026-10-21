@@ -47,7 +47,7 @@ constexpr int kListProgress = 4;
 constexpr int kListVolume = 5;  // a slider, not a button; above the actions that leave the game
 constexpr int kListRestart = 6;
 constexpr int kListQuit = 7;
-constexpr int kGraphicsValues = 5;  // the Graphics page's value items, then Back
+constexpr int kGraphicsValues = 6;  // the Graphics page's value items, then Back
 constexpr int kConfirmAccept = 0;
 constexpr int kConfirmCancel = 1;
 
@@ -295,6 +295,7 @@ void Menu::changeCameraValue(int item, int delta) {
 
 void Menu::setGraphics(const GraphicsOptions& options) {
     mGraphics = options;
+    mGraphics.frameRate = mGraphics.frameRate >= 120 ? 120 : 60;
     mGraphics.resolution = Graphics::nearestResolution(mGraphics.resolution);
     mGraphics.upscaler = std::clamp(mGraphics.upscaler, 0, static_cast<int>(Graphics::Upscaler::Count) - 1);
     mGraphics.sharpening = std::clamp(mGraphics.sharpening, 0, static_cast<int>(Graphics::Sharpening::Count) - 1);
@@ -331,19 +332,21 @@ bool Menu::graphicsUpscales() const {
 
 void Menu::refreshGraphicsLabels() {
     const int resolution = mGraphics.resolution;
-    std::snprintf(mGraphicsLabels[0], sizeof(mGraphicsLabels[0]), "Resolution: %s", Graphics::resolutionName(resolution));
+    std::snprintf(mGraphicsLabels[0], sizeof(mGraphicsLabels[0]), "Frame rate: %s",
+                  mGraphics.frameRate >= 120 ? "120 (interpolated)" : "60");
+    std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "Resolution: %s", Graphics::resolutionName(resolution));
     if (graphicsUpscales()) {
-        std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "Upscaler: %s",
+        std::snprintf(mGraphicsLabels[2], sizeof(mGraphicsLabels[2]), "Upscaler: %s",
                       Graphics::upscalerName(static_cast<Graphics::Upscaler>(mGraphics.upscaler)));
     } else if (resolution == Graphics::kDisplay || resolution == mOutputHeight) {
-        std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "Upscaler: not needed at 1:1");
+        std::snprintf(mGraphicsLabels[2], sizeof(mGraphicsLabels[2]), "Upscaler: not needed at 1:1");
     } else {
-        std::snprintf(mGraphicsLabels[1], sizeof(mGraphicsLabels[1]), "Downscaler: Area (automatic)");
+        std::snprintf(mGraphicsLabels[2], sizeof(mGraphicsLabels[2]), "Downscaler: Area (automatic)");
     }
-    std::snprintf(mGraphicsLabels[2], sizeof(mGraphicsLabels[2]), "Sharpening: %s",
+    std::snprintf(mGraphicsLabels[3], sizeof(mGraphicsLabels[3]), "Sharpening: %s",
                   Graphics::sharpeningName(static_cast<Graphics::Sharpening>(mGraphics.sharpening)));
-    std::snprintf(mGraphicsLabels[3], sizeof(mGraphicsLabels[3]), "Anti-aliasing: %s", mGraphics.fxaa ? "FXAA" : "Off");
-    std::snprintf(mGraphicsLabels[4], sizeof(mGraphicsLabels[4]), "Stats: %s",
+    std::snprintf(mGraphicsLabels[4], sizeof(mGraphicsLabels[4]), "Anti-aliasing: %s", mGraphics.fxaa ? "FXAA" : "Off");
+    std::snprintf(mGraphicsLabels[5], sizeof(mGraphicsLabels[5]), "Stats: %s",
                   Graphics::statsName(static_cast<Graphics::Stats>(mGraphics.stats)));
     if (mOutputWidth > 0 && mOutputHeight > 0) {
         int width = 0, height = 0;
@@ -358,26 +361,27 @@ void Menu::refreshGraphicsLabels() {
 void Menu::changeGraphicsValue(int item, int delta) {
     const auto cycle = [delta](int value, int count) { return (value + delta % count + count) % count; };
     switch (item) {
-    case 0: {
+    case 0: mGraphics.frameRate = mGraphics.frameRate >= 120 ? 60 : 120; break;
+    case 1: {
         int index = 0;
         while (index < Graphics::kResolutionCount - 1 && Graphics::kResolutions[index] != mGraphics.resolution) index++;
         mGraphics.resolution = Graphics::kResolutions[cycle(index, Graphics::kResolutionCount)];
         break;
     }
-    case 1:
+    case 2:
         if (!graphicsUpscales()) {
             return;  // no choice: 1:1, or the area filter when supersampling
         }
         mGraphics.upscaler = cycle(mGraphics.upscaler, static_cast<int>(Graphics::Upscaler::Count));
         break;
-    case 2: mGraphics.sharpening = cycle(mGraphics.sharpening, static_cast<int>(Graphics::Sharpening::Count)); break;
-    case 3: mGraphics.fxaa = !mGraphics.fxaa; break;
-    case 4: mGraphics.stats = cycle(mGraphics.stats, static_cast<int>(Graphics::Stats::Count)); break;
+    case 3: mGraphics.sharpening = cycle(mGraphics.sharpening, static_cast<int>(Graphics::Sharpening::Count)); break;
+    case 4: mGraphics.fxaa = !mGraphics.fxaa; break;
+    case 5: mGraphics.stats = cycle(mGraphics.stats, static_cast<int>(Graphics::Stats::Count)); break;
     default: return;
     }
     mGraphicsChanged = true;
     refreshGraphicsLabels();
-    play(item == 3 ? Sound::Select : Sound::Focus);
+    play(item == 0 || item == 4 ? Sound::Select : Sound::Focus);
 }
 
 void Menu::setVolume(int percent) {

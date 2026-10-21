@@ -18,7 +18,8 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-constexpr int kHistory = 180;          // frames kept: the graph and the worst frame time
+constexpr int kHistory = 180;          // game steps kept: where the step's time goes
+constexpr int kPresents = 360;         // presents kept: the graph and the worst frame time (3 s at 120)
 constexpr double kAverageMs = 1000.0;  // frames per second and the averages, over the last second
 constexpr double kGraphTopMs = 1000.0 / 30.0;
 constexpr const char* kTitle = "Super Mario Galaxy";
@@ -26,6 +27,12 @@ constexpr const char* kTitle = "Super Mario Galaxy";
 Sample gSamples[kHistory];
 int gCount = 0;
 int gNext = 0;
+
+double gIntervals[kPresents];  // milliseconds between presents
+int gIntervalCount = 0;
+int gIntervalNext = 0;
+Clock::time_point gLastPresent;
+bool gPresented = false;
 
 // The texts change four times a second, so they can be read.
 Clock::time_point gTextTime;
@@ -42,28 +49,40 @@ const Sample& sample(int age) {  // 0: the newest
     return gSamples[(gNext - 1 - age + kHistory) % kHistory];
 }
 
+double interval(int age) {  // 0: the newest
+    return gIntervals[(gIntervalNext - 1 - age + kPresents) % kPresents];
+}
+
 ImU32 color(float r, float g, float b, float a) {
     return ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, a));
 }
 
 void refreshTexts(int outputWidth, int outputHeight) {
-    double sum = 0.0, work = 0.0, drawDone = 0.0, present = 0.0, worst = 0.0;
+    // Frames per second and frame times from the presents, extra frames included.
+    double sum = 0.0, worst = 0.0;
     int frames = 0;
-    for (int age = 0; age < gCount; age++) {
-        const Sample& s = sample(age);
-        worst = std::max(worst, s.intervalMs);
+    for (int age = 0; age < gIntervalCount; age++) {
+        worst = std::max(worst, interval(age));
         if (sum < kAverageMs) {
-            sum += s.intervalMs;
-            work += s.workMs;
-            drawDone += s.drawDoneMs;
-            present += s.presentMs;
+            sum += interval(age);
             frames++;
         }
     }
+    // Where a game step's time goes, over the last second of steps.
+    double stepSum = 0.0, work = 0.0, drawDone = 0.0, present = 0.0;
+    int steps = 0;
+    for (int age = 0; age < gCount && stepSum < kAverageMs; age++) {
+        const Sample& s = sample(age);
+        stepSum += s.intervalMs;
+        work += s.workMs;
+        drawDone += s.drawDoneMs;
+        present += s.presentMs;
+        steps++;
+    }
     const double fps = sum > 0.0 ? frames * 1000.0 / sum : 0.0;
-    const double n = frames > 0 ? frames : 1;
+    const double n = steps > 0 ? steps : 1;
     std::snprintf(gFps, sizeof(gFps), "%.0f FPS", fps);
-    std::snprintf(gTimes, sizeof(gTimes), "Frame %.1f ms   worst %.1f ms", frames > 0 ? sum / n : 0.0, worst);
+    std::snprintf(gTimes, sizeof(gTimes), "Frame %.1f ms   worst %.1f ms", frames > 0 ? sum / frames : 0.0, worst);
     std::snprintf(gParts, sizeof(gParts), "Game %.1f ms   GPU wait %.1f ms   present %.1f ms", work / n, drawDone / n, present / n);
     namespace Graphics = PetariNative::Graphics;
     const Graphics::Settings settings = Graphics::current();
@@ -97,16 +116,18 @@ void updateTitle(SDL_Window* window, bool show) {
     SDL_SetWindowTitle(window, title);
 }
 
-// The last kHistory frame times, 0..kGraphTopMs, with a line at 60 frames per second.
+// The last kPresents frame times, 0..kGraphTopMs, with lines at 60 and 120 frames per second.
 void drawGraph(ImDrawList* list, ImVec2 min, ImVec2 max, float line) {
     list->AddRectFilled(min, max, color(0.02f, 0.03f, 0.08f, 0.7f), (max.y - min.y) * 0.1f);
-    const float y60 = max.y - (max.y - min.y) * static_cast<float>(1000.0 / 60.0 / kGraphTopMs);
-    list->AddLine(ImVec2(min.x, y60), ImVec2(max.x, y60), color(0.55f, 0.65f, 0.95f, 0.45f), line);
-    ImVec2 points[kHistory];
-    const int count = gCount;
+    for (const double fps : {60.0, 120.0}) {
+        const float y = max.y - (max.y - min.y) * static_cast<float>(1000.0 / fps / kGraphTopMs);
+        list->AddLine(ImVec2(min.x, y), ImVec2(max.x, y), color(0.55f, 0.65f, 0.95f, 0.45f), line);
+    }
+    ImVec2 points[kPresents];
+    const int count = gIntervalCount;
     for (int i = 0; i < count; i++) {
-        const double ms = std::min(sample(count - 1 - i).intervalMs, kGraphTopMs);
-        const float x = min.x + (max.x - min.x) * static_cast<float>(i) / static_cast<float>(kHistory - 1);
+        const double ms = std::min(interval(count - 1 - i), kGraphTopMs);
+        const float x = min.x + (max.x - min.x) * static_cast<float>(i) / static_cast<float>(kPresents - 1);
         points[i] = ImVec2(x, max.y - (max.y - min.y) * static_cast<float>(ms / kGraphTopMs));
     }
     if (count > 1) {
@@ -121,6 +142,17 @@ void addFrame(const Sample& s) {
     gNext = (gNext + 1) % kHistory;
     gCount = std::min(gCount + 1, kHistory);
     gFresh = true;
+}
+
+void notePresent() {
+    const Clock::time_point now = Clock::now();
+    if (gPresented) {
+        gIntervals[gIntervalNext] = std::chrono::duration<double, std::milli>(now - gLastPresent).count();
+        gIntervalNext = (gIntervalNext + 1) % kPresents;
+        gIntervalCount = std::min(gIntervalCount + 1, kPresents);
+    }
+    gLastPresent = now;
+    gPresented = true;
 }
 
 void draw(SDL_Window* window, float imageX, float imageY, float imageWidth, float imageHeight) {

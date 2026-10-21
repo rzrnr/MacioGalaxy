@@ -37,7 +37,7 @@ Graphics::Settings settings(int resolution, bool fxaa = false) {
 void testChoices() {
     Graphics::resetForTesting();
     const Graphics::Settings defaults = Graphics::current();
-    check(defaults.resolution == Graphics::kDisplay && defaults.upscaler == Graphics::Upscaler::Fsr1 &&
+    check(defaults.frameRate == 60 && defaults.resolution == Graphics::kDisplay && defaults.upscaler == Graphics::Upscaler::Fsr1 &&
               defaults.sharpening == Graphics::Sharpening::Off && !defaults.fxaa && defaults.stats == Graphics::Stats::Off,
           "defaults draw as before: the display's resolution, no sharpening, no FXAA, no stats");
     static_assert(Graphics::nearestResolution(0) == 0 && Graphics::nearestResolution(-5) == 0 && Graphics::nearestResolution(500) == 480 &&
@@ -72,6 +72,10 @@ void testParse() {
               parsed.fxaa && parsed.stats == Graphics::Stats::Detailed,
           "every key is read, unknown lines (and the old Picture key) are ignored");
     check(Graphics::parse("Resolution=4K\n", &error) && Graphics::current().resolution == 2160, "4K is 2160");
+    check(Graphics::parse("FrameRate=120\n", &error) && Graphics::current().frameRate == 120 && !Graphics::parse("FrameRate=90\n", &error),
+          "FrameRate is 60 or 120");
+    check(Graphics::serialize().find("FrameRate=120\n") != std::string::npos, "FrameRate is written");
+    check(Graphics::parse("FrameRate=60\n", &error), "back to 60");
     check(Graphics::parse("Resolution=1000\n", &error) && Graphics::current().resolution == 1080, "another height takes the nearest choice");
     check(Graphics::parse("Resolution=display\n", &error) && Graphics::current().resolution == 0, "display");
     check(!Graphics::parse("Stats=fps\nResolution=huge\n", &error) && error.find("line 2") != std::string::npos &&

@@ -1,4 +1,5 @@
 #include "Game/Scene/GameScene.hpp"
+#include "Game/System/FrameInterpolation.hpp"
 #include "Game/AudioLib/AudSceneMgr.hpp"
 #include "Game/AudioLib/AudWrap.hpp"
 #include "Game/LiveActor/AllLiveActorGroup.hpp"
@@ -236,6 +237,11 @@ void GameScene::calcAnim() {
     }
 
     SceneFunction::executeCalcViewAndEntryList();
+#ifdef PETARI_NATIVE
+    if (!isPlayMovie()) {
+        FrameInterpolation::noteGameSceneViews();
+    }
+#endif
 }
 
 void GameScene::notifyEndScenarioStarter() {
@@ -432,7 +438,11 @@ void GameScene::draw3D() const {
     SceneFunction::executeDrawSilhouetteAndFillShadow();
     SceneFunction::executeDrawAlphaShadow();
     CategoryList::execute(MR::DrawType_BrightSun);
-    MR::setLensFlareDrawSyncToken();
+#ifdef PETARI_NATIVE
+    // The extra frame of frame interpolation sets no draw-sync tokens: their EFB reads are the step's.
+    if (!FrameInterpolation::isDrawingExtraFrame())
+#endif
+        MR::setLensFlareDrawSyncToken();
     GXSetAlphaUpdate(GX_FALSE);
     GXSetDstAlpha(GX_FALSE, 0);
     SceneFunction::executeDrawBufferListNormalOpa();
@@ -448,8 +458,13 @@ void GameScene::draw3D() const {
     CategoryList::execute(MR::DrawType_CaptureScreenIndirect);
     SceneFunction::executeDrawAfterIndirect();
     CategoryList::execute(MR::DrawType_0x33);
-    MR::setStarPointerDrawSyncToken();
-    MR::setTalkDirectorDrawSyncToken();
+#ifdef PETARI_NATIVE
+    if (!FrameInterpolation::isDrawingExtraFrame())
+#endif
+    {
+        MR::setStarPointerDrawSyncToken();
+        MR::setTalkDirectorDrawSyncToken();
+    }
     SceneFunction::executeDrawImageEffect();
     GXSetDither(GX_TRUE);
     MR::loadViewMtx();
@@ -487,6 +502,11 @@ void GameScene::drawOdhCapture() const {
     if (!_29) {
         return;
     }
+#ifdef PETARI_NATIVE
+    if (FrameInterpolation::isDrawingExtraFrame()) {
+        return;  // the step's capture
+    }
+#endif
 
     if (!MR::isRequestedCaptureOdhImage()) {
         return;

@@ -38,6 +38,7 @@
 #ifdef PETARI_NATIVE
 #include <JSystem/JKernel/JKRSolidHeap.hpp>
 #include <petari/app.hpp>
+#include "Game/System/FrameInterpolation.hpp"
 // native/platform/gx_sync (GXSync::waitTokensDelivered)
 extern "C" void petari_gx_sync_wait_tokens_delivered(void);
 #include <cstdlib>
@@ -322,6 +323,9 @@ void GameSystem::frameLoop() {
     MainLoopFramework::sManager->beginRender();
     draw();
     MainLoopFramework::sManager->endRender();
+#ifdef PETARI_NATIVE
+    FrameInterpolation::beforeUpdate();  // the drawn step, for an extra frame at 120 frames per second
+#endif
     update();
     calcAnim();
     mObjHolder->captureIfAllowForScreenPreserver();
@@ -332,6 +336,7 @@ void GameSystem::frameLoop() {
 #ifdef PETARI_NATIVE
     // Host window, events and Aurora frame boundary (native/app).
     petari_host_frame_seam();
+    FrameInterpolation::afterSeam(this);
 #endif
     MainLoopFramework::sManager->waitForRetrace();
 #ifdef PETARI_NATIVE

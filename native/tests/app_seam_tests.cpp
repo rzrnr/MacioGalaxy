@@ -6,6 +6,7 @@
 #include <aurora/aurora.h>
 #include <aurora/event.h>
 
+#include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
 
 #include <chrono>
@@ -26,6 +27,7 @@
 #include "petari/app.hpp"
 #include "petari/display_mode.hpp"
 #include "petari/frame_telemetry.hpp"
+#include "petari/graphics.hpp"
 #include "petari/host_allocation.hpp"
 
 namespace App = PetariNative::App;
@@ -168,9 +170,18 @@ void handleEvent(const SDL_Event&) {}
 void update() {}
 }  // namespace PetariNative::App::Display
 
+// The Graphics page's settings (native/gx/present/graphics.cpp): the defaults, so frame
+// interpolation stays off.
+namespace PetariNative::Graphics {
+Settings current() {
+    return Settings{};
+}
+}  // namespace PetariNative::Graphics
+
 // The stats overlay (stats_overlay.cpp) draws with ImGui; not under test here.
 namespace PetariNative::App::StatsOverlay {
 void addFrame(const Sample&) {}
+void notePresent() {}
 void draw(SDL_Window*, float, float, float, float) {}
 }  // namespace PetariNative::App::StatsOverlay
 
@@ -222,6 +233,14 @@ bool aurora_begin_frame() {
 }
 void aurora_end_frame() {
     hostCall("end");
+}
+// Frame interpolation's present timing and display check; never reached at 60 frames per second.
+void SDL_DelayPrecise(Uint64) {}
+SDL_DisplayID SDL_GetDisplayForWindow(SDL_Window*) {
+    return 0;
+}
+const SDL_DisplayMode* SDL_GetCurrentDisplayMode(SDL_DisplayID) {
+    return nullptr;
 }
 bool SDL_GetWindowSize(SDL_Window*, int* w, int* h) {
     *w = windowWidth;
@@ -577,7 +596,13 @@ void testSpikeProfiler() {
 
 }  // namespace
 
+// At 60 frames per second (the default) the game never draws an extra frame.
+void testNoExtraFrameAt60() {
+    check(petari_host_interp_wait() == 0, "no interpolated frame at 60 frames per second");
+}
+
 int main() {
+    testNoExtraFrameAt60();
     testFirstFrameWithoutHooks();
     testSeamWithHooks();
     testQuit();

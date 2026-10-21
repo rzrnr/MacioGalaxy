@@ -336,7 +336,17 @@ void J3DModel::entry() {
     }
 }
 
+#ifdef PETARI_NATIVE
+// Frame interpolation (Game/System/FrameInterpolation.hpp) records the models whose views are calculated.
+void (*gJ3DModelViewCalcHook)(J3DModel*) = nullptr;
+#endif
+
 void J3DModel::viewCalc() {
+#ifdef PETARI_NATIVE
+    if (gJ3DModelViewCalcHook != nullptr) {
+        gJ3DModelViewCalcHook(this);
+    }
+#endif
     mMtxBuffer->swapDrawMtx();
     mMtxBuffer->swapNrmMtx();
 

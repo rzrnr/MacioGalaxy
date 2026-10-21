@@ -19,6 +19,13 @@ extern "C" void petari_host_frame_seam(void);
 enum { PETARI_FRAME_MARK_RETRACE_DONE = 0, PETARI_FRAME_MARK_END_FRAME = 1 };
 extern "C" void petari_host_frame_mark(int mark);
 
+// Frame interpolation (native/FRAME_RATE.md), from FrameInterpolation::afterSeam on
+// the same thread: whether an extra frame is drawn now (0 or 1); and the extra
+// frame's present, half a retrace interval after the step's, which ends and opens
+// an Aurora frame as the seam does, without the seam's per-step work.
+extern "C" int petari_host_interp_wait(void);
+extern "C" void petari_host_present_seam(void);
+
 namespace PetariNative::App {
 
 struct Rect {
