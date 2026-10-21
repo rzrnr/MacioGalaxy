@@ -336,6 +336,11 @@ void RemoteModel::updatePadPointer() {
     mPadPointerY = std::clamp(mPadPointerY - y * length * speed, -1.0f, 1.0f);  // KPAD: y down
 }
 
+bool RemoteModel::mousePointing(float* posX, float* posY) const {
+    return !mPadPointer && mMouseInWindow && pointerPosition(mViewport, mMouseX, mMouseY, posX, posY) && *posX >= -1.0f &&
+           *posX <= 1.0f && *posY >= -1.0f && *posY <= 1.0f;
+}
+
 void RemoteModel::mouseMoved(float x, float y) {
     mMouseX = x;
     mMouseY = y;

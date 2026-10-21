@@ -218,6 +218,14 @@ void LayoutManager::calcAnim() {
     calcAnimWithoutLocationAdjust(mDrawInfo);
 }
 
+#ifdef PETARI_NATIVE
+void LayoutManager::calcMtx() const {
+    if (!mIsScreenHidden) {
+        mLayout->CalculateMtx(mDrawInfo);
+    }
+}
+#endif
+
 void LayoutManager::draw() const {
     if (mIsScreenHidden) {
         return;

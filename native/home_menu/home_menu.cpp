@@ -798,9 +798,11 @@ Rect Menu::itemRect(int index) const {
     // Six or more items (the Mods page) use a tighter column so they fit.
     const bool compact = itemCount() > 5;
     const bool dense = itemCount() > 6;  // seven items: the list with Volume, the Mods page with a Mod folder entry
-    const float spacing = dense ? 0.17f : compact ? 0.2f : kItemSpacing;
-    const float top = (dense ? -0.4f : compact ? -0.32f : kItemTop) + spacing * static_cast<float>(index);
-    return {-kItemHalfWidth / ax, top, kItemHalfWidth / ax, top + (dense ? 0.14f : compact ? 0.16f : kItemHeight)};
+    const bool densest = itemCount() > 8;  // nine: the Mods page with five mods and a Mod folder entry
+    const float spacing = densest ? 0.15f : dense ? 0.17f : compact ? 0.2f : kItemSpacing;
+    const float top = (densest ? -0.42f : dense ? -0.4f : compact ? -0.32f : kItemTop) + spacing * static_cast<float>(index);
+    return {-kItemHalfWidth / ax, top, kItemHalfWidth / ax,
+            top + (densest ? 0.125f : dense ? 0.14f : compact ? 0.16f : kItemHeight)};
 }
 
 int Menu::itemAt(float x, float y) const {

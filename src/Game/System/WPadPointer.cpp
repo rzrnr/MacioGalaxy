@@ -65,7 +65,21 @@ void WPadPointer::setSensorBarLevel(f32 level) {
     KPADSetSensorHeight(mPad->mChannel, level);
 }
 
+#ifdef PETARI_NATIVE
+extern "C" bool petari_mod_enabled(int mod);
+#endif
+
 void WPadPointer::update() {
+#ifdef PETARI_NATIVE
+    // The Instant pointer mod (native/MODS.md): the mouse needs none of the Wii Remote's smoothing
+    // against a shaking hand (half sensitivity, a 0.03 play radius), which makes small moves lag.
+    constexpr int kModInstantPointer = 4;  // PetariNative::Mods::Mod::InstantPointer
+    if (petari_mod_enabled(kModInstantPointer)) {
+        KPADSetPosParam(mPad->mChannel, 0.0f, 1.0f);
+    } else {
+        KPADSetPosParam(mPad->mChannel, mPosPlayRadius, mPosSensitivity);
+    }
+#endif
     KPADStatus* status = mPad->getKPadStatus(0);
 
     if (status == nullptr) {

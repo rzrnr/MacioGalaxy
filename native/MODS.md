@@ -9,6 +9,7 @@ unmodified game and every test run behave exactly as before.
 | Fire a Star Bit at the nearest enemy (`ShootEnemy`) | V (no controller default) | Shoots one Star Bit at the nearest enemy on screen |
 | Odyssey movement (`OdysseyMovement`) | none (a mode; it uses the normal Jump, Crouch and Spin buttons) | Mario moves with Super Mario Odyssey's physics and moveset: see "Odyssey movement" below. |
 | Fine fur (`FineFur`) | none (a look; it switches at once) | Fur hairs half as wide, for high render resolutions: see "Fine fur" below. |
+| Instant pointer (`InstantPointer`) | none (it switches at once) | The Star Pointer follows the mouse without delay: see "Instant pointer" below. |
 
 ## Turning mods on
 
@@ -93,6 +94,31 @@ still show.
   on, a map takes four times as many draws, and every switch draws a new map, so
   later random events differ from an unmodified run.
 - Each fur map always reserves the 64 x 64 buffer (8 KB instead of 2 KB).
+
+## Instant pointer
+
+On the Wii the Star Pointer reaches the screen a while after the hand moves, and
+the mouse inherits that:
+
+- The game draws the pointer where its controller's position was at the last
+  game step: it takes the position from the previous frame's draw, where it also
+  reads the depth under it.
+- KPAD smooths the Wii Remote's position against a shaking hand: half
+  sensitivity and a play radius of 0.03 (`WPadPointer`), which makes small moves
+  creep.
+- With V-Sync the frame then waits for its refresh (native/FRAME_RATE.md).
+
+With the mod on, player 1's pointer is drawn in every frame where the mouse
+points at that moment (`StarPointerLayout::draw`, `petari_host_pointer_now` in
+`native/input/wpad_host.cpp`), the extra frames at Frame rate 120 included, and
+KPAD takes the mouse's position unsmoothed. The game's own pointer position,
+which collects Star Bits, grabs Pull Stars and aims shots, is unchanged apart
+from the smoothing; in a fast sweep it trails the drawn pointer by a game step
+or two. The Star Bit trail behind the pointer is drawn from the game's
+positions. With a controller stick driving the pointer, or the mouse outside
+the image, the pointer is drawn as without the mod. For measuring its cost in a
+background smoke run, where the mouse never enters the window,
+`PETARI_INSTANT_POINTER_AT=x,y` (-1 to 1) gives it a fixed position.
 
 ## Odyssey camera
 

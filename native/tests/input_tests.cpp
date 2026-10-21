@@ -48,6 +48,7 @@
 #endif
 
 extern "C" void __OSThreadInit(void);
+extern "C" bool petari_host_pointer_now(float* x, float* y);  // the Instant pointer mod (wpad_host.cpp)
 
 namespace In = PetariNative::Input;
 namespace PSC = PetariNative::Platform::SC;
@@ -867,6 +868,38 @@ void testPointer() {
     In::mouseLeft();
     rig.frames_(3);
     check(!pointer.mIsPointInScreen, "mouse leaves the window: pointer off screen");
+
+    // The Instant pointer mod (native/MODS.md): where the mouse points now, for drawing the pointer,
+    // and none of KPAD's smoothing.
+    namespace Mods = PetariNative::Mods;
+    float nowX = 0.0f, nowY = 0.0f;
+    In::mouseMoved(960.0f, 180.0f);
+    rig.frame();
+    check(!petari_host_pointer_now(&nowX, &nowY), "Instant pointer off: no position");
+    Mods::setEnabled(Mods::Mod::InstantPointer, true);
+    check(petari_host_pointer_now(&nowX, &nowY) && near(nowX, 0.5f, tolerance) && near(nowY, -0.5f, tolerance),
+          "Instant pointer on: the mouse's position in the image");
+    In::mouseMoved(1279.0f, 719.0f);
+    check(petari_host_pointer_now(&nowX, &nowY) && near(nowX, 0.99844f, tolerance) && near(nowY, 0.99722f, tolerance),
+          "at once, before the next report");
+    In::mouseMoved(640.0f, 360.0f);
+    rig.frames_(10);
+    In::mouseMoved(650.0f, 360.0f);  // 0.016: inside the game's 0.03 play radius
+    rig.frame();
+    pointer.getPointingPos(&pos);
+    check(near(pos.x, 10.0f / 640.0f, 0.001f), "the game's pointer takes a small move at once, unsmoothed");
+    Mods::setEnabled(Mods::Mod::InstantPointer, false);
+    In::mouseMoved(640.0f, 360.0f);
+    rig.frames_(10);
+    In::mouseMoved(650.0f, 360.0f);
+    rig.frame();
+    pointer.getPointingPos(&pos);
+    check(pos.x < 10.0f / 640.0f - 0.002f, "without the mod KPAD smooths it");
+    In::mouseLeft();
+    Mods::setEnabled(Mods::Mod::InstantPointer, true);
+    check(!petari_host_pointer_now(&nowX, &nowY), "mouse outside the window: no position");
+    Mods::setEnabled(Mods::Mod::InstantPointer, false);
+    rig.frames_(3);
 
     // The game's sensor bar height is honoured (KPADSetSensorHeight).
     KPADSetSensorHeight(0, 0.35f);
@@ -1999,6 +2032,10 @@ void testMods() {
     check(!Mods::parse("Fly=on\n", &error), "unknown mod rejected");
     check(Mods::parse("FineFur=on\n", &error) && petari_mod_enabled(3) && !petari_mod_take_press(3),
           "FineFur parses, is mod 3 (kModFineFur in FurDrawer.cpp) and has no button");
+    check(Mods::parse("InstantPointer=on\n", &error) && petari_mod_enabled(4) && !petari_mod_take_press(4) &&
+              std::string(Mods::description(Mods::Mod::InstantPointer)) == "Instant pointer",
+          "InstantPointer parses, is mod 4 (kModInstantPointer in WPadPointer.cpp) and has no button");
+    Mods::setEnabled(Mods::Mod::InstantPointer, false);
     const std::string text = Mods::serialize();
     Mods::resetForTesting();
     check(Mods::parse(text, &error) && Mods::enabled(Mods::Mod::ShootEnemy) && !Mods::enabled(Mods::Mod::CollectStarBits),

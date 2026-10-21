@@ -40,6 +40,11 @@ public:
     void movement();
     void calcAnim();
     void draw() const;
+#ifdef PETARI_NATIVE
+    // The panes' matrices again, without animating: for a draw with a moved root pane
+    // (StarPointerLayout's Instant pointer mod).
+    void calcMtx() const;
+#endif
     void addPaneCtrl(LayoutPaneCtrl*);
     LayoutPaneCtrl* createAndAddRootPaneCtrl(u32);
     LayoutPaneCtrl* createAndAddPaneCtrl(const char*, u32);

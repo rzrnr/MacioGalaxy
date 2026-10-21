@@ -1242,6 +1242,37 @@ void testLevelSelect() {
     check(!menu.takeLevelRequest(&stage, &mission), "no request after Back");
 }
 
+// Five mods and a Mod folder entry: nine items in the tightest column, still inside the image.
+void testNineItemModsPage() {
+    HM::Menu menu = newMenu();
+    HM::ModsEntry entries[5];
+    for (int i = 0; i < 5; i++) {
+        std::snprintf(entries[i].label, sizeof(entries[i].label), "Mod %d", i + 1);
+    }
+    menu.setMods(entries, 5);
+    HM::FolderModEntry folder[1];
+    std::strcpy(folder[0].label, "A folder mod");
+    menu.setFolderMods(folder, 1);
+    openToList(menu);
+    menu.update(press(Down));
+    menu.update(press(Down));
+    menu.update(press(A));
+    const HM::View view = menu.view();
+    bool apart = true;
+    for (int i = 0; i + 1 < view.itemCount; i++) {
+        apart = apart && view.items[i].rect.y1 <= view.items[i + 1].rect.y0;
+    }
+    check(view.itemCount == 9 && std::strcmp(view.items[4].label, "Mod 5: Off") == 0 &&
+              std::strcmp(view.items[7].label, "Mod folder...") == 0 && std::strcmp(view.items[8].label, "Back") == 0,
+          "five mods, the camera options, Level Select, the Mod folder and Back");
+    check(view.panel.y0 >= -1.0f && view.panel.y1 <= 1.0f && view.items[8].rect.y1 < view.panel.y1 && apart &&
+              view.messageY < view.items[0].rect.y0,
+          "nine items fit inside the panel and the image without overlapping");
+    for (int i = 0; i < 4; i++) menu.update(press(Down));
+    menu.update(press(A));
+    check(menu.mods()[4].on && menu.takeModToggles() == 16u, "the fifth mod toggles");
+}
+
 void testCameraPage() {
     HM::Menu menu = newMenu();
     HM::ModsEntry entries[3];
@@ -1499,6 +1530,7 @@ int main() {
     testControlsPage();
     testModsPage();
     testModFolderPage();
+    testNineItemModsPage();
     testProgressPage();
     testLevelSelect();
     testCameraPage();
