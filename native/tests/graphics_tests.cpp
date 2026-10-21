@@ -76,6 +76,10 @@ void testParse() {
           "FrameRate is 60 or 120");
     check(Graphics::serialize().find("FrameRate=120\n") != std::string::npos, "FrameRate is written");
     check(Graphics::parse("FrameRate=60\n", &error), "back to 60");
+    check(Graphics::current().vsync && Graphics::parse("VSync=off\n", &error) && !Graphics::current().vsync &&
+              Graphics::serialize().find("VSync=off\n") != std::string::npos && !Graphics::parse("VSync=maybe\n", &error) &&
+              Graphics::parse("VSync=on\n", &error) && Graphics::current().vsync,
+          "VSync is on by default, off or on");
     check(Graphics::parse("Resolution=1000\n", &error) && Graphics::current().resolution == 1080, "another height takes the nearest choice");
     check(Graphics::parse("Resolution=display\n", &error) && Graphics::current().resolution == 0, "display");
     check(!Graphics::parse("Stats=fps\nResolution=huge\n", &error) && error.find("line 2") != std::string::npos &&

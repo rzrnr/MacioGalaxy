@@ -2,9 +2,11 @@
 
 #include <aurora/aurora.h>
 #include <aurora/event.h>
+#include <aurora/gfx.h>
 
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
+#include <mach/mach_time.h>
 
 #include <atomic>
 #include <chrono>
@@ -31,8 +33,10 @@ extern "C" void petari_gx_pipeline_report();
 #include "smoke_stage.hpp"
 #include "soak_telemetry.hpp"
 #include "stats_overlay.hpp"
+#include "display_link.hpp"
 #include "petari/asset_diagnostics.hpp"
 #include "petari/display_mode.hpp"
+#include "petari/display_sync.hpp"
 #include "petari/frame_telemetry.hpp"
 #include "petari/graphics.hpp"
 #include "petari/home_menu.hpp"
@@ -51,6 +55,54 @@ std::uint64_t gExtraFrames = 0;    // frame interpolation's presents, in the fra
 std::uint64_t gLateSteps = 0;      // steps without an extra frame: presented too late
 std::uint64_t gSlowDisplaySteps = 0;  // or on a display below 100 Hz
 int gDisplayHz = 0;                // the window's display, checked once a second; 0: unknown
+// V-Sync (petari/display_sync.hpp): while VI follows the display's refreshes, frames are
+// presented in FIFO order on refreshes instead of at once.
+bool gPresentSynced = false;
+std::uint64_t gExtraFrameNs = 4000000;  // the extra frame's draw, averaged, for the V-Sync gate
+std::uint64_t gExtraStartNs = 0;
+std::uint64_t gStepRetraceNs = 0;  // the retrace that started this game step
+
+// With V-Sync, each frame has its refresh, a fixed number of refreshes after the step's retrace
+// whatever its draw time: slot 0, the step's frame, one retrace after the retrace (on a 120 Hz
+// display the second refresh after it); slot 1, the extra frame, half a retrace later. A frame
+// is presented between 1 ms after the refresh before its own (so that it is not shown on that
+// one) and 3 ms before its own (so that it is drawn and taken in time). syncedPresentDue is the
+// start of that window, syncedPresentEnd its end; 0 without V-Sync, and syncedPresentDue is 0
+// for a window that opens at the retrace (one refresh per retrace: no wait needed).
+std::uint64_t syncedPresentWindow(int slot, bool end) {
+    namespace Sync = PetariNative::DisplaySync;
+    static const double nsPerTick = [] {
+        mach_timebase_info_data_t timebase;
+        mach_timebase_info(&timebase);
+        return static_cast<double>(timebase.numer) / timebase.denom;
+    }();
+    const int every = Sync::every.load(std::memory_order_relaxed);
+    if (!gPresentSynced || every < 1 || gStepRetraceNs == 0) {
+        return 0;
+    }
+    const std::uint64_t period = static_cast<std::uint64_t>(Sync::periodTicks.load(std::memory_order_relaxed) * nsPerTick);
+    const std::uint64_t refreshes = static_cast<std::uint64_t>(every - 1 + slot * (every / 2));
+    if (end) {
+        return gStepRetraceNs + (refreshes + 1) * period - 3000000;
+    }
+    return refreshes == 0 ? 0 : gStepRetraceNs + refreshes * period + 1000000;
+}
+
+std::uint64_t syncedPresentDue(int slot) {
+    return syncedPresentWindow(slot, false);
+}
+
+std::uint64_t syncedPresentEnd(int slot) {
+    return syncedPresentWindow(slot, true);
+}
+
+void waitUntil(std::uint64_t due) {
+    const std::uint64_t now = PetariNative::FrameTelemetry::nowNs();
+    if (due != 0 && now < due) {
+        SDL_DelayPrecise(due - now);
+    }
+}
+
 // The last second's steps that asked for an extra frame, for Graphics::setFrameRateStatus.
 struct InterpolationSecond {
     std::uint64_t start = 0;
@@ -78,6 +130,7 @@ void publishFrameRateStatus(std::uint64_t now) {
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(gWindow));
         gDisplayHz = mode != nullptr && mode->refresh_rate > 0.0f ? static_cast<int>(std::lround(mode->refresh_rate)) : 0;
     }
+    DisplayLink::follow(gWindow, PetariNative::Graphics::current().vsync);
     PetariNative::Graphics::FrameRateStatus status;
     status.displayHz = gDisplayHz;
     if (second.asked > 0) {
@@ -624,6 +677,7 @@ void reportFrameStats() {
         return;
     }
     gTiming.recorder->writeSummary(stderr);
+    DisplayLink::writeReport();
     if (gExtraFrames + gLateSteps + gSlowDisplaySteps > 0) {
         std::fprintf(stderr, "Petari frame rate: %llu interpolated frames; without one: %llu steps presented late, %llu on a display below 100 Hz\n",
                      static_cast<unsigned long long>(gExtraFrames), static_cast<unsigned long long>(gLateSteps),
@@ -653,6 +707,7 @@ extern "C" void petari_host_frame_mark(int mark) {
         gTiming.retraceDone = now;
         // The retrace that ended the wait, if one came after the seam.
         const std::uint64_t retrace = Telemetry::lastRetraceNs.load(std::memory_order_relaxed);
+        gStepRetraceNs = retrace;
         gTiming.retraceWake = retrace > gTiming.lastExit && retrace <= now ? now - retrace : 0;
     } else if (mark == PETARI_FRAME_MARK_END_FRAME) {
         gTiming.endFrame = now;
@@ -663,6 +718,12 @@ extern "C" void petari_host_frame_seam(void) {
     const std::uint64_t entry = Telemetry::nowNs();
     PetariNative::HostAllocationScope host;
     publishFrameRateStatus(entry);
+    // FIFO presents only while the retraces follow the display: on the timer's own 59.94 Hz
+    // they would drift against the refreshes and wait for them.
+    if (const bool synced = PetariNative::DisplaySync::synced.load(std::memory_order_relaxed); synced != gPresentSynced) {
+        gPresentSynced = synced;
+        aurora_enable_vsync(synced);
+    }
     recordRouteFrame(SmokeBackground::enabled);
     observeProgressFrame();
     // Game state is readable here, before the CPU is released.
@@ -699,10 +760,12 @@ extern "C" void petari_host_frame_seam(void) {
     traceFrame(image);
     PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
+    waitUntil(syncedPresentDue(0));
     const std::uint64_t endStart = Telemetry::nowNs();
     gStepPresentNs = endStart;
     aurora_end_frame();
     StatsOverlay::notePresent();
+    DisplayLink::notePresent();
 
     const std::uint64_t beginStart = Telemetry::nowNs();
     handleEvents(aurora_update());
@@ -721,8 +784,9 @@ extern "C" void petari_host_frame_seam(void) {
 }
 
 // Frame interpolation (native/FRAME_RATE.md): the extra frame is drawn right after the step's
-// present and shown half a retrace interval after it, so that presents come evenly; the next
-// step's present comes the same draw time after the next retrace. A step presented in the
+// present. With V-Sync it is presented in its window (syncedPresentDue(1) to syncedPresentEnd(1))
+// and shown on the refresh after the step's frame. Without, it is shown half a
+// retrace interval after the step's, so that presents come evenly, and a step presented in the
 // second half of its interval is late: then there is no extra frame.
 extern "C" int petari_host_interp_wait(void) {
     if (PetariNative::Graphics::current().frameRate < 120) {
@@ -736,11 +800,21 @@ extern "C" int petari_host_interp_wait(void) {
         return 0;
     }
     const std::uint64_t retrace = Telemetry::lastRetraceNs.load(std::memory_order_relaxed);
-    if (retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2) {
+    const std::uint64_t now = Telemetry::nowNs();
+    // With V-Sync the extra frame goes on the refresh after the step's by itself; it only has to
+    // be drawn before the next retrace. Without, it is shown half a retrace after the step's.
+    // With V-Sync the extra frame must be drawn before its window closes (syncedPresentEnd(1)). After
+    // a step's frame that missed its own window (it is shown a refresh late) there is none: it would
+    // wait behind that frame and push every later frame a refresh back.
+    const bool late = gPresentSynced ? gStepRetraceNs == 0 || gStepPresentNs > syncedPresentEnd(0) ||
+                                           now + gExtraFrameNs + 500000 > syncedPresentEnd(1)
+                                     : retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2;
+    if (late) {
         ++gLateSteps;
         ++gInterpolationSecond.late;
         return 0;
     }
+    gExtraStartNs = now;
     return 1;
 }
 
@@ -758,13 +832,14 @@ extern "C" void petari_host_present_seam(void) {
     const Rect image = updateImage();
     PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
-    const std::uint64_t due = gStepPresentNs + kRetraceNs / 2;
     const std::uint64_t now = Telemetry::nowNs();
-    if (now < due) {
-        SDL_DelayPrecise(due - now);
+    if (now > gExtraStartNs) {
+        gExtraFrameNs = (gExtraFrameNs * 3 + (now - gExtraStartNs)) / 4;
     }
+    waitUntil(gPresentSynced ? syncedPresentDue(1) : gStepPresentNs + kRetraceNs / 2);
     aurora_end_frame();
     StatsOverlay::notePresent();
+    DisplayLink::notePresent();
     ++gExtraFrames;
     ++gInterpolationSecond.drawn;
     handleEvents(aurora_update());

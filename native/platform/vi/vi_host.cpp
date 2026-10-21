@@ -25,6 +25,7 @@
 #include <mutex>
 
 #include "os_internal.hpp"
+#include "petari/display_sync.hpp"
 #include "petari/frame_telemetry.hpp"
 #include "petari/host_allocation.hpp"
 #include "petari/platform/vi.hpp"
@@ -202,14 +203,40 @@ Clock::duration fieldPeriodLocked() {
     return std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / VIN::fieldRateFor(gLatched.tvMode)));
 }
 
+// Display sync (petari/display_sync.hpp): the next retrace on a refresh of the game window's
+// display, in mach ticks, or 0 to keep the field-rate timer (V-Sync off, no recent refresh,
+// or a display at no multiple of the field rate).
+std::uint64_t syncedDeadline(std::uint64_t previousRetrace, double fieldRate) {
+    namespace Sync = PetariNative::DisplaySync;
+    static const double ticksPerSecond = [] {
+        mach_timebase_info_data_t timebase;
+        mach_timebase_info(&timebase);
+        return 1e9 * timebase.denom / timebase.numer;
+    }();
+    if (!Sync::enabled.load(std::memory_order_relaxed)) {
+        return 0;
+    }
+    const std::uint64_t refresh = Sync::refreshTicks.load(std::memory_order_acquire);
+    const std::uint64_t period = Sync::periodTicks.load(std::memory_order_relaxed);
+    const std::uint64_t now = mach_absolute_time();
+    // The kept refresh grid (DisplaySync::noteRefresh) may lie a little after now.
+    if (refresh == 0 || (now > refresh && now - refresh > static_cast<std::uint64_t>(ticksPerSecond * 0.1))) {
+        return 0;
+    }
+    Sync::every.store(Sync::refreshesPerRetrace(period, fieldRate, ticksPerSecond), std::memory_order_relaxed);
+    return Sync::nextRetrace(refresh, period, previousRetrace, fieldRate, ticksPerSecond);
+}
+
 // The retrace clock. Waits for each deadline with no lock held, then takes
 // the interrupt lock (as the hardware interrupt waits while interrupts are
 // disabled) and delivers one retrace. A stop request is seen at the next
-// deadline, within one field.
+// deadline, within one field. With display sync the deadline is a refresh
+// of the display instead of the field-rate timer.
 void* viThreadMain(void*) {
     namespace Telemetry = PetariNative::FrameTelemetry;
     OSDisableInterrupts();
     Clock::duration period = fieldPeriodLocked();
+    double fieldRate = VIN::fieldRateFor(gLatched.tvMode);
     OSEnableInterrupts();
     // PETARI_VI_LEGACY_TIMER=1: default scheduling and a condition-variable
     // timed wait, as before, for A/B measurement.
@@ -219,9 +246,13 @@ void* viThreadMain(void*) {
         makeRetraceThreadRealtime(period);
     }
     auto next = Clock::now();
+    std::uint64_t lastRetrace = mach_absolute_time();
     while (true) {
         next += period;
-        if (legacy) {
+        const std::uint64_t synced = syncedDeadline(lastRetrace, fieldRate);
+        if (synced != 0) {
+            mach_wait_until(synced);
+        } else if (legacy) {
             std::mutex sleepLock;
             std::condition_variable sleeper;
             std::unique_lock<std::mutex> lock(sleepLock);
@@ -230,8 +261,16 @@ void* viThreadMain(void*) {
             sleepUntil(next);
         }
         const auto woke = Clock::now();
-        if (woke > next) {
+        if (synced != 0) {
+            // The timer continues from the refresh, should the display stop reporting.
+            next = woke;
+        } else if (woke > next) {
             Telemetry::add(Telemetry::ViTimerLate, std::chrono::duration_cast<std::chrono::nanoseconds>(woke - next).count());
+        }
+        lastRetrace = mach_absolute_time();
+        PetariNative::DisplaySync::synced.store(synced != 0, std::memory_order_relaxed);
+        if (synced != 0) {
+            PetariNative::DisplaySync::syncedRetraces.fetch_add(1, std::memory_order_relaxed);
         }
         OSDisableInterrupts();
         Telemetry::add(Telemetry::ViInterruptLockWait,
@@ -247,6 +286,7 @@ void* viThreadMain(void*) {
         }
         retraceInterrupt();
         period = fieldPeriodLocked();
+        fieldRate = VIN::fieldRateFor(gLatched.tvMode);
         // Interrupt return: delivers any reschedule the handlers requested.
         OSEnableInterrupts();
     }

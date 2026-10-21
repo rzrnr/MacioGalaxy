@@ -45,11 +45,11 @@ if(NOT _petari_app_standalone)
         petari_audio_sdl petari_host_runtime petari_app_smoke petari_milestone)
 
     add_library(petari_app_host STATIC frame_seam.cpp frame_stats.cpp spike_profiler.cpp input_events.cpp pipeline_startup.cpp display_mode.cpp
-        stats_overlay.cpp)
+        stats_overlay.cpp display_link.cpp)
     target_include_directories(petari_app_host PUBLIC ${PETARI_REPO_ROOT}/native/include)
     # Deliberately not petari_native_config: no SDK include paths next to Aurora's.
     target_link_libraries(petari_app_host PUBLIC aurora::core petari_input_sdl3 petari_home_menu_imgui
-        petari_host_runtime petari_app_smoke petari_graphics)
+        petari_host_runtime petari_app_smoke petari_graphics "-framework CoreVideo" "-framework CoreGraphics")
 
     add_executable(petari MACOSX_BUNDLE app_main.cpp smoke_storage.cpp pipeline_cache_dir.cpp latency_report.cpp)
     target_link_libraries(petari PRIVATE petari_app_host petari_app_platform aurora::core aurora::main SQLite::SQLite3)

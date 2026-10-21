@@ -1,7 +1,7 @@
-# Frame rate: 120 with interpolated frames
+# Frame rate and V-Sync
 
-F1, then **Graphics**, then **Frame rate**: 60 or 120 (interpolated). This is a
-prototype.
+F1, then **Graphics**: **Frame rate** 60 or 120 (interpolated), a prototype, and
+**V-Sync** on or off.
 
 The game itself always runs at 60 steps per second (59.94 Hz, as on the Wii):
 Mario, enemies, physics and timers are unchanged. At 120, the game draws one
@@ -28,6 +28,39 @@ line at 120: the share of the last second's steps that got an extra frame and
 the share that came too late for one, or why there are none (a display below
 100 Hz; "here" when the scene asks for none, as in movies).
 
+## V-Sync
+
+The Wii shows a frame on every retrace of the TV, 59.94 times a second. Without
+V-Sync the game's retrace clock is its own timer at 59.94 Hz, and each frame is
+handed to the window as soon as it is drawn. A Mac display refreshes at 60 or
+120 Hz on its own clock: the two drift against each other, and for a few
+seconds out of every half minute or so frames meet the refreshes unevenly, one
+shown twice and the next one skipped. That is felt as micro-stutter.
+
+With V-Sync on (the default):
+
+- A display link (`native/app/display_link.cpp`) reports every refresh of the
+  window's display, and the retrace clock (`native/platform/vi/vi_host.cpp`,
+  `petari/display_sync.hpp`) raises its retraces on those refreshes: on every
+  one at 60 Hz, on every second one at 120 Hz. The game runs 0.1% faster on a
+  60.00 Hz display than on the Wii's 59.94; sound is not affected.
+- Frames are presented in order on refreshes (FIFO), and each frame is shown a
+  fixed time after its step's retrace, whatever its draw time: the step's frame
+  one retrace later (on a 120 Hz display the second refresh after the retrace),
+  the extra frame at Frame rate 120 half a retrace after that. Each frame is
+  presented in a window from 1 ms after the refresh before its own to 3 ms
+  before its own; one that is ready early waits for its window. Without that, a
+  frame drawn in 7 ms and the next in 9 ms land on different refreshes: one
+  stays 8 ms, the next 25.
+- The display link's refresh times scatter around the display's real, regular
+  refreshes (by a quarter of a millisecond on average, up to almost one on an
+  M3 Pro's 120 Hz display); the clock keeps a smoothed grid of them.
+- Displays at other rates (75, 100, 144 Hz) keep the game's own timer, as with
+  V-Sync off. So does the game when the display link stops.
+
+V-Sync off gives the lowest latency, as before this option: frames go to the
+display at once, unevenly.
+
 ## What moves at 120
 
 - The camera: position, orientation, field of view and camera shake.
@@ -49,9 +82,26 @@ the share that came too late for one, or why there are none (a display below
 
 ## Settings
 
-`graphics.txt` (native/GRAPHICS.md) keeps the choice as `FrameRate=60` or
-`FrameRate=120`; the default is 60. For one run:
-`PETARI_GRAPHICS=FrameRate=120`.
+`graphics.txt` (native/GRAPHICS.md) keeps the choices as `FrameRate=60` or
+`FrameRate=120` (default 60) and `VSync=on` or `VSync=off` (default on). For one
+run: `PETARI_GRAPHICS=FrameRate=120,VSync=off`.
+
+The frame time report (`PETARI_FRAME_STATS=1` or `PETARI_TRACE_BOOT=1`) counts
+the steps without an extra frame and, from the display link's refresh times,
+how many refreshes each frame stayed on screen, judged by when it was presented.
+
+Measured on the built-in 120 Hz display of an M3 Pro (Good Egg stage runs,
+about 4,000 game steps each):
+
+| | V-Sync off | V-Sync on |
+| --- | --- | --- |
+| Frame rate 60, 1080p: frames on screen for exactly two refreshes | 92% | 99.7% |
+| Frame rate 120, 1080p: steps without an extra frame | 11% | 2% |
+| Frame rate 120, 1440p: steps without an extra frame | 13% | 3% |
+
+Without V-Sync the other frames stay one or three refreshes, and the extra
+frames' refreshes vary with the draw times; with V-Sync each extra frame has
+its refresh.
 
 ## How it works
 
@@ -71,9 +121,11 @@ step k: the update, then `calcAnim`, which calculates every joint and view
    number generator. Draw code that must run once per step (the lens flare's
    and Star Pointer's draw-sync tokens, the talk balloons' token, the
    snapshot for the Wii Message Board) skips the extra frame.
-4. The extra frame is presented half a step (8.3 ms) after step k-1's frame
-   (`petari_host_present_seam` in `native/app/frame_seam.cpp`), so the frames
-   come evenly at 120 per second.
+4. With V-Sync the extra frame is presented at once and shown on the refresh
+   after step k-1's frame (`syncedPresentDue` in `native/app/frame_seam.cpp`).
+   Without, it is presented half a step (8.3 ms) after step k-1's frame
+   (`petari_host_present_seam`), so that the frames come evenly at 120 per
+   second.
 
 The extra frame changes nothing in the game state that the next step reads.
 Checked: the stage smoke runs (Good Egg, Honeyhive) pass at 120, and the camera

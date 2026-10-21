@@ -14,6 +14,7 @@ namespace PetariNative::Graphics {
 namespace {
 
 std::atomic<int> gFrameRate{60};
+std::atomic<bool> gVsync{true};
 std::atomic<int> gResolution{kDisplay};
 std::atomic<int> gUpscaler{static_cast<int>(Upscaler::Fsr1)};
 std::atomic<int> gSharpening{static_cast<int>(Sharpening::Off)};
@@ -60,6 +61,12 @@ bool parseLine(const std::string& key, const std::string& value, Settings* setti
             return false;
         }
         settings->frameRate = v == "120" ? 120 : 60;
+    } else if (key == "VSync") {
+        if (v != "on" && v != "off") {
+            *message = "VSync must be on or off";
+            return false;
+        }
+        settings->vsync = v == "on";
     } else if (key == "Resolution") {
         const int resolution = parseResolution(v);
         if (resolution < 0) {
@@ -100,6 +107,7 @@ bool parseLine(const std::string& key, const std::string& value, Settings* setti
 Settings current() {
     Settings settings;
     settings.frameRate = gFrameRate.load(std::memory_order_relaxed);
+    settings.vsync = gVsync.load(std::memory_order_relaxed);
     settings.resolution = gResolution.load(std::memory_order_relaxed);
     settings.upscaler = static_cast<Upscaler>(gUpscaler.load(std::memory_order_relaxed));
     settings.sharpening = static_cast<Sharpening>(gSharpening.load(std::memory_order_relaxed));
@@ -110,6 +118,7 @@ Settings current() {
 
 void set(const Settings& settings) {
     gFrameRate.store(settings.frameRate >= 120 ? 120 : 60, std::memory_order_relaxed);
+    gVsync.store(settings.vsync, std::memory_order_relaxed);
     gResolution.store(nearestResolution(settings.resolution), std::memory_order_relaxed);
     gUpscaler.store(std::clamp(static_cast<int>(settings.upscaler), 0, static_cast<int>(Upscaler::Count) - 1),
                     std::memory_order_relaxed);
@@ -124,6 +133,7 @@ std::string serialize() {
     std::ostringstream out;
     out << "# Petari graphics settings (F1 -> Graphics; native/GRAPHICS.md)\n"
         << "FrameRate=" << settings.frameRate << "\n"
+        << "VSync=" << (settings.vsync ? "on" : "off") << "\n"
         << "Resolution=";
     if (settings.resolution == kDisplay) {
         out << "display";

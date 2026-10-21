@@ -1296,8 +1296,8 @@ void testCameraPage() {
     check(menu.phase() == HM::Phase::Mods && menu.focus() == 3, "Escape returns to the camera entry");
 }
 
-// The Graphics page (native/GRAPHICS.md): Frame rate, Resolution, the scaling filter,
-// sharpening, FXAA and stats, each changed with Left/Right or A; every change is reported once.
+// The Graphics page (native/GRAPHICS.md): Frame rate, V-Sync, Resolution, the scaling
+// filter, sharpening, FXAA and stats, each changed with Left/Right or A; every change is reported once.
 void testGraphicsPage() {
     HM::Menu menu = newMenu();
     HM::GraphicsOptions options;
@@ -1312,13 +1312,13 @@ void testGraphicsPage() {
     menu.update(press(A));
     check(menu.phase() == HM::Phase::Graphics && menu.focus() == 0 && played(HM::Sound::Select), "Graphics opens from the list");
     HM::View view = menu.view();
-    check(std::strcmp(view.title, "Graphics") == 0 && view.itemCount == 7 && std::strcmp(view.items[0].label, "Frame rate: 60") == 0 &&
-              std::strcmp(view.items[1].label, "Resolution: Display") == 0 &&
-              std::strcmp(view.items[2].label, "Upscaler: not needed at 1:1") == 0 &&
-              std::strcmp(view.items[3].label, "Sharpening: Off") == 0 && std::strcmp(view.items[4].label, "Anti-aliasing: Off") == 0 &&
-              std::strcmp(view.items[5].label, "Stats: Off") == 0 && std::strcmp(view.items[6].label, "Back") == 0,
+    check(std::strcmp(view.title, "Graphics") == 0 && view.itemCount == 8 && std::strcmp(view.items[0].label, "Frame rate: 60") == 0 &&
+              std::strcmp(view.items[1].label, "V-Sync: On") == 0 && std::strcmp(view.items[2].label, "Resolution: Display") == 0 &&
+              std::strcmp(view.items[3].label, "Upscaler: not needed at 1:1") == 0 &&
+              std::strcmp(view.items[4].label, "Sharpening: Off") == 0 && std::strcmp(view.items[5].label, "Anti-aliasing: Off") == 0 &&
+              std::strcmp(view.items[6].label, "Stats: Off") == 0 && std::strcmp(view.items[7].label, "Back") == 0,
           "the page shows its values and Back");
-    check(view.items[6].rect.y1 < view.panel.y1 && view.items[5].rect.y1 <= view.items[6].rect.y0, "seven items fit");
+    check(view.items[7].rect.y1 < view.panel.y1 && view.items[6].rect.y1 <= view.items[7].rect.y0, "eight items fit");
     check(std::strstr(view.message, "graphics.txt") != nullptr, "the message names the file before the size is known");
     menu.setGraphicsOutput(2560, 1440);
     check(std::strstr(menu.view().message, "Renders 2560 x 1440, shown at 2560 x 1440 (1:1)") != nullptr, "the message shows the sizes");
@@ -1341,20 +1341,28 @@ void testGraphicsPage() {
     menu.update(press(A));
     check(menu.takeGraphicsChange(&changed) && changed.frameRate == 60, "A switches back to 60");
     menu.update(press(Down));
+    sounds.clear();
+    menu.update(press(A));
+    check(menu.takeGraphicsChange(&changed) && !changed.vsync && std::strcmp(menu.view().items[1].label, "V-Sync: Off") == 0 &&
+              played(HM::Sound::Select),
+          "A switches V-Sync off");
+    menu.update(press(HM::Button::Right));
+    check(menu.takeGraphicsChange(&changed) && changed.vsync, "Right switches it on again");
+    menu.update(press(Down));
     menu.update(press(HM::Button::Right));
     menu.update(press(HM::Button::Right));
     menu.update(press(HM::Button::Right));
     check(menu.takeGraphicsChange(&changed) && changed.resolution == 1080 && !menu.takeGraphicsChange(&changed),
           "Right steps the resolution up, reported once");
-    check(std::strcmp(menu.view().items[1].label, "Resolution: 1080p") == 0 &&
-              std::strcmp(menu.view().items[2].label, "Upscaler: FSR 1") == 0 &&
+    check(std::strcmp(menu.view().items[2].label, "Resolution: 1080p") == 0 &&
+              std::strcmp(menu.view().items[3].label, "Upscaler: FSR 1") == 0 &&
               std::strstr(menu.view().message, "Renders 1920 x 1080, shown at 2560 x 1440 (upscaled)") != nullptr,
           "below the display's resolution FSR 1 upscales");
     menu.update(press(HM::Button::Right));
-    check(menu.graphics().resolution == 1440 && std::strcmp(menu.view().items[2].label, "Upscaler: not needed at 1:1") == 0,
+    check(menu.graphics().resolution == 1440 && std::strcmp(menu.view().items[3].label, "Upscaler: not needed at 1:1") == 0,
           "the display's own height is 1:1");
     menu.update(press(HM::Button::Right));
-    check(menu.graphics().resolution == 2160 && std::strcmp(menu.view().items[2].label, "Downscaler: Area (automatic)") == 0 &&
+    check(menu.graphics().resolution == 2160 && std::strcmp(menu.view().items[3].label, "Downscaler: Area (automatic)") == 0 &&
               std::strstr(menu.view().message, "(supersampled)") != nullptr,
           "4K on a 1440 image is supersampled");
     check(menu.takeGraphicsChange(&changed) && changed.resolution == 2160, "the resolution change is reported");
@@ -1365,11 +1373,11 @@ void testGraphicsPage() {
     menu.update(press(Up));
     menu.update(press(HM::Button::Right));
     menu.update(press(HM::Button::Right));
-    check(menu.graphics().resolution == 480 && std::strcmp(menu.view().items[1].label, "Resolution: 480p (Wii)") == 0,
+    check(menu.graphics().resolution == 480 && std::strcmp(menu.view().items[2].label, "Resolution: 480p (Wii)") == 0,
           "the list wraps from 4K over Display to 480p");
     menu.update(press(Down));
     menu.update(press(HM::Button::Left));
-    check(menu.graphics().upscaler == 2 && std::strcmp(menu.view().items[2].label, "Upscaler: Bilinear") == 0,
+    check(menu.graphics().upscaler == 2 && std::strcmp(menu.view().items[3].label, "Upscaler: Bilinear") == 0,
           "Left steps the upscaler back, wrapping to Bilinear");
     menu.update(press(A));
     check(menu.graphics().upscaler == 0, "A steps it on to FSR 1");
@@ -1383,9 +1391,9 @@ void testGraphicsPage() {
     check(menu.takeGraphicsChange(&changed) && changed.frameRate == 60 && changed.resolution == 480 && changed.upscaler == 0 &&
               changed.sharpening == 2 && changed.fxaa && changed.stats == 2,
           "sharpening steps to Medium, FXAA toggles, Stats wraps to Detailed");
-    check(std::strcmp(menu.view().items[3].label, "Sharpening: Medium") == 0 &&
-              std::strcmp(menu.view().items[4].label, "Anti-aliasing: FXAA") == 0 &&
-              std::strcmp(menu.view().items[5].label, "Stats: Detailed") == 0,
+    check(std::strcmp(menu.view().items[4].label, "Sharpening: Medium") == 0 &&
+              std::strcmp(menu.view().items[5].label, "Anti-aliasing: FXAA") == 0 &&
+              std::strcmp(menu.view().items[6].label, "Stats: Detailed") == 0,
           "the labels follow");
     menu.update(press(Plus | B));
     check(menu.phase() == HM::Phase::List && menu.focus() == 3 && played(HM::Sound::Cancel), "Escape returns to the Graphics entry");

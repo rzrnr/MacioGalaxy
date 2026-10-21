@@ -179,6 +179,13 @@ Settings current() {
 void setFrameRateStatus(const FrameRateStatus&) {}
 }  // namespace PetariNative::Graphics
 
+// The display link (display_link.cpp) needs a real display; not under test here.
+namespace PetariNative::App::DisplayLink {
+void follow(SDL_Window*, bool) {}
+void notePresent() {}
+void writeReport() {}
+}  // namespace PetariNative::App::DisplayLink
+
 // The stats overlay (stats_overlay.cpp) draws with ImGui; not under test here.
 namespace PetariNative::App::StatsOverlay {
 void addFrame(const Sample&) {}
@@ -237,6 +244,7 @@ void aurora_end_frame() {
 }
 // Frame interpolation's present timing and display check; never reached at 60 frames per second.
 void SDL_DelayPrecise(Uint64) {}
+void aurora_enable_vsync(bool) {}
 SDL_DisplayID SDL_GetDisplayForWindow(SDL_Window*) {
     return 0;
 }

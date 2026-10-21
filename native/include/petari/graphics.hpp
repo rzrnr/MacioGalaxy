@@ -32,6 +32,9 @@ constexpr int kFrameRates[] = {60, 120};
 
 struct Settings {
     int frameRate = 60;         // one of kFrameRates
+    // V-Sync: the game's frames follow the display's refreshes and wait for them
+    // (petari/display_sync.hpp, native/FRAME_RATE.md).
+    bool vsync = true;
     int resolution = kDisplay;  // one of kResolutions
     Upscaler upscaler = Upscaler::Fsr1;
     Sharpening sharpening = Sharpening::Off;

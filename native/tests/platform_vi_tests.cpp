@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -17,6 +18,7 @@
 #include <thread>
 #include <vector>
 
+#include "petari/display_sync.hpp"
 #include "petari/platform/sc.hpp"
 #include "petari/platform/vi.hpp"
 
@@ -304,6 +306,47 @@ void testRealtimeClock() {
     check(PVI::displayState().retraceCount == 0, "shutdown resets VI");
 }
 
+// Display sync (petari/display_sync.hpp): which displays the retraces follow, and on which refresh
+// the next one comes. Ticks are nanoseconds here.
+void testDisplaySync() {
+    namespace Sync = PetariNative::DisplaySync;
+    const double ntsc = 60000.0 / 1001.0;
+    const std::uint64_t hz120 = 8333333, hz60 = 16666667, hz144 = 6944444, hz75 = 13333333;
+    check(Sync::refreshesPerRetrace(hz60, ntsc, 1e9) == 1 && Sync::refreshesPerRetrace(hz120, ntsc, 1e9) == 2 &&
+              Sync::refreshesPerRetrace(16683333, ntsc, 1e9) == 1 && Sync::refreshesPerRetrace(4166667, ntsc, 1e9) == 4,
+          "60, 120, 59.94 and 240 Hz displays are followed");
+    check(Sync::refreshesPerRetrace(hz144, ntsc, 1e9) == 0 && Sync::refreshesPerRetrace(hz75, ntsc, 1e9) == 0 &&
+              Sync::refreshesPerRetrace(0, ntsc, 1e9) == 0 && Sync::refreshesPerRetrace(hz60, 50.0, 1e9) == 0,
+          "144 and 75 Hz displays, an unknown period and PAL at 60 Hz keep the timer");
+    const std::uint64_t refresh = 1000000000;
+    check(Sync::nextRetrace(refresh, hz120, refresh, ntsc, 1e9) == refresh + 2 * hz120,
+          "at 120 Hz every second refresh after the last retrace");
+    check(Sync::nextRetrace(refresh, hz120, refresh - 2 * hz120 + 300000, ntsc, 1e9) == refresh,
+          "a retrace woken a little late still takes the refresh after it");
+    check(Sync::nextRetrace(refresh, hz60, refresh - 3 * hz60, ntsc, 1e9) == refresh,
+          "after a stall the next refresh, not a burst");
+    check(Sync::nextRetrace(refresh, hz144, refresh, ntsc, 1e9) == 0, "no refresh to follow at 144 Hz");
+
+    // Reported refreshes scatter by up to a millisecond; the kept grid stays within a fraction of it.
+    Sync::refreshTicks.store(0);
+    Sync::refreshCount.store(0);
+    const long scatter[] = {800000, -700000, 300000, -900000, 600000, -200000, 900000, -800000};
+    std::uint64_t worst = 0;
+    for (int i = 0; i < 400; i++) {
+        const std::uint64_t grid = refresh + static_cast<std::uint64_t>(i) * hz120;
+        Sync::noteRefresh(grid + scatter[i % 8], hz120);
+        const std::uint64_t kept = Sync::refreshTicks.load();
+        if (i > 50) worst = std::max(worst, kept > grid ? kept - grid : grid - kept);
+    }
+    check(worst < 200000 && Sync::refreshCount.load() == 400, "the kept refresh grid smooths the reports' scatter");
+    Sync::noteRefresh(refresh + 402 * hz120 + 100000, hz120);
+    check(Sync::refreshCount.load() == 403, "a missed report still counts its refresh");
+    Sync::refreshShowing(refresh);  // before the grid: no crash
+    check(Sync::refreshShowing(Sync::refreshTicks.load() + hz120 / 2) == 404, "a present between refreshes is shown on the next");
+    Sync::refreshTicks.store(0);
+    Sync::refreshCount.store(0);
+}
+
 }  // namespace
 
 int main() {
@@ -313,6 +356,7 @@ int main() {
     testDimming();
     testMisuse();
     testRealtimeClock();
+    testDisplaySync();
     OSReport("platform VI tests passed (%d checks)\n", checks);
     return 0;
 }
