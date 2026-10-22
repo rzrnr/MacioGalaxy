@@ -238,6 +238,11 @@ bool telemetryActive() {
 void gameFrame(unsigned long, int, const char*) {}
 }  // namespace PetariNative::App::Soak
 
+// The Wii Remote host (native/input) is not linked here.
+namespace PetariNative::Input {
+void sampleNow() {}
+}  // namespace PetariNative::Input
+
 extern "C" {
 const AuroraEvent* aurora_update() {
     hostCall("update");
@@ -269,6 +274,11 @@ SDL_DisplayID SDL_GetDisplayForWindow(SDL_Window*) {
 }
 const SDL_DisplayMode* SDL_GetCurrentDisplayMode(SDL_DisplayID) {
     return nullptr;
+}
+// The early input pump before the game reads its controllers: nothing queued here.
+void SDL_PumpEvents(void) {}
+int SDL_PeepEvents(SDL_Event*, int, SDL_EventAction, Uint32, Uint32) {
+    return 0;
 }
 bool SDL_GetWindowSize(SDL_Window*, int* w, int* h) {
     *w = windowWidth;

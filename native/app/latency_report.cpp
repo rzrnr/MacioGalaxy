@@ -33,7 +33,7 @@ double ms(std::uint64_t from, std::uint64_t to) {
 }
 
 const char* stageName(int stage) {
-    static const char* const kNames[] = {"idle", "pressed", "reported", "read", "copied", "shown", "presented"};
+    static const char* const kNames[] = {"idle", "pressed", "reported", "read", "updated", "copied", "shown", "presented"};
     return stage >= 0 && stage <= Probe::Presented ? kNames[stage] : "?";
 }
 

@@ -137,6 +137,7 @@ std::atomic<Clock> gClock{Clock::Alarm};
 // A host input event (any key, including unbound keys and OS repeats, a mouse
 // button, mouse motion) since the last report tick.
 std::atomic<bool> gHostActivity{false};
+std::atomic<bool> gFreshInput{false};  // a host input event since the last report (sampleNow)
 // The previous report of channel 0, for the change test (interrupt lock).
 Report gLastReport;
 
@@ -451,6 +452,7 @@ void tickChannel(s32 chan) {
         sinkUser = gSpeakerUser;
         if (chan == 0) {
             model().setGameReads(gGameReads.load(std::memory_order_relaxed));
+            gFreshInput = false;
             input = model().nextReport(ch.calibration);
             activity = model().takeActivity();
         }
@@ -531,6 +533,20 @@ void alarmHandler(OSAlarm*, OSContext*) {
 }  // namespace
 
 // --- Host API ---
+
+void sampleNow() {
+    if (!gFreshInput.load(std::memory_order_relaxed)) {
+        return;
+    }
+    Interrupts guard;
+    if (!gAlarmRunning) {
+        return;
+    }
+    const OSTime period = OSMillisecondsToTicks(5);
+    OSCancelAlarm(&gAlarm);
+    tick();
+    OSSetPeriodicAlarm(&gAlarm, OSGetTime() + period, period, alarmHandler);
+}
 
 BoundState boundState() {
     std::lock_guard<std::mutex> lock(gHostMutex);
@@ -847,6 +863,7 @@ Binding::Device lastDevice() { return static_cast<Binding::Device>(gLastDevice.l
 void keyEvent(KeyCode code, bool down, bool repeat) {
     gHostActivity = true;
     if (down) noteDevice(Binding::Device::Key);
+    gFreshInput = true;
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (captureEvent(Binding::key(code), down, repeat)) return;
     if (down && (code == kPageUp || code == kPageDown)) {
@@ -866,6 +883,7 @@ void keyEvent(KeyCode code, bool down, bool repeat) {
 void mouseButtonEvent(MouseButton button, bool down) {
     gHostActivity = true;
     if (down) noteDevice(Binding::Device::Mouse);
+    gFreshInput = true;
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (captureEvent(Binding::mouse(button), down, false)) return;
     if (down) {
@@ -881,6 +899,7 @@ void mouseButtonEvent(MouseButton button, bool down) {
 void padButtonEvent(PadButton button, bool down) {
     gHostActivity = true;
     if (down) noteDevice(Binding::Device::Pad);
+    gFreshInput = true;
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (captureEvent(Binding::pad(button), down, false)) return;
     if (down) {
@@ -898,6 +917,7 @@ void padAxisEvent(PadAxis axis, float value) {
     if (std::fabs(value) > 0.25f) {
         gHostActivity = true;
         noteDevice(Binding::Device::Pad);
+        gFreshInput = true;
     }
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (editorCapturing()) return;
@@ -924,6 +944,7 @@ void padDisconnected() {
 
 void mouseMoved(float x, float y) {
     gHostActivity = true;
+    gFreshInput = true;
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (editorCapturing()) {
         gMouseX = x;
