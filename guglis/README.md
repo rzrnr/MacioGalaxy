@@ -7,19 +7,50 @@ Branch auf meinem Fork (rzrnr/MacioGalaxy, Remote `fork`).
 
 ## Was drin ist
 
+Drei Arten von Änderungen, getrennt gehalten:
+
+- **Bugfixes** machen das Spiel so, wie es auf der Wii war, oder beheben Fehler des Ports. Sie gehören
+  alle ins offizielle Repo.
+- **Allgemeine Verbesserungen** ändern nichts am Spielinhalt, nur Bedienung, Darstellung und Technik.
+  Was davon allgemein nützlich ist, geht als Vorschlag ans offizielle Repo.
+- **Inhalts-Mods** verändern oder erweitern das Spiel selbst. Sie sind standardmäßig aus und bleiben
+  hier.
+
+### Bugfixes
+
+| Änderung | Was sie macht | Fürs offizielle Repo |
+| --- | --- | --- |
+| Grastextur Honeyhive | Negativer Textur-LOD-Bias wird auf arm64 richtig übersetzt, der Rasen ist wieder texturiert | vorgeschlagen: PR [#3](https://github.com/classicrob/MacioGalaxy/pull/3), Branch `fix-negative-lod-bias` |
+| Gespräche im Observatorium | Die Bedingungen in den Gesprächen standen in falscher Reihenfolge, deshalb lasen die Figuren im Kometen-Observatorium ihren Spielfortschritt nie: Der Brief-Toad behielt seinen Brief, Toads, Rosalina und Lumas sagten nur ihre ersten Sätze. Jetzt wie im Original (geprüft an `main.dol`) | PR in Vorbereitung |
+| Speicher macOS-fremder Bibliotheken | Speicher, den macOS-Bibliotheken (CoreAudio, Core Animation) auf dem Spiel-Thread anlegen, landet nicht mehr im Wii-Speicher. Vorher stürzte das Spiel ab, sobald macOS ihn auf einem eigenen Thread freigab, zum Beispiel mit AirPods beim ersten Ton | PR in Vorbereitung |
+| CoreAudio-Linkfix | Ohne ihn bricht der Build auf diesem Mac beim Linken ab | noch nicht vorgeschlagen |
+
+### Allgemeine Verbesserungen
+
 | Änderung | Was sie macht | Fürs offizielle Repo |
 | --- | --- | --- |
 | Lautstärkeregler (2 Commits) | F1-Menü: Schieberegler in 5-%-Schritten über „Restart from Title“, gespeichert in `sound.txt` | vorgeschlagen: PR [#1](https://github.com/classicrob/MacioGalaxy/pull/1), Branch `volume-slider` |
 | Vollbild | Cmd+Return schaltet echtes Vollbild, der Mac-Mauszeiger ist dort ausgeblendet, gespeichert in `display.txt` | vorgeschlagen: PR [#2](https://github.com/classicrob/MacioGalaxy/pull/2), Branch `fullscreen-cursor` |
-| Grastextur Honeyhive | Negativer Textur-LOD-Bias wird auf arm64 richtig übersetzt, der Rasen ist wieder texturiert | vorgeschlagen: PR [#3](https://github.com/classicrob/MacioGalaxy/pull/3), Branch `fix-negative-lod-bias` |
-| Gespräche im Observatorium | Die Bedingungen in den Gesprächen standen in falscher Reihenfolge, deshalb lasen die Figuren im Kometen-Observatorium ihren Spielfortschritt nie: Der Brief-Toad behielt seinen Brief, Toads, Rosalina und Lumas sagten nur ihre ersten Sätze. Jetzt wie im Original (geprüft an `main.dol`) | noch nicht vorgeschlagen |
-| Speicher macOS-fremder Bibliotheken | Speicher, den macOS-Bibliotheken (CoreAudio, Core Animation) auf dem Spiel-Thread anlegen, landet nicht mehr im Wii-Speicher. Vorher stürzte das Spiel ab, sobald macOS ihn auf einem eigenen Thread freigab, zum Beispiel mit AirPods beim ersten Ton | noch nicht vorgeschlagen |
-| CoreAudio-Linkfix | Ohne ihn bricht der Build auf diesem Mac beim Linken ab | noch nicht vorgeschlagen |
+| Instant pointer | Schalter unter F1 → Mods → „Instant pointer“: Der Star Pointer wird in jedem Bild an der aktuellen Mausposition gezeichnet, ohne die Wiimote-Glättung. Details in `native/MODS.md` | noch nicht vorgeschlagen |
+| Grafik-Seite | F1 → Graphics: Renderauflösung Display, 480p (Wii), 720p, 1080p, 1440p oder 4K; Upscaling mit FSR 1, Bicubic oder Bilinear; RCAS-Schärfe; FXAA; Statistik-Overlay mit FPS, Frame-Zeit-Graph und FPS im Fenstertitel. Details in `native/GRAPHICS.md` | noch nicht vorgeschlagen |
+| 120 FPS mit Zwischenbildern | F1 → Graphics → Frame rate 120 (Prototyp): ein zusätzliches Bild zwischen zwei Spielschritten, Kamera und Modelle auf halbem Weg. Details in `native/FRAME_RATE.md` | noch nicht vorgeschlagen |
+| V-Sync | F1 → Graphics → V-Sync (Off, On, Low latency, Variable für ProMotion im Vollbild): Der Spieltakt folgt dem Monitor, jedes Bild steht gleich lang, gegen Mikroruckler | PR in Vorbereitung (On und Low latency) |
+| Input latency | F1 → Graphics → Input latency Reduced: Jeder Spielschritt wird im selben Bild gezeichnet statt im nächsten, dazu frischere Eingaben; eine Taste ist rund 17 ms früher im Bild | PR in Vorbereitung |
+
+### Inhalts-Mods
+
+| Änderung | Was sie macht | Fürs offizielle Repo |
+| --- | --- | --- |
 | FineFur | Mod (F1 → Mods → „Fine fur“): Fell mit halb so breiten Haaren, schaltet sofort um. Details in `native/MODS.md` | noch nicht vorgeschlagen |
 | Eigene Galaxien | Mods können ganze Galaxien hinzufügen: Miniatur in einer Kuppel, Namen und Dialoge aus einer `messages.txt`, neue Objekte mit eigener Logik. Ihr Fortschritt liegt getrennt in `ModProgress/`, `GameData.bin` bleibt unberührt. Beispiel „Guglis Testgalaxie“: `python3 native/tools/make_example_galaxy.py`, dann F1 → Mods → Mod folder. Eigener Planet aus Blender mit Anflug-Kamerafahrt, kleiner Aufgabe und lila Stern (eigener Zähler, getrennt von den Hauptsternen): `python3 native/mods/GuglisPlanet/build.py`. Details in `native/CUSTOM_GALAXY.md` | noch nicht vorgeschlagen |
-| Instant pointer | Mod (F1 → Mods → „Instant pointer“): Der Star Pointer wird in jedem Bild an der aktuellen Mausposition gezeichnet, ohne die Wiimote-Glättung. Details in `native/MODS.md` | noch nicht vorgeschlagen |
+
+### Werkzeuge und Kleinigkeiten
+
+Nur für diesen Fork, nicht fürs offizielle Repo gedacht:
+
+| Änderung | Was sie macht | Fürs offizielle Repo |
+| --- | --- | --- |
 | Zuschau-Fenster | `PETARI_SMOKE_WATCH=1` zeigt Testläufe in einem Fenster ohne Fokus und ohne Eingabe | noch nicht vorgeschlagen |
-| Grafik-Seite | F1 → Graphics: Bildrate 60 oder 120 mit Zwischenbildern (Prototyp, `native/FRAME_RATE.md`); V-Sync in vier Stufen (Off, On, Low latency, Variable für ProMotion im Vollbild), bei dem der Spieltakt dem Monitor folgt, gegen Mikroruckler; Input latency Reduced, bei der jeder Spielschritt im selben Bild gezeichnet wird statt im nächsten (ein Bild weniger Verzögerung); Renderauflösung Display, 480p (Wii), 720p, 1080p, 1440p oder 4K; Upscaling mit FSR 1, Bicubic oder Bilinear; RCAS-Schärfe; FXAA; Statistik-Overlay mit FPS, Frame-Zeit-Graph und FPS im Fenstertitel. Details in `native/GRAPHICS.md` | noch nicht vorgeschlagen |
 | App-Icon | Die gebaute App bekommt ein eigenes Icon: ein goldener Stern vor der Feuerradgalaxie M101 (Bildnachweis unten). Quelle ist das Icon-Composer-Paket `guglis/icon/SuperMarioGalaxy.icon`, das beim Bauen kompiliert wird | noch nicht vorgeschlagen |
 
 `git log --oneline origin/main..guglis-edits` zeigt die Commits.
