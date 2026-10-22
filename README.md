@@ -151,6 +151,14 @@ Both use the game's own collection and shooting, so counters, sounds and stuns
 behave normally. Details: [native/MODS.md](native/MODS.md). With every mod off
 the game behaves as the original.
 
+## Input latency
+
+Input reaches the game right before each step reads its controllers, not only once
+per frame after the present. `PETARI_INPUT_LATENCY=reduced` also computes each step
+first and draws it in the same frame instead of the next, a frame (16.7 ms) sooner
+on screen; without it the loop keeps the Wii's order. Details:
+[native/INPUT_LATENCY.md](native/INPUT_LATENCY.md).
+
 ## Known issues
 
 - This is a development build. Automated testing enters every one of the 135

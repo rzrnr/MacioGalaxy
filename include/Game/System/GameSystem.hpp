@@ -37,6 +37,9 @@ public:
     void prepareReset();
     bool isPreparedReset() const;
     void frameLoop();
+#ifdef PETARI_NATIVE
+    void frameLoopInputFirst();
+#endif
     void draw();
     void update();
     void updateSceneController();

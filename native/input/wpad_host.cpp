@@ -133,6 +133,7 @@ std::atomic<Clock> gClock{Clock::Alarm};
 // A host input event (any key, including unbound keys and OS repeats, a mouse
 // button, mouse motion) since the last report tick.
 std::atomic<bool> gHostActivity{false};
+std::atomic<bool> gFreshInput{false};  // a host input event since the last report (sampleNow)
 // The previous report of channel 0, for the change test (interrupt lock).
 Report gLastReport;
 
@@ -431,6 +432,7 @@ void tickChannel(s32 chan) {
         sink = gSpeakerSink;
         sinkUser = gSpeakerUser;
         if (chan == 0) {
+            gFreshInput = false;
             input = model().nextReport(ch.calibration);
             activity = model().takeActivity();
         }
@@ -511,6 +513,20 @@ void alarmHandler(OSAlarm*, OSContext*) {
 }  // namespace
 
 // --- Host API ---
+
+void sampleNow() {
+    if (!gFreshInput.load(std::memory_order_relaxed)) {
+        return;
+    }
+    Interrupts guard;
+    if (!gAlarmRunning) {
+        return;
+    }
+    const OSTime period = OSMillisecondsToTicks(5);
+    OSCancelAlarm(&gAlarm);
+    tick();
+    OSSetPeriodicAlarm(&gAlarm, OSGetTime() + period, period, alarmHandler);
+}
 
 BoundState boundState() {
     std::lock_guard<std::mutex> lock(gHostMutex);
@@ -706,6 +722,7 @@ void injectActionPress(Action action) {
 
 void keyEvent(KeyCode code, bool down, bool repeat) {
     gHostActivity = true;
+    gFreshInput = true;
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (down && !repeat) {
         countModPress(Binding::key(code));
@@ -718,6 +735,7 @@ void keyEvent(KeyCode code, bool down, bool repeat) {
 
 void mouseButtonEvent(MouseButton button, bool down) {
     gHostActivity = true;
+    gFreshInput = true;
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (down) {
         countModPress(Binding::mouse(button));
@@ -730,6 +748,7 @@ void mouseButtonEvent(MouseButton button, bool down) {
 
 void padButtonEvent(PadButton button, bool down) {
     gHostActivity = true;
+    gFreshInput = true;
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (down) {
         countModPress(Binding::pad(button));
@@ -744,6 +763,7 @@ void padAxisEvent(PadAxis axis, float value) {
     // A resting stick's noise is not activity; a deliberate push is.
     if (std::fabs(value) > 0.25f) {
         gHostActivity = true;
+        gFreshInput = true;
     }
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (CameraSettings::photoEnabled() && CameraSettings::photoCapturing()) {
@@ -769,6 +789,7 @@ void padDisconnected() {
 
 void mouseMoved(float x, float y) {
     gHostActivity = true;
+    gFreshInput = true;
     std::lock_guard<std::mutex> lock(gHostMutex);
     if (CameraSettings::photoEnabled() && CameraSettings::photoCapturing()) {
         // Any mouse button held: drag to look (0.15 degrees per point).

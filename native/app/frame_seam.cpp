@@ -3,12 +3,15 @@
 #include <aurora/aurora.h>
 #include <aurora/event.h>
 
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_video.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 extern "C" uint64_t petari_gx_pipeline_manifest_failure_count();
@@ -32,6 +35,8 @@ extern "C" void petari_gx_pipeline_report();
 #include "petari/frame_telemetry.hpp"
 #include "petari/home_menu.hpp"
 #include "petari/host_allocation.hpp"
+#include "petari/input.hpp"
+#include "petari/latency_probe.hpp"
 #include "petari/test_fixture.hpp"
 
 namespace PetariNative::App {
@@ -46,6 +51,15 @@ Rect gLastImage;
 float gLastWindowWidth = -1.0f;
 float gLastWindowHeight = -1.0f;
 bool gWarnedImageRect = false;
+
+// Input that came since the seam's event pump is handed to the game before it reads its
+// controllers (takeInputEarly); the seam's own pump then skips those events for the game.
+std::uint64_t gEarlyInputNs = 0;  // the newest input event handed over early
+
+bool inputEvent(Uint32 type) {
+    return (type >= SDL_EVENT_KEY_DOWN && type <= SDL_EVENT_MOUSE_WHEEL) ||
+           (type >= SDL_EVENT_GAMEPAD_AXIS_MOTION && type <= SDL_EVENT_GAMEPAD_BUTTON_UP);
+}
 
 // Opt-in start-up telemetry (PETARI_TRACE_BOOT=1): the first frame that
 // reaches the seam, then one line every kTraceInterval frames. Observation only.
@@ -459,7 +473,9 @@ void handleEvents(const AuroraEvent* event) {
                              static_cast<unsigned>(event->sdl.adevice.which),
                              event->sdl.adevice.recording ? " (recording)" : "");
             }
-            Events::input(event->sdl);
+            if (!inputEvent(event->sdl.type) || gEarlyInputNs == 0 || event->sdl.common.timestamp > gEarlyInputNs) {
+                Events::input(event->sdl);  // not already handed over before the game read its controllers
+            }
             break;
         default:
             break;
@@ -592,6 +608,39 @@ void reportFrameStats() {
 
 using namespace PetariNative::App;
 
+namespace {
+// Input that came since the seam pumped events, handed to the game before it reads its
+// controllers (native/INPUT_LATENCY.md): keys, the mouse and controllers only, in the order they
+// came. They stay queued for the seam's aurora_update (ImGui and window handling see them
+// there), which then skips them for the game. Input::sampleNow puts them into a Wii Remote
+// report at once instead of up to 5 ms later. Without this a key pressed just after the seam
+// waited for the next frame's seam.
+void takeInputEarly() {
+    PetariNative::HostAllocationScope host;  // SDL and AppKit allocate while pumping
+    SDL_PumpEvents();
+    SDL_Event events[96];
+    int count = std::max(SDL_PeepEvents(events, 64, SDL_PEEKEVENT, SDL_EVENT_KEY_DOWN, SDL_EVENT_MOUSE_WHEEL), 0);
+    count += std::max(SDL_PeepEvents(events + count, 32, SDL_PEEKEVENT, SDL_EVENT_GAMEPAD_AXIS_MOTION, SDL_EVENT_GAMEPAD_BUTTON_UP), 0);
+    std::sort(events, events + count, [](const SDL_Event& a, const SDL_Event& b) { return a.common.timestamp < b.common.timestamp; });
+    for (int i = 0; i < count; i++) {
+        if (events[i].common.timestamp > gEarlyInputNs) {
+            Events::input(events[i]);
+            gEarlyInputNs = events[i].common.timestamp;
+        }
+    }
+    PetariNative::Input::sampleNow();
+}
+}  // namespace
+
+// PETARI_INPUT_LATENCY=reduced: the loop computes each step first and draws it at once.
+extern "C" int petari_host_input_first(void) {
+    static const bool reduced = [] {
+        const char* value = std::getenv("PETARI_INPUT_LATENCY");
+        return value != nullptr && std::strcmp(value, "reduced") == 0;
+    }();
+    return reduced ? 1 : 0;
+}
+
 extern "C" void petari_host_frame_mark(int mark) {
     const std::uint64_t now = Telemetry::nowNs();
     if (mark == PETARI_FRAME_MARK_RETRACE_DONE) {
@@ -599,8 +648,11 @@ extern "C" void petari_host_frame_mark(int mark) {
         // The retrace that ended the wait, if one came after the seam.
         const std::uint64_t retrace = Telemetry::lastRetraceNs.load(std::memory_order_relaxed);
         gTiming.retraceWake = retrace > gTiming.lastExit && retrace <= now ? now - retrace : 0;
+        takeInputEarly();
     } else if (mark == PETARI_FRAME_MARK_END_FRAME) {
         gTiming.endFrame = now;
+    } else if (mark == PETARI_FRAME_MARK_UPDATED) {
+        PetariNative::LatencyProbe::noteUpdated();
     }
 }
 
