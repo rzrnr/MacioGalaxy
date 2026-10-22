@@ -84,7 +84,8 @@ run in the background) and your disc, nothing downloaded.
 
 - **The planet** is made by `native/mods/GuglisPlanet/planet_blender.py` and kept as
   `ModSources/GuglisPlanet/GuglisTestPlanet.blend` in the user directory: a hilly ball
-  of grass with a winding soil path and four cut-stone pillars, 12 m across (1 m in
+  of grass with a winding soil path (the sphere is cut along the path's edge, so the
+  edge follows its curve) and four cut-stone pillars, 24 m across (1 m in
   Blender is 100 units in the game; Mario is 1.6 m). Edit it there and run
   `build.py --from-blend`. The rules: meshes in the collection "Planet", material slots
   named after the template's materials (`Green_v`, `Ground_v`, `CutStone_v`, Stardust
@@ -105,9 +106,11 @@ run in the background) and your disc, nothing downloaded.
   brings the scenario's star out above the tallest pillar, seen by its own camera
   (`e:パワースター固有001`), and it flies down beside the pillar.
 - **The purple star:** every star of a mod's galaxy is purple (the star model's unused
-  colour slot, given a purple texture in the mod's `ObjectData/PowerStar.arc`), and
-  a purple counter under the star count shows the purple stars of the file while you
-  are in a mod's galaxy. They count apart from the game's stars, as below.
+  colour slot, given a purple texture in the mod's `ObjectData/PowerStar.arc`), also
+  on its way back to the observatory. A second counter under the game's star counter
+  (`src/Game/Screen/PurpleStarCounter.cpp`, the star counter's layout with a purple
+  icon, `LayoutData/PurpleStars.arc` in the mod) shows the file's purple stars
+  wherever the star counter shows; they count apart from the game's stars, as below.
 - **A placed object a mod brings** (`ObjectData/<Name>.arc` not on the disc, no class
   of its own) is a planet: a model and, when the archive has one, its collision.
 
@@ -153,8 +156,9 @@ a new galaxy) changes that level, and its stars count as the game's.
   `AstroDomeOrbit.cpp`: `Mini<Galaxy>` miniatures, six to eight orbits in a dome.
 - `AudSceneMgr.cpp`, `AudStageBgmWrap.cpp`: the borrowed sounds and music.
 - `MessageUtil.cpp`: "???" for a galaxy name no file supplies.
-- `PowerStar.cpp`: purple stars in mods' galaxies; `native/app/stats_overlay.cpp`: their
-  counter; `GameDataFunction.cpp`: the count.
+- `PowerStar.cpp`: purple stars in mods' galaxies, and the one brought back to the
+  observatory; `PurpleStarCounter.cpp`, `CounterLayoutController.cpp`: their counter;
+  `GameDataFunction.cpp`: the count.
 - `NameObjFactory.cpp`: a mod's own object archive placed by name is a planet (`PlanetMap`);
   `GuglisStarAppear`, a challenge's star.
 
@@ -162,4 +166,5 @@ Testing a mod's galaxy without the observatory: `--test-fixture stage` with
 `PETARI_STAGE=<Galaxy>` accepts a galaxy that a mod in the user directory adds. The
 smoke run's `PETARI_MECHANIC=purplestar` plays the planet's challenge
 (`PETARI_STAGE=GuglisPlanetGalaxy`, `PETARI_MOD_FOLDERS=GuglisPlanet`): it breaks the three
-boxes and collects the purple star.
+boxes and collects the purple star. With `PETARI_STAGE_AFTER_FRAMES=<frames>` the run
+goes on that long afterwards, tapping A, through the return to the observatory.

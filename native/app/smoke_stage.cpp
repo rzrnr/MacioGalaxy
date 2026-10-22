@@ -107,6 +107,7 @@ bool stageEnabledFromEnvironment(StageConfig* config) {
     config->stage = stage;
     config->scenario = static_cast<int>(number);
     config->tailFrames = environmentNumber("PETARI_STAGE_IDLE_FRAMES", 600);
+    config->afterFrames = environmentNumber("PETARI_STAGE_AFTER_FRAMES", 0);
     config->probe = environmentNumber("PETARI_STAGE_PROBE", 0) != 0;
     if (const char* warp = std::getenv("PETARI_STAGE_WARP"); warp != nullptr && warp[0] != '\0') {
         if (std::strncmp(warp, "name:", 5) == 0 && warp[5] != '\0') {
@@ -219,6 +220,22 @@ Step StageDriver::step(const Observation& o) {
         }
     }
     if (mResult != Result::Running) {
+        return step;
+    }
+    if (mAfterUntil != 0) {
+        if (o.scene != mLastScene || o.stage != mLastStage) {
+            note("after the mechanic: scene " + o.scene + (o.stage.empty() ? "" : " stage " + o.stage));
+            mLastScene = o.scene;
+            mLastStage = o.stage;
+        }
+        if (mFrame >= mAfterUntil) {
+            mAfterUntil = 0;
+            finish(mAfterResult, mAfterReason + "; then followed " + std::to_string(mConfig.afterFrames) + " frames, ending in scene " +
+                                     o.scene + " stage " + o.stage,
+                   step);
+        } else if (mFrame % 40 == 0) {
+            tap(Button::A, 6, step);
+        }
         return step;
     }
 
@@ -415,7 +432,14 @@ Step StageDriver::step(const Observation& o) {
         const Result result = mMechanic->step(o, mFrame, step);
         for (const std::string& line : mMechanic->log()) note(line);
         mMechanic->clearLog();
-        if (result != Result::Running) {
+        if (result == Result::Pass && mConfig.afterFrames > 0) {
+            mMechanic->releaseAll(step);
+            mAfterResult = result;
+            mAfterReason = "mechanic " + mMechanic->reason();
+            mAfterUntil = mFrame + mConfig.afterFrames;
+            note("mechanic passed; following " + std::to_string(mConfig.afterFrames) + " more frames");
+            PetariNative::EfbDump::mark("after");
+        } else if (result != Result::Running) {
             finish(result, "mechanic " + mMechanic->reason(), step);
         }
     } else {
