@@ -296,6 +296,17 @@ bool threadStart(const std::string& name) {
            name == "_pthread_start" || name == "thread_start" || name == "petari_game_main";
 }
 
+// Code outside the game's executable (macOS frameworks such as CoreAudio, other libraries) is host
+// code, whatever its names look like: CoreAudio's C++ (HALObject::AddPropertyListener) read as a
+// game class, so the vectors it grew on a game thread came from the JKR heaps, and freeing them on
+// its own audio thread, which has no OS thread for the heap's mutex, crashed. With AirPods as the
+// output, macOS sets up its audio session that way at the first sound.
+bool outsideMainImage(std::uintptr_t address) {
+    static const void* const main = _dyld_get_image_header(0);
+    Dl_info info{};
+    return dladdr(reinterpret_cast<void*>(address - 1), &info) != 0 && info.dli_fbase != main;
+}
+
 bool hostCode(const std::string& name) {
     static const char* const kQualified[] = {"aurora::", "PetariNative::", "dawn::", "dawn_native::", "wgpu::", "webgpu::",
                                              "tint::", "fmt::", "absl::", "tracy::", "ImGui", "Rml::", "nod::",
@@ -398,7 +409,7 @@ bool classify(bool released) {
         // Game C++ is mangled, and C cannot call operator new: an unmangled
         // function here is native code behind a C entry point (an SDK
         // replacement such as DCStoreRange, a petari_* ABI), whatever its name.
-        host = hostCode(name) || cLinkage;
+        host = hostCode(name) || cLinkage || outsideMainImage(frames[i]);
         site = function;
         break;
     }
@@ -555,7 +566,7 @@ CodeKind classifyCode(std::uintptr_t address, std::string* name) {
     } else if (allocatorOrLibrary(function)) {
         kind = CodeKind::Library;
     } else {
-        kind = hostCode(function) || cLinkage ? CodeKind::Host : CodeKind::Game;
+        kind = hostCode(function) || cLinkage || outsideMainImage(address) ? CodeKind::Host : CodeKind::Game;
     }
     if (name != nullptr) {
         *name = std::move(function);
