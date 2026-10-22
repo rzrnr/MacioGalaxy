@@ -131,6 +131,14 @@ pauses, and **`** (the key under Escape) or **F1** opens the native Home menu
 [native/CONTROLS.md](native/CONTROLS.md). Controller support follows SDL3's
 standard layout but has not yet been tested with physical hardware.
 
+## V-Sync
+
+The game's frame clock follows the display's refreshes and every frame is shown
+for the same time, so frames do not drift against a 60 or 120 Hz display
+(micro-stutter). `PETARI_VSYNC=lowlatency` moves the clock as close to the
+refreshes as the frames' draw times allow; `PETARI_VSYNC=off` shows frames at
+once, as before. Details: [native/VSYNC.md](native/VSYNC.md).
+
 ## Saves
 
 Unlocked saves (the observatory restored, so you can jump straight to later

@@ -6,6 +6,7 @@
 #include <aurora/aurora.h>
 #include <aurora/event.h>
 
+#include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
 
 #include <chrono>
@@ -185,6 +186,13 @@ bool telemetryActive() {
 void gameFrame(unsigned long, int, const char*) {}
 }  // namespace PetariNative::App::Soak
 
+// The display link (display_link.cpp) needs a real display; not under test here.
+namespace PetariNative::App::DisplayLink {
+void follow(SDL_Window*, bool) {}
+void notePresent() {}
+void writeReport() {}
+}  // namespace PetariNative::App::DisplayLink
+
 extern "C" {
 const AuroraEvent* aurora_update() {
     hostCall("update");
@@ -209,6 +217,9 @@ bool aurora_begin_frame() {
 void aurora_end_frame() {
     hostCall("end");
 }
+// V-Sync's present wait and present mode (native/VSYNC.md); no display link runs here.
+void SDL_DelayPrecise(Uint64) {}
+void aurora_enable_vsync(bool) {}
 bool SDL_GetWindowSize(SDL_Window*, int* w, int* h) {
     *w = windowWidth;
     *h = windowHeight;
