@@ -61,6 +61,10 @@ char gReportRing[kReportLines][kLineLength];
 std::atomic<unsigned> gReportNext{0};
 char gPanicMessage[512];
 std::atomic<bool> gHavePanic{false};
+// The last fatal host message (Crash::recordFatalMessage), printed in full.
+char gFatalMessage[4096];
+std::size_t gFatalLength;
+std::atomic<bool> gHaveFatal{false};
 
 char gReportPath[1024];
 bool gInstalled;
@@ -107,6 +111,17 @@ void writeReport(int sig, siginfo_t* info, void* ucontextRaw) {
     emit(fd, "signal: %s (%d), code %d, fault address %p\n", signalName(sig), sig, info ? info->si_code : 0, info ? info->si_addr : nullptr);
     if (gHavePanic.load()) {
         emit(fd, "last panic: %s\n", gPanicMessage);
+    }
+    if (gHaveFatal.load()) {
+        // emit() formats into 512 bytes; the message (a Dawn error with its
+        // WGSL excerpt) can be longer, so it is written as it is.
+        emit(fd, "fatal message:\n");
+        ssize_t w = ::write(STDERR_FILENO, gFatalMessage, gFatalLength);
+        if (fd >= 0) {
+            w = ::write(fd, gFatalMessage, gFatalLength);
+        }
+        (void)w;
+        emit(fd, "\n");
     }
     OSThread* bound = OS::boundThread();
     OSThread* running = OSGetCurrentThread();
@@ -205,6 +220,13 @@ void recordPanic(const char* message) {
 }  // namespace PetariNative::Platform::OS
 
 namespace PetariNative::Platform::Crash {
+
+void recordFatalMessage(const char* module, const char* message, std::size_t length) {
+    const int n = std::snprintf(gFatalMessage, sizeof(gFatalMessage), "  [%s] %.*s", module ? module : "?",
+                                static_cast<int>(std::min<std::size_t>(length, sizeof(gFatalMessage))), message ? message : "");
+    gFatalLength = n < 0 ? 0 : std::min<std::size_t>(static_cast<std::size_t>(n), sizeof(gFatalMessage) - 1);
+    gHaveFatal.store(true);
+}
 
 void install(const std::filesystem::path& reportDirectory) {
     if (gInstalled) {
