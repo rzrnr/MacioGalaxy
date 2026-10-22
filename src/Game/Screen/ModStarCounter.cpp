@@ -1,5 +1,5 @@
-// The purple star counter (Game/Screen/PurpleStarCounter.hpp), as StarCounter.
-#include "Game/Screen/PurpleStarCounter.hpp"
+// The counter of the mods' stars (Game/Screen/ModStarCounter.hpp), as StarCounter.
+#include "Game/Screen/ModStarCounter.hpp"
 #include "Game/LiveActor/Nerve.hpp"
 #include "Game/Screen/CountUpPaneRumbler.hpp"
 #include "Game/Screen/CounterLayoutAppearer.hpp"
@@ -9,38 +9,38 @@
 #include "Game/Util/ObjUtil.hpp"
 #include "Game/Util/SceneUtil.hpp"
 
-namespace NrvPurpleStarCounter {
-    NEW_NERVE(PurpleStarCounterNrvAppear, PurpleStarCounter, Appear);
-    NEW_NERVE(PurpleStarCounterNrvWait, PurpleStarCounter, Wait);
-    NEW_NERVE(PurpleStarCounterNrvCountUp, PurpleStarCounter, CountUp);
-    NEW_NERVE(PurpleStarCounterNrvDisappear, PurpleStarCounter, Disappear);
-};  // namespace NrvPurpleStarCounter
+namespace NrvModStarCounter {
+    NEW_NERVE(ModStarCounterNrvAppear, ModStarCounter, Appear);
+    NEW_NERVE(ModStarCounterNrvWait, ModStarCounter, Wait);
+    NEW_NERVE(ModStarCounterNrvCountUp, ModStarCounter, CountUp);
+    NEW_NERVE(ModStarCounterNrvDisappear, ModStarCounter, Disappear);
+};  // namespace NrvModStarCounter
 
 namespace {
     // One line below the star counter (layout units, y down).
     const TVec2f cOffset(0.0f, 44.0f);
 }  // namespace
 
-PurpleStarCounter::PurpleStarCounter()
-    : LayoutActor("紫スターカウンタ", true), mPowerStarNum(0), mLayoutAppearer(nullptr), mPaneRumbler(nullptr) {
+ModStarCounter::ModStarCounter()
+    : LayoutActor("Modスターカウンタ", true), mPowerStarNum(0), mLayoutAppearer(nullptr), mPaneRumbler(nullptr) {
 }
 
-bool PurpleStarCounter::isExistLayout() {
-    return MR::isFileExist("/LayoutData/PurpleStars.arc", false);
+bool ModStarCounter::isExistLayout() {
+    return MR::isFileExist("/LayoutData/GuglisStars.arc", false);
 }
 
-void PurpleStarCounter::init(const JMapInfoIter& rIter) {
-    initLayoutManager("PurpleStars", 2);
+void ModStarCounter::init(const JMapInfoIter& rIter) {
+    initLayoutManager("GuglisStars", 2);
     MR::createAndAddPaneCtrl(this, "Counter", 1);
 
     mLayoutAppearer = new CounterLayoutAppearer(this, TVec2f(-50.0f, 0.0f));
     mPaneRumbler = new CountUpPaneRumbler(this, "Counter");
 
     MR::connectToSceneLayout(this);
-    initNerve(GET_NERVE(PurpleStarCounter, PurpleStarCounterNrvAppear));
+    initNerve(GET_NERVE(ModStarCounter, ModStarCounterNrvAppear));
 }
 
-void PurpleStarCounter::appear() {
+void ModStarCounter::appear() {
     mLayoutAppearer->appear(cOffset);
     mPaneRumbler->reset();
     MR::startAnim(this, "Wait", 1);
@@ -48,38 +48,38 @@ void PurpleStarCounter::appear() {
     mPowerStarNum = GameDataFunction::getModPowerStarNum();
 
     MR::setTextBoxNumberRecursive(this, "Counter", mPowerStarNum);
-    setNerve(GET_NERVE(PurpleStarCounter, PurpleStarCounterNrvAppear));
+    setNerve(GET_NERVE(ModStarCounter, ModStarCounterNrvAppear));
     LayoutActor::appear();
     MR::requestMovementOn(this);
 }
 
-void PurpleStarCounter::disappear() {
+void ModStarCounter::disappear() {
     MR::requestMovementOn(this);
-    setNerve(GET_NERVE(PurpleStarCounter, PurpleStarCounterNrvDisappear));
+    setNerve(GET_NERVE(ModStarCounter, ModStarCounterNrvDisappear));
 }
 
-bool PurpleStarCounter::isWait() const {
-    return isNerve(GET_NERVE(PurpleStarCounter, PurpleStarCounterNrvWait));
+bool ModStarCounter::isWait() const {
+    return isNerve(GET_NERVE(ModStarCounter, ModStarCounterNrvWait));
 }
 
-void PurpleStarCounter::control() {
+void ModStarCounter::control() {
     mLayoutAppearer->update();
     mPaneRumbler->update();
 }
 
-void PurpleStarCounter::exeAppear() {
+void ModStarCounter::exeAppear() {
     if (mLayoutAppearer->isAppeared()) {
-        setNerve(GET_NERVE(PurpleStarCounter, PurpleStarCounterNrvWait));
+        setNerve(GET_NERVE(ModStarCounter, ModStarCounterNrvWait));
     }
 }
 
-void PurpleStarCounter::exeWait() {
+void ModStarCounter::exeWait() {
     if (mPowerStarNum < GameDataFunction::getModPowerStarNum()) {
-        setNerve(GET_NERVE(PurpleStarCounter, PurpleStarCounterNrvCountUp));
+        setNerve(GET_NERVE(ModStarCounter, ModStarCounterNrvCountUp));
     }
 }
 
-void PurpleStarCounter::exeCountUp() {
+void ModStarCounter::exeCountUp() {
     if (MR::isFirstStep(this)) {
         mPowerStarNum++;
 
@@ -89,11 +89,11 @@ void PurpleStarCounter::exeCountUp() {
     }
 
     if (MR::isAnimStopped(this, 0) && !mPaneRumbler->isRumbling()) {
-        setNerve(GET_NERVE(PurpleStarCounter, PurpleStarCounterNrvWait));
+        setNerve(GET_NERVE(ModStarCounter, ModStarCounterNrvWait));
     }
 }
 
-void PurpleStarCounter::exeDisappear() {
+void ModStarCounter::exeDisappear() {
     if (MR::isFirstStep(this)) {
         mLayoutAppearer->disappear();
     }

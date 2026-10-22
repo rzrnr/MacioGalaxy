@@ -5,13 +5,14 @@
 class CountUpPaneRumbler;
 class CounterLayoutAppearer;
 
-// The purple stars (the stars of mods' galaxies, native/CUSTOM_GALAXY.md) under the game's star
-// counter, shown and hidden with it. Its layout, LayoutData/PurpleStars.arc, is the star counter's
-// with a purple star icon; a mod with galaxies brings it, and without it there is no counter.
+// The stars of mods' galaxies (native/CUSTOM_GALAXY.md) under the game's star counter, shown and
+// hidden with it. Its layout, LayoutData/GuglisStars.arc, is the star counter's with a star icon in
+// the mods' theme colour (native/mods/theme.py); a mod with galaxies brings it, and without it there
+// is no counter.
 // Not part of the original game.
-class PurpleStarCounter : public LayoutActor {
+class ModStarCounter : public LayoutActor {
 public:
-    PurpleStarCounter();
+    ModStarCounter();
 
     static bool isExistLayout();
 

@@ -997,6 +997,13 @@ namespace {
             MR::createSuperSpinDriverPink,
             "SuperSpinDriver",
         },
+#ifdef PETARI_NATIVE
+        {
+            "SuperSpinDriverHazel",
+            MR::createSuperSpinDriverHazel,
+            "SuperSpinDriver",
+        },
+#endif
         {
             "Kuribo",
             createNameObj< Kuribo >,
