@@ -303,6 +303,9 @@ BoundState boundState();
 // came since the last report goes into a report now, not up to 5 ms later. The 5 ms report
 // tick restarts from this report, so reports keep their spacing; the remote model's
 // time-stepped motions (shake, tilt, the stick's pointer) see one shorter step when input came.
+// The extra report does not age the buttons: minimum press lengths, such as the pause tap's
+// 50 reports, stay times on the 5 ms clock however often input comes. Under Clock::Manual
+// (tests) it makes the extra report and leaves the tick to pumpReports.
 void sampleNow();
 
 // --- Device state ---

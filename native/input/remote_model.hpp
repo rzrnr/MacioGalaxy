@@ -111,7 +111,10 @@ public:
     // A bound input went down since the last call (reconnects a remote).
     bool takeActivity();
 
-    Report nextReport(const PointerCalibration& calibration);
+    // extra: a report between the 200 Hz ticks (wpad_host's sampleNow, for fresh input). It
+    // shows the current buttons but does not age them, so minimum press lengths (the pause
+    // tap's 50 reports) stay times on the 200 Hz clock.
+    Report nextReport(const PointerCalibration& calibration, bool extra = false);
 
     // Current output (after minimum pulse lengths), for tests.
     std::uint32_t outputBits() const { return mOutput; }
@@ -135,7 +138,7 @@ private:
     std::uint32_t refreshRaw();
     void inputChanged(Binding input, bool down);
     void releaseAll();
-    void updateOutput();
+    void updateOutput(bool age);
     void updateMotion(float stickX, float stickY);
     void stickVector(float* x, float* y) const;
     // A stick's position past the dead zone, rescaled to 0..1 length; y up.
