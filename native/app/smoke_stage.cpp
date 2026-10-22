@@ -108,6 +108,7 @@ bool stageEnabledFromEnvironment(StageConfig* config) {
     config->scenario = static_cast<int>(number);
     config->tailFrames = environmentNumber("PETARI_STAGE_IDLE_FRAMES", 600);
     config->afterFrames = environmentNumber("PETARI_STAGE_AFTER_FRAMES", 0);
+    config->pauseTap = environmentNumber("PETARI_STAGE_PAUSE_TAP", 0) != 0;
     config->probe = environmentNumber("PETARI_STAGE_PROBE", 0) != 0;
     if (const char* warp = std::getenv("PETARI_STAGE_WARP"); warp != nullptr && warp[0] != '\0') {
         if (std::strncmp(warp, "name:", 5) == 0 && warp[5] != '\0') {
@@ -572,7 +573,7 @@ void StageDriver::exercise(const Observation& o, Step& step) {
         if (!mPausePressed) {
             if (mPhaseFrames >= kSettle && o.pausePermitted) {
                 mPauseOpenCount = static_cast<unsigned long>(std::count(mSeen.begin(), mSeen.end(), "PauseMenu.Open"));
-                tap(Button::Plus, kPauseHold, step);
+                tap(Button::Plus, mConfig.pauseTap ? 1 : kPauseHold, step);
                 mPausePressed = true;
                 mPhaseFrames = 0;
             } else if (mPhaseFrames >= kPausePermitLimit) {

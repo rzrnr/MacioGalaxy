@@ -52,6 +52,9 @@ struct StageConfig {
     // PETARI_STAGE_AFTER_FRAMES: after a mechanic passes, keep running this many frames, tapping A
     // every 40 (star get, result screens, the observatory's return demo), then finish with its result.
     unsigned long afterFrames = 0;
+    // PETARI_STAGE_PAUSE_TAP=1: the pause press is a one-frame tap, as a player taps Escape
+    // (the input layer must stretch it to the game's 12-frame hold), not an 18-frame hold.
+    bool pauseTap = false;
     // PETARI_STAGE_PROBE=1: after the pause checks, a lock-up probe (idle 20 s logging the player's
     // lock state, three spaced A taps, B, Plus twice, then the stick) before the idle tail.
     bool probe = false;
