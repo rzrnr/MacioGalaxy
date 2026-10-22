@@ -238,3 +238,12 @@ namespace MR {
         return ::cLanguages[index].mName;
     }
 };  // namespace MR
+
+#ifdef PETARI_NATIVE
+#include <petari/mod_galaxies.hpp>
+
+namespace {
+    // Mods' messages.<language>.txt (native/CUSTOM_GALAXY.md) need the game's language.
+    const bool sModLanguageHook = (PetariNative::ModGalaxies::languagePrefix = MR::getCurrentLanguagePrefix, true);
+}  // namespace
+#endif

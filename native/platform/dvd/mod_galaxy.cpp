@@ -560,50 +560,37 @@ void setSaveDirectory(const std::filesystem::path& directory) {
     gSaveDirectory = directory;
 }
 
-bool saveRecords(const std::string& userFile, const std::vector< GalaxyRecord >& records, std::string* pError) {
-    std::map< std::string, std::vector< const GalaxyRecord* > > byMod;
-    {
-        std::lock_guard< std::mutex > lock(gMutex);
-        if (gSaveDirectory.empty()) {
-            return true;
-        }
-        for (const GalaxyRecord& record : records) {
-            if (const Galaxy* pGalaxy = findLocked(record.galaxy.c_str())) {
-                byMod[pGalaxy->mod].push_back(&record);
-            }
-        }
-    }
-    std::error_code ec;
-    std::filesystem::create_directories(gSaveDirectory, ec);
-    for (const auto& [mod, modRecords] : byMod) {
-        // Keep the other user files' entries; replace this one's galaxies.
+namespace {
+    // A sidecar's user files: file -> galaxy -> the galaxy's JSON object text, as written.
+    using SidecarFiles = std::map< std::string, std::map< std::string, std::string > >;
+
+    SidecarFiles readFiles(const std::string& mod) {
+        SidecarFiles files;
         Json root;
-        std::map< std::string, std::map< std::string, std::string > > files;  // file -> galaxy -> JSON object text
-        if (readSidecar(mod, &root)) {
-            if (const Json* pFiles = root.get("files"); pFiles != nullptr && pFiles->kind == Json::Object) {
-                for (const auto& [file, galaxies] : pFiles->o) {
-                    for (const auto& [galaxy, entry] : galaxies.o) {
-                        const Json* pStars = entry.get("stars");
-                        const Json* pVisited = entry.get("visited");
-                        const Json* pCoins = entry.get("coins");
-                        std::string coins;
-                        for (std::size_t c = 0; pCoins != nullptr && c < pCoins->a.size(); c++) {
-                            coins += (c ? ", " : "") + number(pCoins->a[c].n);
-                        }
-                        files[file][galaxy] = "{ \"stars\": " + number(pStars ? pStars->n : 0) + ", \"visited\": " +
-                                              number(pVisited ? pVisited->n : 0) + ", \"coins\": [" + coins + "] }";
-                    }
+        if (!readSidecar(mod, &root)) {
+            return files;
+        }
+        const Json* pFiles = root.get("files");
+        if (pFiles == nullptr || pFiles->kind != Json::Object) {
+            return files;
+        }
+        for (const auto& [file, galaxies] : pFiles->o) {
+            for (const auto& [galaxy, entry] : galaxies.o) {
+                const Json* pStars = entry.get("stars");
+                const Json* pVisited = entry.get("visited");
+                const Json* pCoins = entry.get("coins");
+                std::string coins;
+                for (std::size_t c = 0; pCoins != nullptr && c < pCoins->a.size(); c++) {
+                    coins += (c ? ", " : "") + number(pCoins->a[c].n);
                 }
+                files[file][galaxy] = "{ \"stars\": " + number(pStars ? pStars->n : 0) + ", \"visited\": " +
+                                      number(pVisited ? pVisited->n : 0) + ", \"coins\": [" + coins + "] }";
             }
         }
-        for (const GalaxyRecord* pRecord : modRecords) {
-            std::string coins;
-            for (int c = 0; c < 8; c++) {
-                coins += (c ? ", " : "") + std::to_string(pRecord->coins[c]);
-            }
-            files[userFile][pRecord->galaxy] = "{ \"stars\": " + std::to_string(pRecord->stars) + ", \"visited\": " +
-                                               std::to_string(pRecord->visited) + ", \"coins\": [" + coins + "] }";
-        }
+        return files;
+    }
+
+    bool writeFiles(const std::string& mod, const SidecarFiles& files, std::string* pError) {
         std::string text = "{\n  \"format\": 1,\n  \"files\": {";
         bool firstFile = true;
         for (const auto& [file, galaxies] : files) {
@@ -628,9 +615,91 @@ bool saveRecords(const std::string& userFile, const std::vector< GalaxyRecord >&
                 return false;
             }
         }
+        std::error_code ec;
         std::filesystem::rename(temp, path, ec);
         if (ec) {
             *pError = "cannot replace " + path.string() + ": " + ec.message();
+            return false;
+        }
+        return true;
+    }
+
+    // Every sidecar in the directory, also of mods that are off now: a user file cleared or copied
+    // must not leave or lose stars that come back when such a mod is turned on again.
+    std::vector< std::string > allSidecars() {
+        std::vector< std::string > mods;
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(gSaveDirectory, ec)) {
+            if (entry.path().extension() == ".json") {
+                mods.push_back(entry.path().stem().string());
+            }
+        }
+        return mods;
+    }
+}  // namespace
+
+bool saveRecords(const std::string& userFile, const std::vector< GalaxyRecord >& records, std::string* pError) {
+    std::map< std::string, std::vector< const GalaxyRecord* > > byMod;
+    {
+        std::lock_guard< std::mutex > lock(gMutex);
+        if (gSaveDirectory.empty()) {
+            return true;
+        }
+        for (const GalaxyRecord& record : records) {
+            if (const Galaxy* pGalaxy = findLocked(record.galaxy.c_str())) {
+                byMod[pGalaxy->mod].push_back(&record);
+            }
+        }
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(gSaveDirectory, ec);
+    for (const auto& [mod, modRecords] : byMod) {
+        // Keep the other user files' entries; replace this one's galaxies.
+        SidecarFiles files = readFiles(mod);
+        for (const GalaxyRecord* pRecord : modRecords) {
+            std::string coins;
+            for (int c = 0; c < 8; c++) {
+                coins += (c ? ", " : "") + std::to_string(pRecord->coins[c]);
+            }
+            files[userFile][pRecord->galaxy] = "{ \"stars\": " + std::to_string(pRecord->stars) + ", \"visited\": " +
+                                               std::to_string(pRecord->visited) + ", \"coins\": [" + coins + "] }";
+        }
+        if (!writeFiles(mod, files, pError)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool clearRecords(const std::string& userFile, std::string* pError) {
+    if (gSaveDirectory.empty()) {
+        return true;
+    }
+    for (const std::string& mod : allSidecars()) {
+        SidecarFiles files = readFiles(mod);
+        if (files.erase(userFile) != 0 && !writeFiles(mod, files, pError)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool copyRecords(const std::string& dstFile, const std::string& srcFile, std::string* pError) {
+    if (gSaveDirectory.empty() || dstFile == srcFile) {
+        return true;
+    }
+    for (const std::string& mod : allSidecars()) {
+        SidecarFiles files = readFiles(mod);
+        const auto source = files.find(srcFile);
+        if (source == files.end() && files.find(dstFile) == files.end()) {
+            continue;
+        }
+        if (source != files.end()) {
+            files[dstFile] = source->second;
+        } else {
+            files.erase(dstFile);
+        }
+        if (!writeFiles(mod, files, pError)) {
             return false;
         }
     }

@@ -1,4 +1,8 @@
 #include "Game/System/SaveDataHandler.hpp"
+#ifdef PETARI_NATIVE
+#include "Game/System/GameDataGalaxyStorage.hpp"
+#include "Game/System/GameDataHolder.hpp"
+#endif
 #include "Game/LiveActor/Nerve.hpp"
 #include "Game/System/NANDManager.hpp"
 #include "Game/System/SaveDataBannerCreator.hpp"
@@ -30,6 +34,13 @@ namespace {
     NEW_NERVE(SaveDataHandlerRemoveProcessingBanner, SaveDataHandler, RemoveProcessingBanner);
     NEW_NERVE(SaveDataHandlerRemoveProcessingGameData, SaveDataHandler, RemoveProcessingGameData);
 };  // namespace
+
+#ifdef PETARI_NATIVE
+// The mod galaxies' records (mods-saves/, TECH.md 5.7) follow the save slots: saved with the
+// player's file, cleared when a file is created or deleted, copied with it.
+#include <petari/platform/mod_galaxy.hpp>
+#include <string>
+#endif
 
 SaveDataHandler::SaveDataHandler(const SysConfigFile* pSysConfigFile, const UserFile* pUserFile)
     : NerveExecutor("SaveDataHandler"), mNANDRequestInfo(), _C(), _10(), _14(), _18(), mBannerCreator() {
@@ -95,6 +106,13 @@ void SaveDataHandler::initializeUserFileMemory(int index, const UserFile* pUserF
 
         if (userFileInfo.mKind == 0) {
             pUserFile->makeGameDataBinary(userFileInfo.mData, userFileInfo.mDataSize);
+#ifdef PETARI_NATIVE
+            // A new or deleted file starts without mod stars (mods-saves/, TECH.md 5.7).
+            std::string error;
+            if (!PetariNative::Platform::ModGalaxy::clearRecords(fileName, &error)) {
+                std::fprintf(stderr, "[mods] mod galaxy save: %s\n", error.c_str());
+            }
+#endif
         } else if (userFileInfo.mKind == 1) {
             pUserFile->makeConfigDataBinary(userFileInfo.mData, userFileInfo.mDataSize);
         }
@@ -118,6 +136,14 @@ void SaveDataHandler::copyUserFileMemory(int indexDst, int indexSrc) {
         fileAccessor.makeUserFileInfo(&dstUserFileInfo, dstFileName);
 
         MR::copyMemory(dstUserFileInfo.mData, srcUserFileInfo.mData, dstUserFileInfo.mDataSize);
+#ifdef PETARI_NATIVE
+        if (dstUserFileInfo.mKind == 0) {
+            std::string error;
+            if (!PetariNative::Platform::ModGalaxy::copyRecords(dstFileName, srcFileName, &error)) {
+                std::fprintf(stderr, "[mods] mod galaxy save: %s\n", error.c_str());
+            }
+        }
+#endif
     }
 }
 

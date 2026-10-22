@@ -12,6 +12,10 @@ namespace {
     const static Vec cRotateOutermost = {20.0f, 45.0f, 0.0f};
     const static f32 cRadius[] = {4000.0f, 6200.0f, 8100.0f, 10300.0f, 12000.0f};
     const static f32 cRadiusLastDome[] = {4000.0f, 6700.0f, 9100.0f, 11800.0f};
+#ifdef PETARI_NATIVE
+    // A dome with a mod's galaxy in it (native/CUSTOM_GALAXY.md): six or more orbits.
+    const static f32 cRadiusSix[] = {4000.0f, 5600.0f, 7200.0f, 8800.0f, 10400.0f, 12000.0f, 13600.0f, 15200.0f};
+#endif
     const static s32 cDevideNum = 64;
     const static f32 cWidth = 100.0f;
     const static f32 cHeight = 50.0f;
@@ -72,11 +76,21 @@ void AstroDomeOrbit::setup(s32 radiusIdx) {
     if (miniNum == 5) {
         radii = ::cRadius;
     }
+#ifdef PETARI_NATIVE
+    if (miniNum >= 6) {
+        radii = ::cRadiusSix;
+        radiusIdx = radiusIdx < 8 ? radiusIdx : 7;
+    }
+#endif
 
     mOrbitRadius = radii[radiusIdx];
     mAngle = ::cGalaxyRotateCoordOffset * radiusIdx;
 
+#ifdef PETARI_NATIVE
+    if (radiusIdx >= 4 && (miniNum < 6 || radiusIdx == miniNum - 1)) {  // only the outermost orbit is tilted
+#else
     if (radiusIdx >= 4) {
+#endif
         mRotation.set(::cRotateOutermost);
     }
 }

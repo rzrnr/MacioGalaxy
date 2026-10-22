@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <sstream>
 #include <system_error>
 #include <revolution/dvd.h>
 #include <revolution/nand.h>
@@ -24,6 +25,7 @@
 #include <petari/platform/vi.hpp>
 #include <petari/host_allocation.hpp>
 #include <petari/pause_log.h>
+#include <petari/mod_galaxies.hpp>
 
 #include "host.hpp"
 #include "smoke.hpp"
@@ -85,6 +87,36 @@ void dumpHangState(const char* reason) {
     petari_platform_report_diagnostics();
 }
 
+// Enabled folder mods in precedence order, for their messages.txt (native/CUSTOM_GALAXY.md).
+std::vector<std::filesystem::path> gEnabledModRoots;
+
+// Text of the enabled mods for the game's messages (MessageHolder.cpp): per mod, messages.<language>.txt
+// then messages.txt, mods in precedence order, so the first line for an ID wins. NPC lines and other
+// text the disc lacks; galaxy and mission names come from galaxy.json. Built once; the game keeps
+// the pointer.
+const char* modMessages(const char* language) {
+    PetariNative::HostAllocationScope host;
+    static std::string text;
+    static bool built = false;
+    if (!built) {
+        built = true;
+        for (const auto& root : gEnabledModRoots) {
+            for (const std::string& name : {language ? std::string("messages.") + language + ".txt" : std::string(),
+                                            std::string("messages.txt")}) {
+                if (name.empty()) continue;
+                std::ifstream in(root / name, std::ios::binary);
+                if (!in) continue;
+                std::ostringstream content;
+                content << in.rdbuf();
+                text += content.str();
+                text += "\n";
+                std::fprintf(stderr, "[mods] messages from %s\n", (root / name).string().c_str());
+            }
+        }
+    }
+    return text.c_str();
+}
+
 }  // namespace
 
 bool preparePlatform(const Paths& paths, std::string* error) {
@@ -123,6 +155,8 @@ bool preparePlatform(const Paths& paths, std::string* error) {
             Platform::ModGalaxy::load(Platform::ModFolder::enabledRoots(paths.user), &galaxyLog);
             for (const std::string& line : galaxyLog) std::fprintf(stderr, "[mods] %s\n", line.c_str());
         }
+        gEnabledModRoots = Platform::ModFolder::enabledRoots(paths.user);
+        PetariNative::ModGalaxies::messages = modMessages;
     }
     if (!Platform::DVD::mount(mountOptions, error)) {
         *error = "disc " + paths.disc.string() + ": " + *error;

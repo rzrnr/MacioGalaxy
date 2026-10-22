@@ -260,6 +260,15 @@ bool resolvePaths(int argc, char** argv, App::Paths* paths) {
         paths->disc = env != nullptr && env[0] != '\0' ? std::filesystem::path(env)
                                                       : std::filesystem::current_path() / "build/game-data/RMGE01";
     }
+    // The user directory first: a stage fixture may be a galaxy from one of its folder mods.
+    if (paths->user.empty()) {
+        const char* home = std::getenv("HOME");
+        if (home == nullptr || home[0] == '\0') {
+            std::fputs("petari: HOME is not set; pass --user\n", stderr);
+            return false;
+        }
+        paths->user = std::filesystem::path(home) / "Library/Application Support/Petari";
+    }
     if (stageFixture) {
         const std::string& stage = PetariNative::TestFixture::stage;
         const std::filesystem::path scenario = std::filesystem::path("StageData") / stage / (stage + "Scenario.arc");
@@ -280,14 +289,6 @@ bool resolvePaths(int argc, char** argv, App::Paths* paths) {
         std::fprintf(stderr, "PETARI FIXTURE: synthetic stage entry requested: %s scenario %d (test entry through the "
                      "after-loading galaxy move; no progression claims)\n", stage.c_str(),
                      PetariNative::TestFixture::stageScenario);
-    }
-    if (paths->user.empty()) {
-        const char* home = std::getenv("HOME");
-        if (home == nullptr || home[0] == '\0') {
-            std::fputs("petari: HOME is not set; pass --user\n", stderr);
-            return false;
-        }
-        paths->user = std::filesystem::path(home) / "Library/Application Support/Petari";
     }
     if (!launchStage.empty()) {
         // Mod galaxies (galaxy.json of the user's enabled folder mods) are destinations too.

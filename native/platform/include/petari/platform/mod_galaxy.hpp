@@ -85,6 +85,11 @@ void setSaveDirectory(const std::filesystem::path& directory);
 bool saveRecords(const std::string& userFile, const std::vector< GalaxyRecord >& records, std::string* pError);
 /// The registered galaxies' records for one user file (none when there is no sidecar).
 std::vector< GalaxyRecord > loadRecords(const std::string& userFile);
+/// A user file created or deleted ("mario1"): its entries leave every sidecar in the directory, also
+/// those of mods that are off, so a new file in that slot does not inherit another's mod stars.
+bool clearRecords(const std::string& userFile, std::string* pError);
+/// A user file copied: its entries in every sidecar become the destination's (none: removed).
+bool copyRecords(const std::string& dstFile, const std::string& srcFile, std::string* pError);
 
 /// The save's 16-bit galaxy key (JGadget hash, h = c + 31 h over signed chars, truncated): mod
 /// galaxies whose key equals a disc galaxy's would share its save record, so they are rejected.
