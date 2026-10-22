@@ -31,6 +31,9 @@ enum class Stats : int { Off, Fps, Detailed, Count };
 // moved as close to the refreshes as the frames' draw times allow; Variable, on a ProMotion or
 // Adaptive-Sync display in fullscreen the display follows the game's clock (elsewhere as On).
 enum class VSync : int { Off, On, LowLatency, Variable, Count };
+// Input latency (native/FRAME_RATE.md): Original, the Wii's frame loop draws each step in the next
+// frame; Reduced, the loop computes a step first and draws it at once, a frame sooner.
+enum class InputLatency : int { Original, Reduced, Count };
 
 // FrameRate: 60, or 120 with an extra, interpolated frame between two game steps (native/FRAME_RATE.md).
 constexpr int kFrameRates[] = {60, 120};
@@ -38,6 +41,7 @@ constexpr int kFrameRates[] = {60, 120};
 struct Settings {
     int frameRate = 60;         // one of kFrameRates
     VSync vsync = VSync::On;
+    InputLatency inputLatency = InputLatency::Original;
     int resolution = kDisplay;  // one of kResolutions
     Upscaler upscaler = Upscaler::Fsr1;
     Sharpening sharpening = Sharpening::Off;
@@ -98,6 +102,9 @@ inline const char* sharpeningName(Sharpening sharpening) {
 }
 inline const char* vsyncName(VSync vsync) {
     return vsync == VSync::Off ? "Off" : vsync == VSync::LowLatency ? "Low latency" : vsync == VSync::Variable ? "Variable" : "On";
+}
+inline const char* inputLatencyName(InputLatency latency) {
+    return latency == InputLatency::Reduced ? "Reduced" : "Original";
 }
 inline const char* statsName(Stats stats) {
     return stats == Stats::Fps ? "FPS" : stats == Stats::Detailed ? "Detailed" : "Off";

@@ -299,6 +299,12 @@ struct BoundState {
 };
 BoundState boundState();
 
+// The game is about to read its controllers (the frame seam, after the retrace): input that
+// came since the last report goes into a report now, not up to 5 ms later. The 5 ms report
+// tick restarts from this report, so reports keep their spacing; the remote model's
+// time-stepped motions (shake, tilt, the stick's pointer) see one shorter step when input came.
+void sampleNow();
+
 // --- Device state ---
 
 // Connects or disconnects the virtual remote on a channel. Channel 0 is

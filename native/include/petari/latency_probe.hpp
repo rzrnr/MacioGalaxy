@@ -8,9 +8,12 @@
 //   report  - the first virtual WPAD report carrying it (200 Hz)
 //   read    - the first WPADRead (the game's KPADRead, once per game frame) that
 //             returns it; the Aurora frame index then is the press's game frame
-//   copy    - the first display copy (GXCopyDisp) in a later frame that can hold
-//             the response: SMG draws before it updates, and copies the EFB at the
-//             next frame's start, so update F is drawn in F+1 and copied in F+2
+//   updated - that step's calcAnim finished (GameSystem::frameLoop): its state is
+//             complete and can be drawn
+//   copy    - the first display copy (GXCopyDisp) after that: the Wii's order
+//             draws the step in the next frame and copies it there; Input latency
+//             Reduced draws and copies it in the same frame. At Frame rate 120 the
+//             extra frame, halfway to that step, is the first copy that shows it
 //   shown   - the first frame whose presented XFB holds that copy (seam time)
 //   present - the render worker's Present() return for that frame
 // From present, macOS composites the drawable at the next display refresh.
@@ -36,7 +39,7 @@ inline std::uint64_t nowNs() {
 }
 
 // One press in flight at a time; a new press while one is in flight is ignored.
-enum Stage : int { Idle, Pressed, Reported, Read, Copied, Shown, Presented };
+enum Stage : int { Idle, Pressed, Reported, Read, Updated, Copied, Shown, Presented };
 inline std::atomic<int> stage{Idle};
 inline std::atomic<std::uint64_t> pressNs{0}, reportNs{0}, readNs{0}, copyNs{0}, shownNs{0}, presentNs{0};
 inline std::atomic<std::uint32_t> readFrame{0}, copyFrame{0}, shownFrame{0};
@@ -62,9 +65,14 @@ inline void noteRead(std::uint32_t frame) {
     readFrame.store(frame);
     stage.store(Read);
 }
+// The step that read the press finished its calcAnim (game thread).
+inline void noteUpdated() {
+    if (stage.load(std::memory_order_relaxed) != Read) return;
+    stage.store(Updated);
+}
 // GXCopyDisp into xfb during Aurora frame `frame`.
 inline void noteCopy(const void* xfb, std::uint32_t frame) {
-    if (stage.load(std::memory_order_relaxed) != Read || frame < readFrame.load() + 2) return;
+    if (stage.load(std::memory_order_relaxed) != Updated) return;
     copyNs.store(nowNs());
     copyFrame.store(frame);
     copyXfb.store(xfb);

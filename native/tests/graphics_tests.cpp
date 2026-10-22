@@ -83,6 +83,11 @@ void testParse() {
               Graphics::serialize().find("VSync=variable\n") != std::string::npos && Graphics::parse("VSync=on\n", &error) &&
               Graphics::current().vsync == Graphics::VSync::On,
           "VSync is on by default; off, lowlatency, variable or on");
+    check(Graphics::current().inputLatency == Graphics::InputLatency::Original && Graphics::parse("InputLatency=reduced\n", &error) &&
+              Graphics::current().inputLatency == Graphics::InputLatency::Reduced &&
+              Graphics::serialize().find("InputLatency=reduced\n") != std::string::npos && !Graphics::parse("InputLatency=low\n", &error) &&
+              Graphics::parse("InputLatency=original\n", &error),
+          "InputLatency is original by default, or reduced");
     check(Graphics::parse("Resolution=1000\n", &error) && Graphics::current().resolution == 1080, "another height takes the nearest choice");
     check(Graphics::parse("Resolution=display\n", &error) && Graphics::current().resolution == 0, "display");
     check(!Graphics::parse("Stats=fps\nResolution=huge\n", &error) && error.find("line 2") != std::string::npos &&

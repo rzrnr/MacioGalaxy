@@ -4,10 +4,12 @@
 #include <aurora/event.h>
 #include <aurora/gfx.h>
 
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
 #include <mach/mach_time.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -41,6 +43,8 @@ extern "C" void petari_gx_pipeline_report();
 #include "petari/graphics.hpp"
 #include "petari/home_menu.hpp"
 #include "petari/host_allocation.hpp"
+#include "petari/input.hpp"
+#include "petari/latency_probe.hpp"
 #include "petari/test_fixture.hpp"
 
 namespace PetariNative::App {
@@ -52,6 +56,27 @@ CpuRelease gRelease;
 constexpr std::uint64_t kRetraceNs = 16683333;  // 59.94 Hz
 std::uint64_t gStepPresentNs = 0;  // the step's aurora_end_frame, for frame interpolation's extra frame
 std::uint64_t gStepReadyNs = 0;    // when the step's frame was ready to present (before a V-Sync wait)
+// Input latency Reduced (petari_host_input_first): this step is computed first and drawn at once,
+// so its extra frame, when there is one, comes before the step's frame and takes the first slot.
+bool gInputFirst = false;
+bool gExtraThisStep = false;       // this step's extra frame was presented
+bool gLastStepLate = false;        // the last step's frame missed its window (shown a refresh late)
+std::uint64_t gExtraPresentNs = 0;
+std::uint64_t gEarlyInputNs = 0;   // the newest input event handed to the game before the seam's pump
+
+bool inputEvent(Uint32 type) {
+    return (type >= SDL_EVENT_KEY_DOWN && type <= SDL_EVENT_MOUSE_WHEEL) ||
+           (type >= SDL_EVENT_GAMEPAD_AXIS_MOTION && type <= SDL_EVENT_GAMEPAD_BUTTON_UP);
+}
+
+// The slot of this step's frame and of its extra frame (presentDue, presentEnd): the step's frame
+// comes first, unless the loop computes first and the extra frame came before it.
+int stepSlot() {
+    return gInputFirst && gExtraThisStep ? 1 : 0;
+}
+int extraSlot() {
+    return gInputFirst ? 0 : 1;
+}
 std::uint64_t gExtraFrames = 0;    // frame interpolation's presents, in the frame time report
 std::uint64_t gLateSteps = 0;      // steps without an extra frame: presented too late
 std::uint64_t gSlowDisplaySteps = 0;  // or on a display below 100 Hz
@@ -629,7 +654,9 @@ void handleEvents(const AuroraEvent* event) {
                              event->sdl.adevice.recording ? " (recording)" : "");
             }
             Display::handleEvent(event->sdl);
-            Events::input(event->sdl);
+            if (!inputEvent(event->sdl.type) || gEarlyInputNs == 0 || event->sdl.common.timestamp > gEarlyInputNs) {
+                Events::input(event->sdl);  // not already handed over before the game read its controllers
+            }
             break;
         default:
             break;
@@ -769,6 +796,37 @@ void reportFrameStats() {
 
 using namespace PetariNative::App;
 
+namespace {
+// Input that came since the seam pumped events, handed to the game before it reads its
+// controllers (native/FRAME_RATE.md): keys, the mouse and controllers only, in the order they
+// came. They stay queued for the seam's aurora_update (ImGui and window handling see them
+// there), which then skips them for the game. Input::sampleNow puts them into a Wii Remote
+// report at once instead of up to 5 ms later. Without this a key pressed just after the seam
+// waited for the next frame's seam.
+void takeInputEarly() {
+    PetariNative::HostAllocationScope host;  // SDL and AppKit allocate while pumping
+    SDL_PumpEvents();
+    SDL_Event events[96];
+    int count = SDL_PeepEvents(events, 64, SDL_PEEKEVENT, SDL_EVENT_KEY_DOWN, SDL_EVENT_MOUSE_WHEEL);
+    count = std::max(count, 0);
+    const int pads = SDL_PeepEvents(events + count, 32, SDL_PEEKEVENT, SDL_EVENT_GAMEPAD_AXIS_MOTION, SDL_EVENT_GAMEPAD_BUTTON_UP);
+    count += std::max(pads, 0);
+    std::sort(events, events + count, [](const SDL_Event& a, const SDL_Event& b) { return a.common.timestamp < b.common.timestamp; });
+    for (int i = 0; i < count; i++) {
+        if (events[i].common.timestamp > gEarlyInputNs) {
+            Events::input(events[i]);
+            gEarlyInputNs = events[i].common.timestamp;
+        }
+    }
+    PetariNative::Input::sampleNow();
+}
+}  // namespace
+
+extern "C" int petari_host_input_first(void) {
+    gInputFirst = PetariNative::Graphics::current().inputLatency == PetariNative::Graphics::InputLatency::Reduced;
+    return gInputFirst ? 1 : 0;
+}
+
 extern "C" void petari_host_frame_mark(int mark) {
     const std::uint64_t now = Telemetry::nowNs();
     if (mark == PETARI_FRAME_MARK_RETRACE_DONE) {
@@ -776,11 +834,15 @@ extern "C" void petari_host_frame_mark(int mark) {
         // The retrace that ended the wait, if one came after the seam.
         const std::uint64_t retrace = Telemetry::lastRetraceNs.load(std::memory_order_relaxed);
         gStepRetraceNs = retrace;
+        gExtraThisStep = false;
+        takeInputEarly();
         const double phase = static_cast<double>(PetariNative::DisplaySync::retracePhaseTicks.load(std::memory_order_relaxed)) * nsPerTick();
         gStepGridNs = retrace > phase ? retrace - static_cast<std::uint64_t>(phase) : retrace;
         gTiming.retraceWake = retrace > gTiming.lastExit && retrace <= now ? now - retrace : 0;
     } else if (mark == PETARI_FRAME_MARK_END_FRAME) {
         gTiming.endFrame = now;
+    } else if (mark == PETARI_FRAME_MARK_UPDATED) {
+        PetariNative::LatencyProbe::noteUpdated();
     }
 }
 
@@ -833,8 +895,14 @@ extern "C" void petari_host_frame_seam(void) {
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
     const std::uint64_t ready = Telemetry::nowNs();
     gStepReadyNs = ready;
-    waitUntil(presentDue(0));
-    adjustPacing(gVariableActive ? ready > presentEnd(0) : ready > presentEnd(0) && presentEnd(0) != 0);
+    const int slot = stepSlot();
+    if (gPresentFifo) {
+        waitUntil(presentDue(slot));
+    } else if (slot == 1) {
+        waitUntil(gExtraPresentNs + kRetraceNs / 2);  // V-Sync off: half a retrace after the extra frame
+    }
+    gLastStepLate = ready > presentEnd(slot) && presentEnd(slot) != 0;
+    adjustPacing(gLastStepLate);
     const std::uint64_t endStart = Telemetry::nowNs();
     gStepPresentNs = endStart;
     aurora_end_frame();
@@ -880,15 +948,24 @@ extern "C" int petari_host_interp_wait(void) {
     // With V-Sync the extra frame must be drawn before its window closes (presentEnd(1)). After a
     // step's frame that missed its own window (it is shown a refresh late) there is none: it would
     // wait behind that frame and push every later frame a refresh back.
-    const bool late = gVariableActive  ? gStepRetraceNs == 0 || now + gExtraFrameNs + 500000 > presentEnd(1)
-                      : gPresentSynced ? gStepGridNs == 0 || gStepReadyNs > presentEnd(0) ||
-                                             now + gExtraFrameNs + 500000 > presentEnd(1)
-                                     : retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2;
+    // With Input latency Reduced the extra frame comes first: it must be drawn before its own window
+    // closes and leave the step's frame, drawn after it, time for the next one. After a step's frame
+    // that was shown a refresh late it would land on that frame's refresh: there is none.
+    bool late = false;
+    if (gInputFirst) {
+        late = gPresentFifo ? gStepRetraceNs == 0 || gLastStepLate || now + gExtraFrameNs + 500000 > presentEnd(0) ||
+                                  now + 2 * gExtraFrameNs + 1000000 > presentEnd(1)
+                            : retrace == 0 || now + gExtraFrameNs > retrace + kRetraceNs / 2;
+    } else {
+        late = gVariableActive  ? gStepRetraceNs == 0 || now + gExtraFrameNs + 500000 > presentEnd(1)
+               : gPresentSynced ? gStepGridNs == 0 || gStepReadyNs > presentEnd(0) || now + gExtraFrameNs + 500000 > presentEnd(1)
+                                : retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2;
+    }
     if (late) {
         ++gLateSteps;
         ++gInterpolationSecond.late;
         gExtraFrameNs -= gExtraFrameNs / 16;
-        if (gPresentSynced && gStepReadyNs <= presentEnd(0)) {
+        if (gPresentSynced && (gInputFirst || gStepReadyNs <= presentEnd(0))) {
             adjustPacing(true);  // no time left for the extra frame: Low latency waits less close
         }
         return 0;
@@ -901,6 +978,19 @@ extern "C" int petari_host_interp_wait(void) {
 // or smoke drivers, which run once per game step.
 extern "C" void petari_host_present_seam(void) {
     PetariNative::HostAllocationScope host;
+    const std::uint64_t now = Telemetry::nowNs();
+    if (now > gExtraStartNs) {
+        gExtraFrameNs = (gExtraFrameNs * 3 + std::min<std::uint64_t>(now - gExtraStartNs, 12000000)) / 4;
+    }
+    // With V-Sync an extra frame drawn after its window closed would wait in the FIFO and push
+    // the step's frame, and every later one, a refresh back: it is dropped instead. Its display
+    // copy is not shown; the next present shows the step's.
+    if (gPresentFifo && presentEnd(extraSlot()) != 0 && now > presentEnd(extraSlot())) {
+        ++gLateSteps;
+        ++gInterpolationSecond.late;
+        adjustPacing(true);
+        return;
+    }
     const bool release = gRelease.begin != nullptr && gRelease.end != nullptr;
     if (release) {
         gRelease.begin();
@@ -911,11 +1001,13 @@ extern "C" void petari_host_present_seam(void) {
     const Rect image = updateImage();
     PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
-    const std::uint64_t now = Telemetry::nowNs();
-    if (now > gExtraStartNs) {
-        gExtraFrameNs = (gExtraFrameNs * 3 + std::min<std::uint64_t>(now - gExtraStartNs, 12000000)) / 4;
+    if (gPresentFifo) {
+        waitUntil(presentDue(extraSlot()));
+    } else if (!gInputFirst) {
+        waitUntil(gStepPresentNs + kRetraceNs / 2);  // V-Sync off: half a retrace after the step's frame
     }
-    waitUntil(gPresentFifo ? presentDue(1) : gStepPresentNs + kRetraceNs / 2);
+    gExtraPresentNs = Telemetry::nowNs();
+    gExtraThisStep = true;
     aurora_end_frame();
     StatsOverlay::notePresent();
     DisplayLink::notePresent();

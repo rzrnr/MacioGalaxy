@@ -320,6 +320,12 @@ bool GameSystem::isPreparedReset() const {
 }
 
 void GameSystem::frameLoop() {
+#ifdef PETARI_NATIVE
+    if (petari_host_input_first()) {
+        frameLoopInputFirst();
+        return;
+    }
+#endif
     MainLoopFramework::sManager->beginRender();
     draw();
     MainLoopFramework::sManager->endRender();
@@ -328,6 +334,9 @@ void GameSystem::frameLoop() {
 #endif
     update();
     calcAnim();
+#ifdef PETARI_NATIVE
+    petari_host_frame_mark(PETARI_FRAME_MARK_UPDATED);  // the latency probe (petari/latency_probe.hpp)
+#endif
     mObjHolder->captureIfAllowForScreenPreserver();
 #ifdef PETARI_NATIVE
     petari_host_frame_mark(PETARI_FRAME_MARK_END_FRAME);  // frame-time statistics
@@ -336,7 +345,7 @@ void GameSystem::frameLoop() {
 #ifdef PETARI_NATIVE
     // Host window, events and Aurora frame boundary (native/app).
     petari_host_frame_seam();
-    FrameInterpolation::afterSeam(this);
+    FrameInterpolation::extraFrame(this);
 #endif
     MainLoopFramework::sManager->waitForRetrace();
 #ifdef PETARI_NATIVE
@@ -347,6 +356,32 @@ void GameSystem::frameLoop() {
     petari_gx_sync_wait_tokens_delivered();
 #endif
 }
+
+#ifdef PETARI_NATIVE
+// Input latency Reduced (native/FRAME_RATE.md). The Wii's loop draws the step computed in the
+// last frame while the CPU computes the next one, so a step reaches the screen a frame after its
+// input was read. This loop computes the step first and draws it at once: the same work in the
+// same frame, a frame sooner on screen. What the draw-sync token callbacks (star pointer, lens
+// flare, talk) write is still read by the next step's update, after the retrace. The screen
+// preserver's capture follows the draw, as it follows it in the Wii's order.
+void GameSystem::frameLoopInputFirst() {
+    FrameInterpolation::beforeUpdate();  // the drawn step, for an extra frame at 120 frames per second
+    update();
+    calcAnim();
+    petari_host_frame_mark(PETARI_FRAME_MARK_UPDATED);  // the latency probe (petari/latency_probe.hpp)
+    FrameInterpolation::extraFrame(this);  // halfway between the drawn step and this one, shown first
+    MainLoopFramework::sManager->beginRender();
+    draw();
+    MainLoopFramework::sManager->endRender();
+    mObjHolder->captureIfAllowForScreenPreserver();
+    petari_host_frame_mark(PETARI_FRAME_MARK_END_FRAME);
+    MainLoopFramework::sManager->endFrame();
+    petari_host_frame_seam();
+    MainLoopFramework::sManager->waitForRetrace();
+    petari_host_frame_mark(PETARI_FRAME_MARK_RETRACE_DONE);
+    petari_gx_sync_wait_tokens_delivered();
+}
+#endif
 
 void GameSystem::draw() {
     mSceneController->drawScene();

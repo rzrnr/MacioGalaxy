@@ -83,6 +83,35 @@ Variable:
   fullscreen; macOS only lets a fullscreen game drive the refresh.
   `PETARI_VARIABLE_REFRESH=1` uses it anywhere, for measuring its pacing.
 
+## Input latency
+
+F1 → Graphics → **Input latency**: Original or Reduced (`InputLatency=` in
+`graphics.txt`, default Original).
+
+The Wii's frame loop (`GameSystem::frameLoop`) draws, at the start of each
+frame, the step it computed in the frame before, and then computes the next
+step while the GPU draws: on the Wii both ran at once. A button pressed now is
+read by the next step and shown a frame after that.
+
+Reduced (`GameSystem::frameLoopInputFirst`) computes the step first and draws
+it at once, in the same frame: the same work, one frame (16.7 ms) sooner on
+screen. Game logic is unchanged; what the draw-sync token callbacks (the Star
+Pointer's and lens flares' EFB reads, the talk balloons') write is read by the
+next step, as before. At Frame rate 120 the extra frame, halfway between the
+step drawn last and this one, comes first, and this step's frame half a step
+after it.
+
+In both orders the frame seam also hands keys, mouse and controller input that
+came since its last event pump to the game right before the step reads its
+controllers (`takeInputEarly` in `native/app/frame_seam.cpp`), and
+`Input::sampleNow` puts it into a Wii Remote report at once instead of up to
+5 ms later. The remote's 200 Hz report tick restarts from that report, so the
+remote model's time-stepped motions keep their pace.
+
+`PETARI_LATENCY_PROBE=1 PETARI_LATENCY_TEST=1` measures it: during gameplay the
+test presses A at random moments and logs, for each press, the time to the
+first presented frame that can show the response (`[latency]` lines).
+
 ## What moves at 120
 
 - The camera: position, orientation, field of view and camera shake.
@@ -105,8 +134,9 @@ Variable:
 ## Settings
 
 `graphics.txt` (native/GRAPHICS.md) keeps the choices as `FrameRate=60` or
-`FrameRate=120` (default 60) and `VSync=on` or `VSync=off` (default on). For one
-run: `PETARI_GRAPHICS=FrameRate=120,VSync=off`.
+`FrameRate=120` (default 60), `VSync=off`, `on`, `lowlatency` or `variable`
+(default on) and `InputLatency=original` or `reduced` (default original). For
+one run: `PETARI_GRAPHICS=FrameRate=120,VSync=off`.
 
 The frame time report (`PETARI_FRAME_STATS=1` or `PETARI_TRACE_BOOT=1`) counts
 the steps without an extra frame and, from the display link's refresh times,

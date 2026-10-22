@@ -143,6 +143,7 @@ struct CameraOptions {
 struct GraphicsOptions {
     int frameRate = 60;  // 60, or 120 with interpolated extra frames
     int vsync = 1;       // Graphics::VSync
+    int inputLatency = 0;  // Graphics::InputLatency
     int resolution = 0;  // render height, one of Graphics::kResolutions; 0: the display's
     int upscaler = 0;    // Graphics::Upscaler
     int sharpening = 0;  // Graphics::Sharpening
@@ -342,7 +343,7 @@ private:
     int mOutputHeight = 0;
     int mDisplayHz = 0;
     bool mVariableRefresh = false;
-    char mGraphicsLabels[7][64] = {};
+    char mGraphicsLabels[8][64] = {};
     char mGraphicsMessage[128] = {};
     void refreshGraphicsLabels();
     void changeGraphicsValue(int item, int delta);

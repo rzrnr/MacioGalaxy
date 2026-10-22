@@ -266,6 +266,7 @@ void refreshGraphics() {
     GraphicsOptions options;
     options.frameRate = settings.frameRate;
     options.vsync = static_cast<int>(settings.vsync);
+    options.inputLatency = static_cast<int>(settings.inputLatency);
     options.resolution = settings.resolution;
     options.upscaler = static_cast<int>(settings.upscaler);
     options.sharpening = static_cast<int>(settings.sharpening);
@@ -284,6 +285,7 @@ void applyGraphicsChange() {
     Graphics::Settings settings;
     settings.frameRate = options.frameRate;
     settings.vsync = static_cast<Graphics::VSync>(options.vsync);
+    settings.inputLatency = static_cast<Graphics::InputLatency>(options.inputLatency);
     settings.resolution = options.resolution;
     settings.upscaler = static_cast<Graphics::Upscaler>(options.upscaler);
     settings.sharpening = static_cast<Graphics::Sharpening>(options.sharpening);

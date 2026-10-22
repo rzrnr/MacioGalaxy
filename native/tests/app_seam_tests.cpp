@@ -182,6 +182,11 @@ Settings current() {
 void setFrameRateStatus(const FrameRateStatus&) {}
 }  // namespace PetariNative::Graphics
 
+// The Wii Remote host (native/input) is not linked here.
+namespace PetariNative::Input {
+void sampleNow() {}
+}  // namespace PetariNative::Input
+
 // The display link (display_link.cpp) needs a real display; not under test here.
 namespace PetariNative::App::DisplayLink {
 void follow(SDL_Window*, bool) {}
@@ -250,6 +255,11 @@ void aurora_end_frame() {
 }
 // Frame interpolation's present timing and display check; never reached at 60 frames per second.
 void SDL_DelayPrecise(Uint64) {}
+// The early input pump before the game reads its controllers: nothing queued here.
+void SDL_PumpEvents(void) {}
+int SDL_PeepEvents(SDL_Event*, int, SDL_EventAction, Uint32, Uint32) {
+    return 0;
+}
 void aurora_enable_vsync(bool) {}
 SDL_DisplayID SDL_GetDisplayForWindow(SDL_Window*) {
     return 0;

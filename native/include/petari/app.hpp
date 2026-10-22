@@ -14,17 +14,23 @@
 extern "C" void petari_host_frame_seam(void);
 
 // Frame-time marks for the seam's statistics, from GameSystem::frameLoop on
-// the same thread: the retrace wait after the seam returned, and endFrame
-// (its GXDrawDone wait) is starting. A timestamp each; no other effect.
-enum { PETARI_FRAME_MARK_RETRACE_DONE = 0, PETARI_FRAME_MARK_END_FRAME = 1 };
+// the same thread: the retrace wait after the seam returned, endFrame (its
+// GXDrawDone wait) is starting, and the step's calcAnim finished (for the
+// latency probe, petari/latency_probe.hpp). A timestamp each; no other effect.
+enum { PETARI_FRAME_MARK_RETRACE_DONE = 0, PETARI_FRAME_MARK_END_FRAME = 1, PETARI_FRAME_MARK_UPDATED = 2 };
 extern "C" void petari_host_frame_mark(int mark);
 
-// Frame interpolation (native/FRAME_RATE.md), from FrameInterpolation::afterSeam on
+// Frame interpolation (native/FRAME_RATE.md), from FrameInterpolation::extraFrame on
 // the same thread: whether an extra frame is drawn now (0 or 1); and the extra
-// frame's present, half a retrace interval after the step's, which ends and opens
-// an Aurora frame as the seam does, without the seam's per-step work.
+// frame's present, which ends and opens an Aurora frame as the seam does, without
+// the seam's per-step work.
 extern "C" int petari_host_interp_wait(void);
 extern "C" void petari_host_present_seam(void);
+
+// Input latency (Graphics page, native/FRAME_RATE.md), from GameSystem::frameLoop at the
+// start of each step: 1 when the step is computed first and drawn at once
+// (GameSystem::frameLoopInputFirst), 0 for the Wii's order. The answer holds for the step.
+extern "C" int petari_host_input_first(void);
 
 namespace PetariNative::App {
 

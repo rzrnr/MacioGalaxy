@@ -343,7 +343,7 @@ namespace FrameInterpolation {
         sSeenCount = 0;
     }
 
-    void afterSeam(GameSystem* pSystem) {
+    void extraFrame(GameSystem* pSystem) {
         if (!sBefore.valid || !sGameSceneViews || MR::isActiveMoviePlayer() || !MainLoopFramework::sManager->mDoRenderFrame) {
             return;
         }
