@@ -3,6 +3,7 @@
 #include "smoke_mechanics.hpp"
 #include "smoke_goodegg.hpp"
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <limits>
 
@@ -77,7 +78,8 @@ const std::vector<MechanicPlan>& mechanicPlans() {
         {"swim", "OceanRingGalaxy", 2},
         {"flippanel", "FlipPanelExGalaxy", 1},
         {"ray", "SurfingLv1Galaxy", 1},
-        {"purplestar", "GuglisPlanetGalaxy", 1},
+        {"modstar", "GuglisPlanetGalaxy", 1},
+        {"launchstar", "*", 0},
     };
     return plans;
 }
@@ -180,10 +182,10 @@ Result MechanicRun::step(const Observation& o, unsigned long frame, Step& step) 
         mHeld[4] = false;
         mReleaseA = 0;
     }
-    if (std::string(mPlan.name) == "purplestar" && mStage >= 3) {
+    if (std::string(mPlan.name) == "modstar" && mStage >= 3) {
         // Collecting the star starts a demo: decided here, before the demo check.
         for (const auto& actor : o.actors) {
-            if (actor.kind == "PowerStar" && actor.state == 3) return pass("the purple star came out after the three spin boxes burst and was collected at " + text(at(actor)));
+            if (actor.kind == "PowerStar" && actor.state == 3) return pass("the star came out after the three spin boxes burst and was collected at " + text(at(actor)));
         }
     }
     if (o.demoActive) {
@@ -198,7 +200,8 @@ Result MechanicRun::step(const Observation& o, unsigned long frame, Step& step) 
     if (name == "swim") return swim(o, step);
     if (name == "flippanel") return flipPanel(o, step);
     if (name == "ray") return ray(o, step);
-    if (name == "purplestar") return purpleStar(o, step);
+    if (name == "modstar") return modStar(o, step);
+    if (name == "launchstar") return launchStar(o, step);
     return fail("unknown mechanic");
 }
 
@@ -596,7 +599,7 @@ Result MechanicRun::ray(const Observation& o, Step& step) {
 // for the star, 4 walk to it (step() passes once it is collected). Boxes far from the camera
 // are clipped (not published), so their places are noted at the start; a box has burst when
 // it is not published while Mario stands next to it.
-Result MechanicRun::purpleStar(const Observation& o, Step& step) {
+Result MechanicRun::modStar(const Observation& o, Step& step) {
     const V pos = position(o);
     switch (mStage) {
     case 0: {
@@ -645,7 +648,7 @@ Result MechanicRun::purpleStar(const Observation& o, Step& step) {
         const Observation::Actor* star = nearestActor(o, "PowerStar", pos);
         if (star != nullptr && star->state == 1) {
             mMark = at(*star);
-            note("the purple star waits at " + text(mMark) + ", " + number(length(sub(mMark, pos))) + " from Mario");
+            note("the star waits at " + text(mMark) + ", " + number(length(sub(mMark, pos))) + " from Mario");
             next(4);
         } else if (mStageFrames > 900) {
             return fail("no star waiting 900 frames after the third box burst");
@@ -658,6 +661,82 @@ Result MechanicRun::purpleStar(const Observation& o, Step& step) {
         if (mStageFrames % 120 == 0) note("to the star: " + number(d) + " across the ground, Mario at " + text(pos));
         if (mStageFrames > kApproachLimit * 2) return fail("the star was not collected: Mario " + number(d) + " from it");
         return Result::Running;
+    }
+    }
+}
+
+// 0 choose the nearest Launch Star that accepts Mario, 1 walk to it and spin until it holds
+// him, 2 the flight, 3 landed: compare with PETARI_MECHANIC_TARGET.
+Result MechanicRun::launchStar(const Observation& o, Step& step) {
+    const V pos = position(o);
+    switch (mStage) {
+    case 0: {
+        if (mStageFrames < 30) return Result::Running;
+        // A star that already holds Mario (he started next to it), else the nearest that accepts him.
+        const Observation::Actor* star = nearestActor(o, "LaunchStar", pos, [](const Observation::Actor& actor) {
+            return (actor.flags & kActorBound) != 0 || (actor.state >= 2 && actor.state <= 4);  // capture .. shoot
+        });
+        if (star == nullptr) {
+            star = nearestActor(o, "LaunchStar", pos, [](const Observation::Actor& actor) {
+                return (actor.flags & kActorReady) != 0;
+            });
+        }
+        if (star == nullptr) return fail("no Launch Star accepting Mario is published");
+        mMark = at(*star);
+        note("to the Launch Star at " + text(mMark) + ", " + number(length(sub(mMark, pos))) + " away");
+        next(1);
+        return Result::Running;
+    }
+    case 1: {
+        const Observation::Actor* star = nearestActor(o, "LaunchStar", mMark);
+        if (star != nullptr && ((star->flags & kActorBound) != 0 || (star->state >= 2 && star->state <= 4))) {
+            hold(false, false, false, false, false, step);
+            mMark2 = pos;
+            note("the Launch Star holds Mario at " + text(pos));
+            next(2);
+            return Result::Running;
+        }
+        const float d = approach(o, mMark, step);
+        if (d < 120.0f && mStageFrames % 30 == 0) {
+            step.presses.push_back({Button::Spin, true});
+            mSpinHeld = true;
+            step.assertFocus = true;
+        }
+        if (mStageFrames > kApproachLimit) return fail("the Launch Star at " + text(mMark) + " never held Mario (" + number(d) + " from it)");
+        return Result::Running;
+    }
+    case 2: {
+        hold(false, false, false, false, false, step);
+        // Only the star Mario got into: after landing he may stand next to another one.
+        bool bound = false, waiting = false;
+        const Observation::Actor* star = nearestActor(o, "LaunchStar", mMark);
+        if (star != nullptr && length(sub(at(*star), mMark)) < 10.0f &&
+            ((star->flags & kActorBound) != 0 || (star->state >= 2 && star->state <= 4))) {
+            bound = true;
+            waiting = star->state == 2;  // captured, waiting for the spin that launches
+        }
+        if (waiting && mStageFrames % 30 == 0) {
+            step.presses.push_back({Button::Spin, true});
+            mSpinHeld = true;
+            step.assertFocus = true;
+        }
+        if (!bound && o.playerOnGround && mStageFrames > 60) {
+            note("landed at " + text(pos) + ", " + number(length(sub(pos, mMark2))) + " from the start, after " + std::to_string(mStageFrames) + " frames");
+            next(3);
+        } else if (mStageFrames > 1500) {
+            return fail("no landing 1500 frames after the launch; Mario at " + text(pos));
+        }
+        return Result::Running;
+    }
+    default: {
+        V target{0, 0, 0};
+        const char* spec = std::getenv("PETARI_MECHANIC_TARGET");
+        if (spec == nullptr || std::sscanf(spec, "%f,%f,%f", &target.x, &target.y, &target.z) != 3) {
+            return pass("the Launch Star flew Mario to " + text(pos));
+        }
+        const float miss = length(sub(pos, target));
+        if (miss > 900.0f) return fail("landed at " + text(pos) + ", " + number(miss) + " from the target " + text(target));
+        return pass("the Launch Star flew Mario to " + text(pos) + ", " + number(miss) + " from the target");
     }
     }
 }

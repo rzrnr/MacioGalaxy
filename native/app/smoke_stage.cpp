@@ -193,7 +193,7 @@ bool stageEnabledFromEnvironment(StageConfig* config) {
     }
     if (const char* mechanic = std::getenv("PETARI_MECHANIC"); mechanic != nullptr && mechanic[0] != '\0') {
         const MechanicPlan* plan = findMechanic(mechanic);
-        if (plan == nullptr || config->stage != plan->stage || config->scenario != plan->scenario) {
+        if (plan == nullptr || (std::strcmp(plan->stage, "*") != 0 && (config->stage != plan->stage || config->scenario != plan->scenario))) {
             std::fprintf(stderr, "PETARI SMOKE: mechanic %s needs its own stage (%s scenario %d); not running\n", mechanic,
                          plan != nullptr ? plan->stage : "unknown mechanic", plan != nullptr ? plan->scenario : 0);
             return false;
@@ -539,7 +539,8 @@ Step StageDriver::step(const Observation& o) {
         finish(Result::Fail, std::string("the player vanished while ") + phase(), step);
         return step;
     }
-    if (!mConfig.mechanic.empty()) {
+    // With a warp the mechanic starts where the warp put Mario (the exercise does the warp first).
+    if (!mConfig.mechanic.empty() && (!mConfig.warp || (mWarped && mPhase != Phase::Warp))) {
         if (!mMechanic) {
             mMechanic = std::make_unique<MechanicRun>(*findMechanic(mConfig.mechanic));
             note("mechanic " + mConfig.mechanic + ": starting at " + text(position(o)));

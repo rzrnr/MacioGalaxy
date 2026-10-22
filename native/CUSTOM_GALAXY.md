@@ -4,7 +4,8 @@ A disc-file mod (native/MODS.md, "Mod folder") can add a whole galaxy: its level
 miniature in a Comet Observatory dome, its names and dialogue, and objects with new
 logic. This page shows how with an example, "Guglis Testgalaxie", and what the port
 does so that such a mod never touches the game's own save. "Your own planet" builds
-a galaxy from a planet modelled in Blender, with a purple star.
+a galaxy from a planet modelled in Blender; "The observatory" adds a sky island to the
+Comet Observatory; "The theme colour" is the mods' hazelnut brown.
 
 ## The example
 
@@ -105,12 +106,7 @@ run in the background) and your disc, nothing downloaded.
   all three have; `GuglisStarAppear` (`src/Game/MapObj/GuglisStarAppear.cpp`) then
   brings the scenario's star out above the tallest pillar, seen by its own camera
   (`e:パワースター固有001`), and it flies down beside the pillar.
-- **The purple star:** every star of a mod's galaxy is purple (the star model's unused
-  colour slot, given a purple texture in the mod's `ObjectData/PowerStar.arc`), also
-  on its way back to the observatory. A second counter under the game's star counter
-  (`src/Game/Screen/PurpleStarCounter.cpp`, the star counter's layout with a purple
-  icon, `LayoutData/PurpleStars.arc` in the mod) shows the file's purple stars
-  wherever the star counter shows; they count apart from the game's stars, as below.
+- **The star** is in the theme colour, like every star of a mod's galaxy (below).
 - **A placed object a mod brings** (`ObjectData/<Name>.arc` not on the disc, no class
   of its own) is a planet: a model and, when the archive has one, its collision.
 
@@ -118,6 +114,43 @@ Only one mod's `StageData/AstroDome.arc` is used, the highest priority's
 (native/MODS.md). The planet's `mod.txt` has priority 1, and `build.py` puts the
 miniatures of other mods' galaxies it finds in the user directory into its dome as
 well (a miniature whose mod is off is left out).
+
+## The theme colour
+
+The mods' own things are hazelnut brown (#8A5A32). `native/mods/theme.py` makes the
+files from the disc, and the mods' build scripts (and Whitehole's `game_export_mod`)
+put them into the mod; each uses a slot the game leaves unused, so the original look
+stays:
+
+- **Stars of mods' galaxies:** the star model's unused colour slot gets a hazelnut
+  texture (`ObjectData/PowerStar.arc`), with a hazelnut light, also on the star's way
+  back to the observatory.
+- **Their counter:** under the game's star counter, shown and hidden with it
+  (`src/Game/Screen/ModStarCounter.cpp`; its layout is the star counter's with a
+  hazelnut icon, `LayoutData/GuglisStars.arc`). It counts the file's stars of mods'
+  galaxies, apart from the game's stars (see below).
+- **Launch Stars:** place one as `SuperSpinDriverHazel`. The Launch Star model's spare
+  texture slot gets its own hazelnut image and BTP frame 3 shows it, with the yellow
+  star's shimmer (`hazel.brk`) and a hazelnut flight path (`hazel.bti` in
+  `ObjectData/SpinDriverPath.arc`). Without the theme's files it is yellow.
+
+## The observatory
+
+`native/mods/Sternenschiff` adds a sky island east of the Luma garden: a grassy island on
+a rock (modelled in Blender, `island_blender.py`, written by `build.py` as
+`ObjectData/GuglisSkyIsland.arc` with its collision), a Toad with his own lines, a ring of
+coins, butterflies, and two hazelnut Launch Stars: one in the garden to the island, one
+on the island back. The observatory itself (`StageData/AstroGalaxy.arc`) was edited in
+Whitehole through its MCP tools (Whitehole fork, `mac/README.md`) and exported with
+`game_export_mod`; new things go on the common layer, which every state of the
+observatory shows.
+
+- The Toad's line: `AstroGalaxy_Kinopio090` in the mod's `messages.txt` (a Toad with
+  MessageId 90 in the zone AstroGalaxy).
+- A Launch Star takes Mario only once he has been over 350 units from it: start the
+  smoke run's `launchstar` check (below) from there.
+- The mod replaces `StageData/AstroGalaxy.arc` as a whole, so two mods changing the
+  observatory conflict (the higher priority's wins).
 
 ## The game's save stays the game's
 
@@ -156,15 +189,20 @@ a new galaxy) changes that level, and its stars count as the game's.
   `AstroDomeOrbit.cpp`: `Mini<Galaxy>` miniatures, six to eight orbits in a dome.
 - `AudSceneMgr.cpp`, `AudStageBgmWrap.cpp`: the borrowed sounds and music.
 - `MessageUtil.cpp`: "???" for a galaxy name no file supplies.
-- `PowerStar.cpp`: purple stars in mods' galaxies, and the one brought back to the
-  observatory; `PurpleStarCounter.cpp`, `CounterLayoutController.cpp`: their counter;
+- `PowerStar.cpp`: the theme colour for stars in mods' galaxies, and the one brought back
+  to the observatory; `ModStarCounter.cpp`, `CounterLayoutController.cpp`: their counter;
   `GameDataFunction.cpp`: the count.
+- `SuperSpinDriver.cpp`, `SpinDriverPathDrawer.cpp`, `NameObjFactory.cpp`: the hazelnut
+  Launch Star `SuperSpinDriverHazel`.
 - `NameObjFactory.cpp`: a mod's own object archive placed by name is a planet (`PlanetMap`);
   `GuglisStarAppear`, a challenge's star.
 
 Testing a mod's galaxy without the observatory: `--test-fixture stage` with
 `PETARI_STAGE=<Galaxy>` accepts a galaxy that a mod in the user directory adds. The
-smoke run's `PETARI_MECHANIC=purplestar` plays the planet's challenge
+smoke run's `PETARI_MECHANIC=modstar` plays the planet's challenge
 (`PETARI_STAGE=GuglisPlanetGalaxy`, `PETARI_MOD_FOLDERS=GuglisPlanet`): it breaks the three
-boxes and collects the purple star. With `PETARI_STAGE_AFTER_FRAMES=<frames>` the run
-goes on that long afterwards, tapping A, through the return to the observatory.
+boxes and collects the star. With `PETARI_STAGE_AFTER_FRAMES=<frames>` the run goes on
+that long afterwards, tapping A, through the return to the observatory.
+`PETARI_MECHANIC=launchstar` (any stage, with `PETARI_STAGE_WARP` near the star) flies the
+nearest Launch Star and checks the landing against `PETARI_MECHANIC_TARGET=x,y,z`: e.g.
+`PETARI_STAGE=AstroGalaxy`, warp `5450,300,450`, target `10300,270,-900` (garden to island).
