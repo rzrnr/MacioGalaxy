@@ -10,6 +10,7 @@
 #include "Game/MapObj.hpp"
 #ifdef PETARI_NATIVE
 #include "Game/MapObj/GuglisSpinBox.hpp"
+#include "Game/MapObj/GuglisStarAppear.hpp"
 #include <cstring>
 #endif
 #include "Game/NPC.hpp"
@@ -914,6 +915,11 @@ namespace {
             "GuglisSpinBox",
             createNameObj< GuglisSpinBox >,
             "PunchBox",
+        },
+        {
+            "GuglisStarAppear",
+            createNameObj< GuglisStarAppear >,
+            nullptr,
         },
 #endif
         {
@@ -8136,6 +8142,9 @@ namespace NameObjFactory {
             if (isModMiniature(pName)) {
                 return createNameObj< MiniatureGalaxy >;
             }
+            if (PetariNative::ModGalaxies::isObject(pName)) {
+                return createNameObj< PlanetMap >;  // a mod's own planet: model, collision
+            }
 #endif
             return nullptr;
         }
@@ -8221,6 +8230,8 @@ namespace NameObjFactory {
 #ifdef PETARI_NATIVE
             if (pName2CreateFunc == nullptr && isModMiniature(pName)) {
                 MiniatureGalaxy::makeArchiveList(pCollector, rIter);
+            } else if (pName2CreateFunc == nullptr && PetariNative::ModGalaxies::isObject(pName)) {
+                pCollector->addArchive(pName);
             }
 #endif
         }

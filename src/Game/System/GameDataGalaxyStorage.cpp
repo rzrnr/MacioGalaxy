@@ -145,6 +145,18 @@ GameDataSomeScenarioAccessor GameDataAllGalaxyStorage::makeAccessor(const char* 
     return GameDataSomeScenarioAccessor(mSomeGalaxyStorages[findIndex(pGalaxyName)], scenarioNum);
 }
 
+#ifdef PETARI_NATIVE
+s32 GameDataAllGalaxyStorage::calcModPowerStarNum() const {
+    s32 powerStarNum = 0;
+    for (s32 idx = 0; idx < getGalaxyNum(); idx++) {
+        if (PetariNative::Platform::ModGalaxy::find(mSomeGalaxyStorages[idx]->mGalaxyName) != nullptr) {
+            powerStarNum += mSomeGalaxyStorages[idx]->getPowerStarNumOwned();
+        }
+    }
+    return powerStarNum;
+}
+
+#endif
 s32 GameDataAllGalaxyStorage::calcCurrentPowerStarNum() const {
     s32 powerStarNum = 0;
     for (s32 idx = 0; idx < getGalaxyNum(); idx++) {

@@ -46,11 +46,29 @@ void PowerStar_FORCE_MATCH_SDATA2() {
     (void)2.0f;
 }
 
+#ifdef PETARI_NATIVE
+#include <petari/mod_galaxies.hpp>
+#endif
+
+#ifdef PETARI_NATIVE
+// Index 1, which the game never selects, is the purple of the stars in galaxies that mods add
+// (native/CUSTOM_GALAXY.md); the mod's PowerStar.arc carries the purple texture for BTP frame 1.
+const GXColor lightColor[] = {
+    {0x96, 0x96, 0x32, 0}, {0x78, 0x28, 0x96, 0}, {0x32, 0x96, 0x32, 0}, {0x96, 0x32, 0x32, 0}, {0x64, 0x64, 0x64, 0},
+};
+#else
 const GXColor lightColor[] = {
     {0x96, 0x96, 0x32, 0}, {0x32, 0x32, 0x96, 0}, {0x32, 0x96, 0x32, 0}, {0x96, 0x32, 0x32, 0}, {0x64, 0x64, 0x64, 0},
 };
+#endif
 
 namespace {
+#ifdef PETARI_NATIVE
+    // A star in a galaxy a mod adds is purple (colour 1): the mod's stars, counted apart.
+    bool isPurpleStage() {
+        return PetariNative::ModGalaxies::isMod(MR::getCurrentStageName());
+    }
+#endif
     const char* const cAppearDemoName = "パワースター出現";
     const char* const cStageClearAnimNameKoopaVs3 = "GrandStarGetKoopaVs3";
 
@@ -222,6 +240,11 @@ void PowerStar::setupColor(LiveActor* pActor, const NameObj* a2, s32 a3) {
     } else if (MR::isPowerStarRedInCurrentStageWithDeclarer(a2->mName, a3)) {
         val = 3;
     }
+#ifdef PETARI_NATIVE
+    if (::isPurpleStage()) {
+        val = 1;
+    }
+#endif
 
     if (MR::isGrandStarInCurrentStageWithDeclarer(a2->mName, a3)) {
         ::setupColorGrandStar(pActor, hasPowerStar);
@@ -240,6 +263,11 @@ void PowerStar::setupColorAtResultSequence(LiveActor* pPowerStar, bool a2) {
     } else if (MR::isPowerStarRedAtResultSequence()) {
         val = 3;
     }
+#ifdef PETARI_NATIVE
+    if (::isPurpleStage()) {
+        val = 1;
+    }
+#endif
 
     if (a2) {
         ::setupColorGrandStar(pPowerStar, hasStarAtRes);
@@ -258,6 +286,11 @@ void PowerStar::requestPointLight(const LiveActor* pActor, const NameObj* a2, s3
     } else if (MR::isPowerStarRedInCurrentStageWithDeclarer(a2->mName, a3)) {
         colorIdx = 3;
     }
+#ifdef PETARI_NATIVE
+    else if (::isPurpleStage()) {
+        colorIdx = 1;
+    }
+#endif
 
     ::requestPointLight(pActor, colorIdx);
 }
@@ -272,6 +305,11 @@ void PowerStar::requestPointLightAtResultSequence(const LiveActor* pActor) {
     } else if (MR::isPowerStarRedAtResultSequence()) {
         val = 3;
     }
+#ifdef PETARI_NATIVE
+    else if (::isPurpleStage()) {
+        val = 1;
+    }
+#endif
 
     ::requestPointLight(pActor, val);
 }
@@ -281,6 +319,11 @@ f32 PowerStar::getPowerStarWaitRotateSpeed() {
 }
 
 s32 PowerStar::getBtpFrameCurrentStage(s32 a1) {
+#ifdef PETARI_NATIVE
+    if (::isPurpleStage()) {
+        return 1;
+    }
+#endif
     if (MR::isPowerStarGreenInCurrentStage(a1)) {
         return 2;
     }

@@ -3,6 +3,7 @@
 #include "Game/LiveActor/HitSensor.hpp"
 #include "Game/LiveActor/Nerve.hpp"
 #include "Game/Util.hpp"
+#include "Game/Util/NativeActorObserve.hpp"
 
 #include <cmath>
 
@@ -40,6 +41,8 @@ void GuglisSpinBox::init(const JMapInfoIter& rIter) {
     MR::addHitSensorMapObj(this, "body", 8, mScale.x * 110.0f, TVec3f(0.0f, mScale.x * 90.0f, 0.0f));
     MR::declareCoin(this, mHitsLeft - 1 + kBurstCoins);
 
+    MR::useStageSwitchWriteDead(this, rIter);  // SW_DEAD turns on when it bursts, e.g. for GuglisStarAppear
+
     mBasePos.set(mPosition);
     mBaseScale.set(mScale);
     initNerve(GET_NERVE(GuglisSpinBox, GuglisSpinBoxNrvWait));
@@ -55,6 +58,9 @@ void GuglisSpinBox::control() {
     const f32 bob = kBobHeight * std::sin(static_cast< f32 >(mTime) * 0.05f);
     mPosition.set(mBasePos.x + up.x * bob, mBasePos.y + up.y * bob, mBasePos.z + up.z * bob);
     mRotation.y = static_cast< f32 >(std::fmod(mRotation.y + kTurnDegreesPerStep, 360.0f));
+#ifdef PETARI_NATIVE
+    MR::Native::publishActor("GuglisSpinBox", mBasePos, up, mHitsLeft, 0);  // for the smoke run's purplestar check
+#endif
 }
 
 void GuglisSpinBox::exeWait() {
@@ -83,6 +89,9 @@ void GuglisSpinBox::exeBurst() {
     mScale.set(mBaseScale.x * shrink, mBaseScale.y * shrink, mBaseScale.z * shrink);
     if (MR::isStep(this, 12)) {
         MR::appearCoinPop(this, mPosition, kBurstCoins);
+        if (MR::isValidSwitchDead(this)) {
+            MR::onSwitchDead(this);
+        }
         kill();
     }
 }

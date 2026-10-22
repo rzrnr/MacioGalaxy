@@ -92,5 +92,9 @@ public:
     }
 
     /* 0x08 */ MR::Vector< MR::AssignableArray< GameDataSomeGalaxyStorage* > > mSomeGalaxyStorages;
-    /* 0x14 */ BinaryDataContentHeaderSerializer* mHeaderSerializer;
+    /* 0x14 */ BinaryDataContentHeaderSerializer* mHeaderSerializer;#ifdef PETARI_NATIVE
+    // The stars the file holds in mod galaxies (the registry's): the purple stars, counted apart
+    // (native/CUSTOM_GALAXY.md).
+    s32 calcModPowerStarNum() const;
+#endif
 };

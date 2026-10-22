@@ -19,9 +19,22 @@ inline const char* (*messages)(const char* language) = nullptr;
 // The game's language prefix ("UsEnglish"), set by the game code that knows it (Language.cpp).
 inline const char* (*languagePrefix)() = nullptr;
 
+// Whether a mod adds an object archive of this name (ObjectData/<name>.arc, not on the disc): a
+// placement of that name with no class of its own is the mod's planet (PlanetMap).
+inline bool (*isModObject)(const char* name) = nullptr;
+
 // Whether a mod adds this galaxy: a galaxy of the registry (galaxy.json of an enabled mod).
 inline bool isMod(const char* galaxy) {
     return galaxy != nullptr && PetariNative::Platform::ModGalaxy::find(galaxy) != nullptr;
 }
+
+inline bool isObject(const char* name) {
+    return isModObject != nullptr && name != nullptr && isModObject(name);
+}
+
+// The purple stars (stars of mods' galaxies) the current file holds, and whether the current
+// stage is a mod's galaxy; set by the game code (GameDataFunction.cpp), for the counter overlay.
+inline int (*purpleStarCount)() = nullptr;
+inline bool (*inModGalaxy)() = nullptr;
 
 }  // namespace PetariNative::ModGalaxies

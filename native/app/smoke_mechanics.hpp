@@ -35,6 +35,10 @@
 //   flippanel FlipPanelExGalaxy 1. Walk onto the nearest panels ("FlipPanel" actors)
 //             that are not flipped: each one Mario stands on must flip within 60
 //             frames; two panels.
+//   purplestar GuglisPlanetGalaxy 1 (the mod native/mods/GuglisPlanet, PETARI_MOD_FOLDERS).
+//             Walk to each published "GuglisSpinBox" and spin until it bursts (three).
+//             The purple star must come out (a "PowerStar" in its appear demo or
+//             waiting); walk to it: it must reach its stage-clear demo (collected).
 //
 // FAIL names the step and the measurements. Every step is logged with positions.
 #include <string>
@@ -74,6 +78,7 @@ private:
     Result swim(const Observation& o, Step& step);
     Result flipPanel(const Observation& o, Step& step);
     Result ray(const Observation& o, Step& step);
+    Result purpleStar(const Observation& o, Step& step);
     // steerTo with stuck recovery: no 40 units of progress in 120 frames jumps; the
     // third time on one target sidesteps for 45 frames. Returns the flat distance.
     float approach(const Observation& o, V target, Step& step);

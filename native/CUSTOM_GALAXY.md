@@ -3,7 +3,8 @@
 A disc-file mod (native/MODS.md, "Mod folder") can add a whole galaxy: its level, a
 miniature in a Comet Observatory dome, its names and dialogue, and objects with new
 logic. This page shows how with an example, "Guglis Testgalaxie", and what the port
-does so that such a mod never touches the game's own save.
+does so that such a mod never touches the game's own save. "Your own planet" builds
+a galaxy from a planet modelled in Blender, with a purple star.
 
 ## The example
 
@@ -42,8 +43,10 @@ The mod's files:
 
 - **The level:** any level editor for Super Mario Galaxy writes these archives, e.g.
   Whitehole Neo (its "SMG1 1 Star Galaxy" template), with models from Blender through
-  SuperBMD and collision from pyKCLCreate. `native/tools/stage_edit.py` changes
-  placement tables from the command line.
+  SuperBMD and collision from pyKCLCreate. Without them, the tools here do it in Python
+  (see "Your own planet"): `native/tools/stage_edit.py` changes placement tables,
+  `j3d_mesh.py` writes a model, `kcl_write.py` its collision, `rarc_write.py` an
+  object archive.
 - **The galaxy's name** is the scenario archive's: `StageData/<Galaxy>/<Galaxy>Scenario.arc`
   (with `ScenarioData.bcsv` and `ZoneList.bcsv`) and `StageData/<Galaxy>.arc`. At
   most 64 galaxies (the game has 48), at most 7 stars each.
@@ -68,6 +71,50 @@ The mod's files:
 - **New logic:** a C++ class in `src/Game/...` and a row in the `NameObjFactory.cpp`
   table, as `GuglisSpinBox`; place it by name like any object. That part is code in
   the port, not in the mod.
+
+## Your own planet
+
+```sh
+python3 native/mods/GuglisPlanet/build.py
+```
+
+builds `mods/GuglisPlanet`, "Guglis Testplanet": a small planet modelled in Blender, in
+the Terrace next to the other miniatures. It needs Blender (`/Applications/Blender.app`,
+run in the background) and your disc, nothing downloaded.
+
+- **The planet** is made by `native/mods/GuglisPlanet/planet_blender.py` and kept as
+  `ModSources/GuglisPlanet/GuglisTestPlanet.blend` in the user directory: a hilly ball
+  of grass with a winding soil path and four cut-stone pillars, 12 m across (1 m in
+  Blender is 100 units in the game; Mario is 1.6 m). Edit it there and run
+  `build.py --from-blend`. The rules: meshes in the collection "Planet", material slots
+  named after the template's materials (`Green_v`, `Ground_v`, `CutStone_v`, Stardust
+  Hill's), shading in the colour attribute "Col"; empties in "Markers" give Mario's
+  start, the spin boxes and the star.
+- **Model and collision:** `native/tools/j3d_mesh.py` writes the mesh into Stardust
+  Hill's planet model (its materials and textures stay, so it looks like the game),
+  with box-mapped texture coordinates at the texture's own density; `kcl_write.py`
+  builds the collision with grass, soil and stone footsteps; `rarc_write.py` packs
+  `ObjectData/GuglisPlanetSphere.arc`. The miniature is the same mesh, smaller.
+- **The stage** is Snow Cap Galaxy's (one small planet, aurora sky), emptied and
+  rebuilt around the planet: the game's small-planet camera, a new opening flight
+  round the planet (`camera/StartScenario1.canm`, `canm.py`), then the Launch Star
+  rail brings Mario down on the north pole.
+- **The challenge:** three `GuglisSpinBox` objects (3 spins each). Each turns a switch
+  on when it bursts (SW_DEAD); the game's `GroupSwitchWatcher` turns switch 20 on once
+  all three have; `GuglisStarAppear` (`src/Game/MapObj/GuglisStarAppear.cpp`) then
+  brings the scenario's star out above the tallest pillar, seen by its own camera
+  (`e:パワースター固有001`), and it flies down beside the pillar.
+- **The purple star:** every star of a mod's galaxy is purple (the star model's unused
+  colour slot, given a purple texture in the mod's `ObjectData/PowerStar.arc`), and
+  a purple counter under the star count shows the purple stars of the file while you
+  are in a mod's galaxy. They count apart from the game's stars, as below.
+- **A placed object a mod brings** (`ObjectData/<Name>.arc` not on the disc, no class
+  of its own) is a planet: a model and, when the archive has one, its collision.
+
+Only one mod's `StageData/AstroDome.arc` is used, the highest priority's
+(native/MODS.md). The planet's `mod.txt` has priority 1, and `build.py` puts the
+miniatures of other mods' galaxies it finds in the user directory into its dome as
+well (a miniature whose mod is off is left out).
 
 ## The game's save stays the game's
 
@@ -106,6 +153,13 @@ a new galaxy) changes that level, and its stars count as the game's.
   `AstroDomeOrbit.cpp`: `Mini<Galaxy>` miniatures, six to eight orbits in a dome.
 - `AudSceneMgr.cpp`, `AudStageBgmWrap.cpp`: the borrowed sounds and music.
 - `MessageUtil.cpp`: "???" for a galaxy name no file supplies.
+- `PowerStar.cpp`: purple stars in mods' galaxies; `native/app/stats_overlay.cpp`: their
+  counter; `GameDataFunction.cpp`: the count.
+- `NameObjFactory.cpp`: a mod's own object archive placed by name is a planet (`PlanetMap`);
+  `GuglisStarAppear`, a challenge's star.
 
 Testing a mod's galaxy without the observatory: `--test-fixture stage` with
-`PETARI_STAGE=<Galaxy>` accepts a galaxy that a mod in the user directory adds.
+`PETARI_STAGE=<Galaxy>` accepts a galaxy that a mod in the user directory adds. The
+smoke run's `PETARI_MECHANIC=purplestar` plays the planet's challenge
+(`PETARI_STAGE=GuglisPlanetGalaxy`, `PETARI_MOD_FOLDERS=GuglisPlanet`): it breaks the three
+boxes and collects the purple star.

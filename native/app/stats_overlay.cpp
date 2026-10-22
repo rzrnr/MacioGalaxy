@@ -5,6 +5,7 @@
 
 #include "petari/graphics.hpp"
 #include "petari/home_menu.hpp"
+#include "petari/mod_galaxies.hpp"
 
 #include <imgui.h>
 
@@ -150,6 +151,37 @@ void drawGraph(ImDrawList* list, ImVec2 min, ImVec2 max, float line) {
     }
 }
 
+// In a galaxy a mod adds (native/CUSTOM_GALAXY.md): the purple stars of the file, under the game's
+// own star counter at the top left, drawn whatever the Stats setting.
+void drawPurpleStars(float imageX, float imageY, float imageWidth, float imageHeight) {
+    namespace Mods = PetariNative::ModGalaxies;
+    if (Mods::inModGalaxy == nullptr || Mods::purpleStarCount == nullptr || !Mods::inModGalaxy() ||
+        PetariNative::HomeMenu::publishedView().visible || ImGui::GetCurrentContext() == nullptr) {
+        return;
+    }
+    char text[16];
+    std::snprintf(text, sizeof(text), "x %d", Mods::purpleStarCount());
+    ImDrawList* list = ImGui::GetForegroundDrawList();
+    ImFont* font = ImGui::GetFont();
+    const float h = imageHeight;
+    const float size = h * 0.045f;
+    const ImVec2 centre(imageX + imageWidth * 0.072f, imageY + h * 0.215f);
+    const float outer = size * 0.62f, inner = outer * 0.45f;
+    ImVec2 points[10];
+    for (int i = 0; i < 10; i++) {
+        const float angle = -1.5707963f + static_cast<float>(i) * 0.6283185f;
+        const float radius = (i % 2) == 0 ? outer : inner;
+        points[i] = ImVec2(centre.x + std::cos(angle) * radius, centre.y + std::sin(angle) * radius);
+    }
+    list->AddConcavePolyFilled(points, 10, color(0.62f, 0.25f, 0.92f, 1.0f));
+    list->AddPolyline(points, 10, color(1.0f, 0.95f, 1.0f, 0.95f), ImDrawFlags_Closed, std::max(1.0f, h * 0.003f));
+    const ImVec2 textPos(centre.x + outer * 1.35f, centre.y - size * 0.5f);
+    for (const ImVec2 offset : {ImVec2(-2, 0), ImVec2(2, 0), ImVec2(0, -2), ImVec2(0, 2)}) {
+        list->AddText(font, size, ImVec2(textPos.x + offset.x, textPos.y + offset.y), color(0.15f, 0.05f, 0.25f, 0.9f), text);
+    }
+    list->AddText(font, size, textPos, color(1.0f, 1.0f, 1.0f, 1.0f), text);
+}
+
 }  // namespace
 
 void addFrame(const Sample& s) {
@@ -175,6 +207,9 @@ void draw(SDL_Window* window, float imageX, float imageY, float imageWidth, floa
     const int outputWidth = static_cast<int>(std::lround(imageWidth * density));
     const int outputHeight = static_cast<int>(std::lround(imageHeight * density));
     PetariNative::Graphics::setOutputSize(outputWidth, outputHeight);
+    if (imageWidth > 0.0f && imageHeight > 0.0f) {
+        drawPurpleStars(imageX, imageY, imageWidth, imageHeight);
+    }
 
     const PetariNative::Graphics::Stats stats = PetariNative::Graphics::current().stats;
     const bool on = stats != PetariNative::Graphics::Stats::Off;

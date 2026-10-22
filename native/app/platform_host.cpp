@@ -1,10 +1,13 @@
 // Platform start-up and exit for the native application. SDK side: no Aurora
 // or SDL headers here.
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <system_error>
 #include <revolution/dvd.h>
@@ -89,6 +92,25 @@ void dumpHangState(const char* reason) {
 
 // Enabled folder mods in precedence order, for their messages.txt (native/CUSTOM_GALAXY.md).
 std::vector<std::filesystem::path> gEnabledModRoots;
+// The disc paths the enabled mods supply (lower case), and the disc, for isModObject.
+std::set<std::string> gModPaths;
+std::filesystem::path gDiscRoot;
+
+std::string lower(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+// An object archive a mod adds (ObjectData/<name>.arc, not on the disc): placed without a class of
+// its own, it is the mod's planet (NameObjFactory.cpp, native/CUSTOM_GALAXY.md).
+bool isModObject(const char* name) {
+    PetariNative::HostAllocationScope host;
+    if (name == nullptr) return false;
+    const std::string path = std::string("ObjectData/") + name + ".arc";
+    if (gModPaths.count(lower(path)) == 0) return false;
+    std::error_code ec;
+    return !std::filesystem::exists(gDiscRoot / "files" / path, ec) && !std::filesystem::exists(gDiscRoot / "DATA/files" / path, ec);
+}
 
 // Text of the enabled mods for the game's messages (MessageHolder.cpp): per mod, messages.<language>.txt
 // then messages.txt, mods in precedence order, so the first line for an ID wins. NPC lines and other
@@ -145,6 +167,9 @@ bool preparePlatform(const Paths& paths, std::string* error) {
         Platform::ModFolder::setPatchBuilder(&PetariEditor::Patch::buildForLoader);
         auto resolved = Platform::ModFolder::resolveForUser(paths.user, paths.disc);
         for (const std::string& line : resolved.log) std::fprintf(stderr, "[mods] %s\n", line.c_str());
+        gModPaths.clear();
+        for (const auto& file : resolved.files) gModPaths.insert(lower(file.path));
+        gDiscRoot = paths.disc;
         mountOptions.overlay = std::move(resolved.files);
         // Mod galaxies' progress is saved beside the save, never in it (TECH.md 5.7).
         Platform::ModGalaxy::setSaveDirectory(paths.user / "mods-saves");
@@ -157,6 +182,7 @@ bool preparePlatform(const Paths& paths, std::string* error) {
         }
         gEnabledModRoots = Platform::ModFolder::enabledRoots(paths.user);
         PetariNative::ModGalaxies::messages = modMessages;
+        PetariNative::ModGalaxies::isModObject = isModObject;
     }
     if (!Platform::DVD::mount(mountOptions, error)) {
         *error = "disc " + paths.disc.string() + ": " + *error;
