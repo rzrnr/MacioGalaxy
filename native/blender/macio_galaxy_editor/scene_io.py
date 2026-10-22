@@ -30,6 +30,7 @@ COLORS = {"objinfo": (1.0, 0.55, 0.1, 1), "mappartsinfo": (0.25, 0.5, 1.0, 1), "
           "startinfo": (1.0, 0.15, 0.15, 1), "stageobjinfo": (1.0, 1.0, 1.0, 1), "demoobjinfo": (0.9, 0.4, 0.7, 1),
           "soundinfo": (0.6, 0.6, 0.6, 1), "generalposinfo": (0.6, 0.6, 0.6, 1), "debugmoveinfo": (0.5, 0.5, 0.5, 1)}
 WIRE = {"areaobjinfo", "cameracubeinfo", "planetobjinfo"}
+MODEL_KINDS = {"objinfo", "mappartsinfo", "childobjinfo"}  # drawn with the game's model when it has one
 HIDDEN_KINDS = {"soundinfo", "generalposinfo", "debugmoveinfo", "demoobjinfo"}  # shown, but off at first
 
 
@@ -45,23 +46,44 @@ def _mesh(name, geometry, scale=(1.0, 1.0, 1.0)):
     return mesh
 
 
-def _shared(name, make):
+def _stand_in_material(kind):
+    """A plain material in the kind's colour (the viewport shows textures, so the stand-ins need one)."""
+    name = f"SMG Stand-in {kind}"
+    material = bpy.data.materials.get(name)
+    if material is None:
+        material = bpy.data.materials.new(name)
+        material.diffuse_color = COLORS.get(kind, (0.7, 0.7, 0.7, 1))
+        material.use_nodes = True
+        material.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = material.diffuse_color
+    return material
+
+
+def _shared(name, make, kind=None):
     mesh = bpy.data.meshes.get(name)
     if mesh is None:
         mesh = _mesh(name, make())
-        mesh.use_fake_user = False
+        if kind is not None:
+            mesh.materials.append(_stand_in_material(kind))
     return mesh
 
 
-def mesh_for(kind, values, scale, catalog):
+def stand_in_mesh(kind):
+    return _shared(f"SMG Stand-in {kind}", lambda: shapes.stand_in(kind), kind)
+
+
+def mesh_for(kind, values, scale, catalog, library=None):
     name = values.get("name", "")
+    if library is not None and kind in MODEL_KINDS:
+        model = library.mesh(name, values)
+        if model is not None:
+            return model
     if kind == "planetobjinfo":
         return _mesh(f"Gravity {name}", shapes.gravity_shape(name, values, scale), scale)
     if kind in ("areaobjinfo", "cameracubeinfo"):
         entry = catalog.entries.get(name) if catalog else None
         shape = shapes.area_shape_name(name, entry["area_shape"] if entry else None)
         return _shared(f"SMG Area {shape}", lambda: shapes.area_shape(shape))
-    return _shared(f"SMG Stand-in {kind}", lambda: shapes.stand_in(kind))
+    return stand_in_mesh(kind)
 
 
 def gravity_signature(obj):
@@ -128,9 +150,9 @@ def layer_collection(root, zone, layer):
     return coll
 
 
-def new_object(name, kind, zone, values, matrix, collection, catalog, parent=None, row=-1, table=None):
+def new_object(name, kind, zone, values, matrix, collection, catalog, parent=None, row=-1, table=None, library=None):
     scale = values.get("scale_x", 1.0), values.get("scale_y", 1.0), values.get("scale_z", 1.0)
-    obj = bpy.data.objects.new(name, mesh_for(kind, values, scale, catalog))
+    obj = bpy.data.objects.new(name, mesh_for(kind, values, scale, catalog, library))
     collection.objects.link(obj)
     obj["smg_kind"], obj["smg_zone"], obj["smg_row"] = kind, zone, row
     obj["smg_table"] = table or ""
@@ -155,7 +177,16 @@ def _matrix(values):
                            [values.get(f"scale_{a}", 1.0) for a in "xyz"])
 
 
-def import_galaxy(context, galaxy, scenario_no, catalog):
+def show_models(root, library):
+    """Swaps objects between the game's models (library) and their stand-ins (library None)."""
+    for obj in root.all_objects:
+        kind = obj.get("smg_kind")
+        if kind in MODEL_KINDS and obj.type == "MESH":
+            model = library.mesh(obj.get(PREFIX + "name", ""), fields_of(obj)) if library is not None else None
+            obj.data = model if model is not None else stand_in_mesh(kind)
+
+
+def import_galaxy(context, galaxy, scenario_no, catalog, library=None):
     """One galaxy at a time: an open one (any "SMG ..." collection) is replaced."""
     scene = context.scene
     for coll in [c for c in scene.collection.children if c.get("smg_galaxy")]:
@@ -187,7 +218,7 @@ def import_galaxy(context, galaxy, scenario_no, catalog):
                 continue
             coll = layer_collection(root, zone_name, record.layer)
             new_object(record.values.get("name", record.kind), record.kind, zone_name, record.values, _matrix(record.values),
-                       coll, catalog, parent=parent, row=record.row, table=record.table)
+                       coll, catalog, parent=parent, row=record.row, table=record.table, library=library)
             count += 1
         paths_coll = _collection(f"{zone_name} Paths", _collection(zone_name, root))
         paths_coll["smg_zone"], paths_coll["smg_layer"] = zone_name, "path"
