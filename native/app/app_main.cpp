@@ -487,6 +487,15 @@ int main(int argc, char** argv) {
     config.pauseOnFocusLost = false;
     config.windowWidth = 1280;
     config.windowHeight = 720;
+    // PETARI_WINDOW_SIZE=<width>x<height> in points: another window shape, for reproducing a
+    // display's render size in a background smoke run (1512x982: a 14-inch MacBook Pro's screen).
+    if (const char* size = std::getenv("PETARI_WINDOW_SIZE"); size != nullptr) {
+        unsigned width = 0, height = 0;
+        if (std::sscanf(size, "%ux%u", &width, &height) == 2 && width >= 320 && height >= 240) {
+            config.windowWidth = width;
+            config.windowHeight = height;
+        }
+    }
     // Fullscreen as last left (display.txt; Cmd+Return switches). Background smoke runs stay windowed.
     if (!App::SmokeBackground::enabled) {
         if (!App::Display::load(paths.user / "display.txt", &error)) {
