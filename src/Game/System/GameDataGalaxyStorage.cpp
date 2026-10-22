@@ -110,6 +110,30 @@ s32 GameDataSomeGalaxyStorage::deserialize(const BinaryDataContentAccessor& rAcc
     return 0;
 }
 
+#ifdef PETARI_NATIVE
+// The app's mod galaxy store (native/app/platform_host.cpp).
+#include <petari/mod_galaxies.hpp>
+
+bool GameDataAllGalaxyStorage::isModGalaxy(s32 index) const {
+    return index >= 0 && index < 64 && mModGalaxy[index];
+}
+
+// When the player's file is saved (SaveDataHandler::storeUserFile): the mod galaxies' progress, to
+// the mod store. Not in serialize, which also builds blank files when the game starts.
+void GameDataAllGalaxyStorage::saveModProgress() const {
+    if (PetariNative::ModGalaxies::saveProgress == nullptr) {
+        return;
+    }
+    for (s32 idx = 0; idx < getGalaxyNum(); idx++) {
+        if (isModGalaxy(idx)) {
+            const GameDataSomeGalaxyStorage* storage = mSomeGalaxyStorages[idx];
+            PetariNative::ModGalaxies::saveProgress(mSlotName, storage->mGalaxyName, storage->mPowerStarOwnedFlags, storage->mAlreadyVisitedFlags,
+                                          storage->mMaxCoinNum);
+        }
+    }
+}
+#endif
+
 GameDataAllGalaxyStorage::GameDataAllGalaxyStorage() : mHeaderSerializer(nullptr) {
     mHeaderSerializer = new BinaryDataContentHeaderSerializer(new u8[32], 32);
     mSomeGalaxyStorages.init(64);
@@ -123,6 +147,12 @@ GameDataAllGalaxyStorage::GameDataAllGalaxyStorage() : mHeaderSerializer(nullptr
         iter.goNext();
     }
     initHeaderSerializer();
+#ifdef PETARI_NATIVE
+    mSlotName = "mario1";
+    for (s32 idx = 0; idx < 64; idx++) {
+        mModGalaxy[idx] = idx < getGalaxyNum() && PetariNative::ModGalaxies::isMod(mSomeGalaxyStorages[idx]->mGalaxyName);
+    }
+#endif
 }
 
 bool GameDataAllGalaxyStorage::isExistAccessor(const char* pGalaxyName, int scenarioNum) const {
@@ -145,6 +175,11 @@ GameDataSomeScenarioAccessor GameDataAllGalaxyStorage::makeAccessor(const char* 
 s32 GameDataAllGalaxyStorage::calcCurrentPowerStarNum() const {
     s32 powerStarNum = 0;
     for (s32 idx = 0; idx < getGalaxyNum(); idx++) {
+#ifdef PETARI_NATIVE
+        if (isModGalaxy(idx)) {
+            continue;  // a mod's stars do not count for the game (domes, endings)
+        }
+#endif
         powerStarNum += mSomeGalaxyStorages[idx]->getPowerStarNumOwned();
     }
     return powerStarNum;
@@ -197,6 +232,25 @@ s32 GameDataAllGalaxyStorage::deserialize(const u8* pData, u32 dataSize) {
         }
         readOffset += accessor.getDataSize();
     }
+
+#ifdef PETARI_NATIVE
+    // Mod galaxies are not in the file: their progress comes from the mod store.
+    for (s32 idx = 0; idx < getGalaxyNum(); idx++) {
+        if (!isModGalaxy(idx) || PetariNative::ModGalaxies::loadProgress == nullptr) {
+            continue;
+        }
+        GameDataSomeGalaxyStorage* storage = mSomeGalaxyStorages[idx];
+        u8 stars = 0, visited = 0;
+        u16 coins[8] = {};
+        if (PetariNative::ModGalaxies::loadProgress(mSlotName, storage->mGalaxyName, &stars, &visited, coins)) {
+            storage->mPowerStarOwnedFlags = stars;
+            storage->mAlreadyVisitedFlags = visited;
+            for (s32 i = 0; i < 8; i++) {
+                storage->mMaxCoinNum[i] = coins[i];
+            }
+        }
+    }
+#endif
 
     if (readError) {
         return 1;
@@ -255,13 +309,27 @@ s32 GameDataAllGalaxyStorage::serialize(u8* pData, u32 dataSize) const {
 
     const char* name;
     s32 writeOffset = 0;
+#ifdef PETARI_NATIVE
+    // Mod galaxies stay out of the file (native/CUSTOM_GALAXY.md); saveModProgress keeps them.
+    s32 savedNum = 0;
+    for (s32 idx = 0; idx < getGalaxyNum(); idx++) {
+        savedNum += isModGalaxy(idx) ? 0 : 1;
+    }
+    writeOffset += ::writeU16(pData + writeOffset, savedNum);
+#else
     writeOffset += ::writeU16(pData + writeOffset, getGalaxyNum());
+#endif
     name = reinterpret_cast< const char* >(getSerializer()->getBuffer());
     MR::copyMemory(pData + writeOffset, name, getSerializer()->getHeaderSize());
     writeOffset += getSerializer()->getHeaderSize();
 
     BinaryDataContentAccessor accessor(static_cast< u8* >(getSerializer()->getBuffer()));
     for (s32 idx = 0; idx < getGalaxyNum(); idx++) {
+#ifdef PETARI_NATIVE
+        if (isModGalaxy(idx)) {
+            continue;
+        }
+#endif
         GameDataSomeGalaxyStorage* storage = mSomeGalaxyStorages[idx];
         name = "mGalaxyName";
         u8* record = pData + writeOffset;

@@ -7,6 +7,16 @@
 #include "Game/Util/EventUtil.hpp"
 #include "Game/Util/StringUtil.hpp"
 
+#ifdef PETARI_NATIVE
+#include <petari/mod_galaxies.hpp>
+
+namespace {
+    bool isModMiniature(const MiniatureGalaxy* pGalaxy) {
+        return PetariNative::ModGalaxies::isMod(pGalaxy->mGalaxyName);
+    }
+}  // namespace
+#endif
+
 namespace {
     MiniatureGalaxyHolder* getHolder() {
         return MR::getSceneObj< MiniatureGalaxyHolder >(SceneObj_MiniatureGalaxyHolder);
@@ -74,6 +84,34 @@ s32 MiniatureGalaxyHolder::calcIndex(const LiveActor* pActor) const {
     const char* galaxyName = static_cast< const MiniatureGalaxy* >(pActor)->mGalaxyName;
     s32 mStarNum = MR::getPowerStarNumToOpenGalaxy(galaxyName);
     s32 index = 0;
+#ifdef PETARI_NATIVE
+    // A mod's galaxies (native/CUSTOM_GALAXY.md) orbit outside the dome's own, in placement order,
+    // and inside the Bowser or Bowser Jr. one; the dome's own keep their places.
+    const MiniatureGalaxy* pSelf = static_cast< const MiniatureGalaxy* >(pActor);
+    if (pSelf->mType != MiniatureGalaxyType_Koopa) {
+        const bool selfMod = isModMiniature(pSelf);
+        bool beforeSelf = true;  // in placement order
+        for (int i = 0; i < mMiniatureGalaxyGroup->getObjNum(); i++) {
+            const MiniatureGalaxy* pOther = static_cast< const MiniatureGalaxy* >(mMiniatureGalaxyGroup->getActor(i));
+            if (pOther == pSelf) {
+                beforeSelf = false;
+                continue;
+            }
+            if (pOther->mType == MiniatureGalaxyType_Koopa) {
+                continue;
+            }
+            const bool otherMod = isModMiniature(pOther);
+            if (selfMod && !otherMod) {
+                index++;
+            } else if (selfMod && otherMod) {
+                index += beforeSelf ? 1 : 0;
+            } else if (!selfMod && !otherMod && MR::getPowerStarNumToOpenGalaxy(pOther->mGalaxyName) < mStarNum) {
+                index++;
+            }
+        }
+        return index;
+    }
+#endif
     MiniatureGalaxy* actorGalaxy = findMiniatureGalaxy(galaxyName);
 
     for (int i = 0; i < mMiniatureGalaxyGroup->getObjNum(); i++) {

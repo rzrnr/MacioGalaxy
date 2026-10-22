@@ -8,6 +8,11 @@ s32 GameDataConst::getPowerStarNumToOpenGalaxy(const char* pGalaxy) {
     JMapInfo info;
     info.attach(&GalaxyIDBCSV);
     JMapInfoIter element = info.findElement< const char* >("name", pGalaxy, 0);
+#ifdef PETARI_NATIVE
+    if (!element.isValid()) {
+        return 0;  // not in GalaxyID: a mod's galaxy (native/CUSTOM_GALAXY.md), open with no stars
+    }
+#endif
     u32 powerStarNum = 0;
     element.getValue< u32 >("PowerStarNum", &powerStarNum);
     return powerStarNum;
@@ -67,6 +72,11 @@ u32 GameDataConst::getIncludedGrandGalaxyId(const char* pGalaxy) {
     JMapInfo info;
     info.attach(&GalaxyIDBCSV);
     JMapInfoIter element = info.findElement< const char* >("name", pGalaxy, 0);
+#ifdef PETARI_NATIVE
+    if (!element.isValid()) {
+        return 0;  // not in GalaxyID: a mod's galaxy, in no Grand Star's dome count
+    }
+#endif
     u32 grandGalaxyNo = 0;
     element.getValue< u32 >("GrandGalaxyNo", &grandGalaxyNo);
     return grandGalaxyNo;

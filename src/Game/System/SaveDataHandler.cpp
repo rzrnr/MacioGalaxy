@@ -1,4 +1,8 @@
 #include "Game/System/SaveDataHandler.hpp"
+#ifdef PETARI_NATIVE
+#include "Game/System/GameDataGalaxyStorage.hpp"
+#include "Game/System/GameDataHolder.hpp"
+#endif
 #include "Game/LiveActor/Nerve.hpp"
 #include "Game/System/NANDManager.hpp"
 #include "Game/System/SaveDataBannerCreator.hpp"
@@ -30,6 +34,13 @@ namespace {
     NEW_NERVE(SaveDataHandlerRemoveProcessingBanner, SaveDataHandler, RemoveProcessingBanner);
     NEW_NERVE(SaveDataHandlerRemoveProcessingGameData, SaveDataHandler, RemoveProcessingGameData);
 };  // namespace
+
+#ifdef PETARI_NATIVE
+// The mod galaxies' progress (native/CUSTOM_GALAXY.md, native/app/platform_host.cpp) follows the
+// save slots: saved with the player's file, cleared when a file is created or deleted, copied with
+// it.
+#include <petari/mod_galaxies.hpp>
+#endif
 
 SaveDataHandler::SaveDataHandler(const SysConfigFile* pSysConfigFile, const UserFile* pUserFile)
     : NerveExecutor("SaveDataHandler"), mNANDRequestInfo(), _C(), _10(), _14(), _18(), mBannerCreator() {
@@ -95,6 +106,11 @@ void SaveDataHandler::initializeUserFileMemory(int index, const UserFile* pUserF
 
         if (userFileInfo.mKind == 0) {
             pUserFile->makeGameDataBinary(userFileInfo.mData, userFileInfo.mDataSize);
+#ifdef PETARI_NATIVE
+            if (PetariNative::ModGalaxies::clearProgress != nullptr) {
+                PetariNative::ModGalaxies::clearProgress(fileName);
+            }
+#endif
         } else if (userFileInfo.mKind == 1) {
             pUserFile->makeConfigDataBinary(userFileInfo.mData, userFileInfo.mDataSize);
         }
@@ -118,6 +134,11 @@ void SaveDataHandler::copyUserFileMemory(int indexDst, int indexSrc) {
         fileAccessor.makeUserFileInfo(&dstUserFileInfo, dstFileName);
 
         MR::copyMemory(dstUserFileInfo.mData, srcUserFileInfo.mData, dstUserFileInfo.mDataSize);
+#ifdef PETARI_NATIVE
+        if (dstUserFileInfo.mKind == 0 && PetariNative::ModGalaxies::copyProgress != nullptr) {
+            PetariNative::ModGalaxies::copyProgress(dstFileName, srcFileName);
+        }
+#endif
     }
 }
 
@@ -136,6 +157,9 @@ void SaveDataHandler::storeUserFile(const UserFile* pUserFile) {
     SaveDataUserFileInfo gameFileInfo;
     fileAccessor.makeUserFileInfo(&gameFileInfo, pUserFile->getGameDataName());
     pUserFile->makeGameDataBinary(gameFileInfo.mData, gameFileInfo.mDataSize);
+#ifdef PETARI_NATIVE
+    pUserFile->mGameDataHolder->mAllGalaxyStorage->saveModProgress();
+#endif
 
     SaveDataUserFileInfo configFileInfo;
     fileAccessor.makeUserFileInfo(&configFileInfo, pUserFile->getConfigDataName());

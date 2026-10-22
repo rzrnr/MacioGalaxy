@@ -373,7 +373,19 @@ void AudSceneMgr::startScene() {
     SpkSystem::reconnect(-1);
 }
 
+#ifdef PETARI_NATIVE
+// A galaxy a mod adds uses an original galaxy's sounds and music (native/CUSTOM_GALAXY.md).
+#include <petari/mod_galaxies.hpp>
+#endif
+
 const AudSceneSoundInfo* AudSceneMgr::findSceneSoundInfo(const char* pSceneName, const char* pStageName) {
+#ifdef PETARI_NATIVE
+    if (PetariNative::ModGalaxies::soundStage != nullptr && pStageName != nullptr) {
+        if (const char* pOriginal = PetariNative::ModGalaxies::soundStage(pStageName)) {
+            pStageName = pOriginal;
+        }
+    }
+#endif
     for (s32 i = 0; i < ARRAY_SIZE(::cSceneInfo); i++) {
         if (strcmp(pSceneName, ::cSceneInfo[i].mSceneName) == 0 && strcmp(pStageName, ::cSceneInfo[i].mStageName) == 0) {
             return &::cSceneInfo[i];

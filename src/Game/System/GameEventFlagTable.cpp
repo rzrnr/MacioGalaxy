@@ -460,6 +460,11 @@ namespace GameEventFlagTable {
         info.attach(&GalaxyIDBCSV);
 
         JMapInfoIter iter = info.findElement("name", pName, 0);
+#ifdef PETARI_NATIVE
+        if (!iter.isValid()) {
+            return 0;  // not in GalaxyID: a mod's galaxy depends on no flags
+        }
+#endif
 
         s32 numFlags = 0;
         for (s32 idx = 0; idx < 3; idx++) {

@@ -5,6 +5,18 @@
 #include "Game/System/GameEventFlagTable.hpp"
 #include "Game/Util/SingletonHolder.hpp"
 
+#ifdef PETARI_NATIVE
+// A galaxy a mod adds (native/CUSTOM_GALAXY.md) has no flag in the table: it is open from the
+// start, and nothing about it goes into the save. Any other unknown name stays off.
+#include <petari/mod_galaxies.hpp>
+
+namespace {
+    bool isModGalaxyFlag(const char* pFlagName) {
+        return PetariNative::ModGalaxies::isMod(pFlagName);
+    }
+}  // namespace
+#endif
+
 GameEventFlagChecker::GameEventFlagChecker(GameDataHolder* pHolder) : mDataHolder(pHolder), mFlagStorage(nullptr) {
     SingletonHolder< GameEventFlagTableInstance >::init();
 
@@ -13,6 +25,11 @@ GameEventFlagChecker::GameEventFlagChecker(GameDataHolder* pHolder) : mDataHolde
 
 bool GameEventFlagChecker::canOn(const char* pFlagName) const {
     const GameEventFlag* pFlag = GameEventFlagTable::findFlag(pFlagName);
+#ifdef PETARI_NATIVE
+    if (pFlag == nullptr) {
+        return isModGalaxyFlag(pFlagName);
+    }
+#endif
 
     switch (pFlag->mType) {
     case GameEventFlag::Type_None:
@@ -66,6 +83,11 @@ bool GameEventFlagChecker::canOn(const char* pFlagName) const {
 }
 bool GameEventFlagChecker::isOn(const char* pFlagName) const {
     const GameEventFlag* pFlag = GameEventFlagTable::findFlag(pFlagName);
+#ifdef PETARI_NATIVE
+    if (pFlag == nullptr) {
+        return isModGalaxyFlag(pFlagName);
+    }
+#endif
 
     if ((pFlag->mSaveFlag & 0x1) != 0) {
         return canOn(pFlagName);

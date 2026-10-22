@@ -93,4 +93,13 @@ public:
 
     /* 0x08 */ MR::Vector< MR::AssignableArray< GameDataSomeGalaxyStorage* > > mSomeGalaxyStorages;
     /* 0x14 */ BinaryDataContentHeaderSerializer* mHeaderSerializer;
+#ifdef PETARI_NATIVE
+    // Galaxies that mods add (native/CUSTOM_GALAXY.md): left out of the save file and the star
+    // totals; their progress is kept per save slot (mSlotName, the holder's "mario1" etc.) in
+    // the user directory's ModProgress/.
+    bool isModGalaxy(s32 index) const;
+    void saveModProgress() const;
+    bool mModGalaxy[64];
+    const char* mSlotName;
+#endif
 };

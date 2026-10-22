@@ -145,8 +145,15 @@ void MiniatureGalaxy::initAfterPlacement() {
 }
 
 void MiniatureGalaxy::appear() {
+#ifdef PETARI_NATIVE
+    // Six or more miniatures when a mod adds a galaxy to the dome (native/CUSTOM_GALAXY.md).
+    const f32 rotations[] = {0.0f, 210.0f, 80.0f, 330.0f, 130.0f, 260.0f, 30.0f, 170.0f};
+    const s32 index = MiniatureGalaxyFunction::calcMiniatureGalaxyIndex(this);
+    ::setInitialRotation(mRotation, rotations[index < 8 ? index : 7]);
+#else
     const f32 rotations[] = {0.0f, 210.0f, 80.0f, 330.0f, 130.0f};
     ::setInitialRotation(mRotation, rotations[MiniatureGalaxyFunction::calcMiniatureGalaxyIndex(this)]);
+#endif
 
     mCanZoomIn = 1;
     mZoomLevel = ::cZoomFrame;

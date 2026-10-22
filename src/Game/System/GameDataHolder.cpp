@@ -44,6 +44,9 @@ GameDataHolder::GameDataHolder(const UserFile* pUserFile)
     resetAllData();
 
     snprintf(mName, sizeof(mName), "mario1");
+#ifdef PETARI_NATIVE
+    mAllGalaxyStorage->mSlotName = mName;  // the mod galaxies' progress follows the save slot
+#endif
 }
 
 bool GameDataHolder::isDataMario() const {

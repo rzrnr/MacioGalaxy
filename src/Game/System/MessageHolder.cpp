@@ -7,6 +7,15 @@
 #include <JSystem/JKernel/JKRArchive.hpp>
 #ifdef PETARI_NATIVE
 #include <petari/endian.hpp>
+#include <petari/host_allocation.hpp>
+
+#include <cstdlib>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+// Text of the enabled disc-file mods (native/app/platform_host.cpp).
+#include <petari/mod_galaxies.hpp>
 #endif
 
 #define SYSTEMMESSAGE_ARC "/Memory/SystemMessage.arc"
@@ -64,6 +73,109 @@ namespace {
 #endif
 };  // namespace
 
+#ifdef PETARI_NATIVE
+namespace {
+    // Mod messages (native/CUSTOM_GALAXY.md): "ID = text" lines from the enabled mods'
+    // messages.txt, for IDs the disc's message file does not have. The text becomes the game's
+    // in-memory form (host-order UTF-16 with 0x1A tags, as MessageData::mText). Built once and
+    // never changed: callers keep the pointers.
+    struct ModMessage {
+        std::vector< u16 > text;
+    };
+
+    void appendUtf8(std::vector< u16 >* pOut, const std::string& rText, size_t* pPos) {
+        const unsigned char lead = rText[*pPos];
+        u32 code = lead;
+        int extra = lead >= 0xF0 ? 3 : lead >= 0xE0 ? 2 : lead >= 0xC0 ? 1 : 0;
+        if (extra > 0) {
+            code = lead & (0x3F >> extra);
+        }
+        (*pPos)++;
+        for (; extra > 0 && *pPos < rText.size(); extra--, (*pPos)++) {
+            code = (code << 6) | (static_cast< unsigned char >(rText[*pPos]) & 0x3F);
+        }
+        if (code >= 0x10000) {
+            code -= 0x10000;
+            pOut->push_back(static_cast< u16 >(0xD800 | (code >> 10)));
+            pOut->push_back(static_cast< u16 >(0xDC00 | (code & 0x3FF)));
+        } else {
+            pOut->push_back(static_cast< u16 >(code));
+        }
+    }
+
+    // \n: new line; [page]: next page; [wait N]: N frames; [color N]: text colour (0 resets);
+    // [player]: the player's name.
+    std::vector< u16 > encodeModText(const std::string& rText) {
+        std::vector< u16 > out;
+        for (size_t pos = 0; pos < rText.size();) {
+            if (rText.compare(pos, 2, "\\n") == 0) {
+                out.push_back(0x000A);
+                pos += 2;
+            } else if (rText[pos] == '[') {
+                const size_t close = rText.find(']', pos);
+                const std::string tag = close == std::string::npos ? "" : rText.substr(pos + 1, close - pos - 1);
+                const u16 value = static_cast< u16 >(std::atoi(tag.c_str() + (tag.find(' ') == std::string::npos ? tag.size() : tag.find(' ') + 1)));
+                if (tag == "page") {
+                    out.insert(out.end(), {0x001A, 0x0601, 0x0001});
+                } else if (tag.rfind("wait ", 0) == 0) {
+                    out.insert(out.end(), {0x001A, 0x0801, 0x0000, value});
+                } else if (tag.rfind("color ", 0) == 0) {
+                    out.insert(out.end(), {0x001A, 0x08FF, 0x0000, static_cast< u16 >(value << 8)});
+                } else if (tag == "player") {
+                    out.insert(out.end(), {0x001A, 0x0805, 0x0000, 0x0000});
+                } else {
+                    appendUtf8(&out, rText, &pos);
+                    continue;
+                }
+                pos = close + 1;
+            } else {
+                appendUtf8(&out, rText, &pos);
+            }
+        }
+        out.push_back(0);
+        return out;
+    }
+
+    const std::unordered_map< std::string, ModMessage >& modMessages() {
+        static const std::unordered_map< std::string, ModMessage >* pMessages = nullptr;
+        if (pMessages == nullptr) {
+            PetariNative::HostAllocationScope host;
+            auto* pBuilt = new std::unordered_map< std::string, ModMessage >();
+            namespace Mods = PetariNative::ModGalaxies;
+            const char* pText =
+                Mods::messages != nullptr ? Mods::messages(Mods::languagePrefix != nullptr ? Mods::languagePrefix() : nullptr) : "";
+            std::string all = pText != nullptr ? pText : "";
+            size_t start = 0;
+            while (start < all.size()) {
+                size_t end = all.find('\n', start);
+                if (end == std::string::npos) {
+                    end = all.size();
+                }
+                std::string line = all.substr(start, end - start);
+                start = end + 1;
+                if (!line.empty() && line.back() == '\r') {
+                    line.pop_back();
+                }
+                const size_t equals = line.find('=');
+                if (line.empty() || line[0] == '#' || equals == std::string::npos) {
+                    continue;
+                }
+                std::string id = line.substr(0, equals);
+                std::string text = line.substr(equals + 1);
+                id.erase(id.find_last_not_of(" \t") + 1);
+                id.erase(0, id.find_first_not_of(" \t"));
+                text.erase(0, text.find_first_not_of(" \t"));
+                if (!id.empty() && pBuilt->find(id) == pBuilt->end()) {  // the first mod's line wins
+                    (*pBuilt)[id].text = encodeModText(text);
+                }
+            }
+            pMessages = pBuilt;
+        }
+        return *pMessages;
+    }
+}  // namespace
+#endif
+
 bool MessageData::getMessageDirect(TalkMessageInfo* pMessageInfo, const char* pMessage) const {
     s32 messageIndex = findMessageIndex(pMessage);
 
@@ -72,6 +184,24 @@ bool MessageData::getMessageDirect(TalkMessageInfo* pMessageInfo, const char* pM
 
         return true;
     }
+
+#ifdef PETARI_NATIVE
+    // Not on the disc: a mod's message, with the attributes of a plain talk line (normal camera,
+    // normal talk and balloon, talk sound 3, as the Toads' lines on the disc).
+    const auto& messages = modMessages();
+    const auto found = messages.find(pMessage);
+    if (found != messages.end()) {
+        pMessageInfo->_0 = reinterpret_cast< u8* >(const_cast< u16* >(found->second.text.data()));
+        pMessageInfo->mCameraSetID = 0;
+        pMessageInfo->_6 = 3;
+        pMessageInfo->mCameraType = 0;
+        pMessageInfo->mTalkType = 0;
+        pMessageInfo->mBalloonType = 0;
+        pMessageInfo->_A = -1;
+        pMessageInfo->_B = -1;
+        return true;
+    }
+#endif
 
     return false;
 }

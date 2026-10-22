@@ -206,17 +206,6 @@ bool resolvePaths(int argc, char** argv, App::Paths* paths) {
         paths->disc = env != nullptr && env[0] != '\0' ? std::filesystem::path(env)
                                                       : std::filesystem::current_path() / "build/game-data/RMGE01";
     }
-    if (stageFixture) {
-        const std::string& stage = PetariNative::TestFixture::stage;
-        if (!std::filesystem::is_regular_file(paths->disc / "files/StageData" / stage / (stage + "Scenario.arc"))) {
-            std::fprintf(stderr, "petari: PETARI_STAGE %s has no StageData/%s/%sScenario.arc on the disc\n",
-                         stage.c_str(), stage.c_str(), stage.c_str());
-            return false;
-        }
-        std::fprintf(stderr, "PETARI FIXTURE: synthetic stage entry requested: %s scenario %d (test entry through the "
-                     "after-loading galaxy move; no progression claims)\n", stage.c_str(),
-                     PetariNative::TestFixture::stageScenario);
-    }
     if (paths->user.empty()) {
         const char* home = std::getenv("HOME");
         if (home == nullptr || home[0] == '\0') {
@@ -224,6 +213,26 @@ bool resolvePaths(int argc, char** argv, App::Paths* paths) {
             return false;
         }
         paths->user = std::filesystem::path(home) / "Library/Application Support/Petari";
+    }
+    if (stageFixture) {
+        const std::string& stage = PetariNative::TestFixture::stage;
+        const std::filesystem::path scenario = std::filesystem::path("StageData") / stage / (stage + "Scenario.arc");
+        bool found = std::filesystem::is_regular_file(paths->disc / "files" / scenario);
+        // Or a galaxy a disc-file mod adds (native/CUSTOM_GALAXY.md); the mod must be enabled.
+        std::error_code ec;
+        for (const auto& mods : {paths->user / "mods"}) {
+            for (std::filesystem::directory_iterator it(mods, ec), end; !found && !ec && it != end; it.increment(ec)) {
+                found = std::filesystem::is_regular_file(it->path() / "files" / scenario);
+            }
+        }
+        if (!found) {
+            std::fprintf(stderr, "petari: PETARI_STAGE %s has no StageData/%s/%sScenario.arc on the disc or in a mod\n",
+                         stage.c_str(), stage.c_str(), stage.c_str());
+            return false;
+        }
+        std::fprintf(stderr, "PETARI FIXTURE: synthetic stage entry requested: %s scenario %d (test entry through the "
+                     "after-loading galaxy move; no progression claims)\n", stage.c_str(),
+                     PetariNative::TestFixture::stageScenario);
     }
     return true;
 }

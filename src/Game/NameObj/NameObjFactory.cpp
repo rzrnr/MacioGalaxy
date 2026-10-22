@@ -8,6 +8,10 @@
 #include "Game/Map.hpp"
 #include "Game/Map/OceanBowl.hpp"
 #include "Game/MapObj.hpp"
+#ifdef PETARI_NATIVE
+#include "Game/MapObj/GuglisSpinBox.hpp"
+#include <cstring>
+#endif
 #include "Game/NPC.hpp"
 #include "Game/NameObj/NameObjArchiveListCollector.hpp"
 #include "Game/NameObj/NameObjFactoryStubs.hpp"
@@ -904,6 +908,14 @@ namespace {
             createNameObj< PunchBox >,
             "PunchBox",
         },
+#ifdef PETARI_NATIVE
+        // Not in the original game: the example object of native/CUSTOM_GALAXY.md.
+        {
+            "GuglisSpinBox",
+            createNameObj< GuglisSpinBox >,
+            "PunchBox",
+        },
+#endif
         {
             "SwitchBox",
             createNameObj< SwitchBox >,
@@ -8099,6 +8111,18 @@ namespace {
     };
 };  // namespace
 
+#ifdef PETARI_NATIVE
+#include <petari/mod_galaxies.hpp>
+
+namespace {
+    // "Mini<Galaxy>" for a galaxy a mod adds (native/CUSTOM_GALAXY.md): a dome miniature like the
+    // game's own, with its model in the mod's ObjectData/Mini<Galaxy>.arc.
+    bool isModMiniature(const char* pName) {
+        return std::strncmp(pName, "Mini", 4) == 0 && PetariNative::ModGalaxies::isMod(pName + 4);
+    }
+}  // namespace
+#endif
+
 namespace NameObjFactory {
     CreatorFuncPtr getCreator(const char* pName) {
         if (PlanetMapCreatorFunction::isRegisteredObj(pName)) {
@@ -8108,6 +8132,11 @@ namespace NameObjFactory {
         const Name2CreateFunc* pName2CreateFunc = getName2CreateFunc(pName, nullptr);
 
         if (pName2CreateFunc == nullptr) {
+#ifdef PETARI_NATIVE
+            if (isModMiniature(pName)) {
+                return createNameObj< MiniatureGalaxy >;
+            }
+#endif
             return nullptr;
         }
 
@@ -8189,6 +8218,11 @@ namespace NameObjFactory {
                     pName2ArchiveFunc->mArchiveFunc(pCollector, rIter);
                 }
             }
+#ifdef PETARI_NATIVE
+            if (pName2CreateFunc == nullptr && isModMiniature(pName)) {
+                MiniatureGalaxy::makeArchiveList(pCollector, rIter);
+            }
+#endif
         }
     }
 };  // namespace NameObjFactory

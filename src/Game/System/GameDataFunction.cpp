@@ -28,6 +28,10 @@ namespace {
     }
 };  // namespace
 
+#ifdef PETARI_NATIVE
+#include <petari/mod_galaxies.hpp>
+#endif
+
 namespace GameDataFunction {
     bool isDataMario() {
         return getCurrentGameDataHolder()->isDataMario();
@@ -73,6 +77,11 @@ namespace GameDataFunction {
         s32 powerStarNumMax = 0;
 
         for (ScenarioDataIter iter = MR::makeBeginScenarioDataIter(); !iter.isEnd(); iter.goNext()) {
+#ifdef PETARI_NATIVE
+            if (PetariNative::ModGalaxies::isMod(iter.makeAccessor().getName())) {
+                continue;  // the game's star total leaves out the stars mods add (native/CUSTOM_GALAXY.md)
+            }
+#endif
             powerStarNumMax += iter.makeAccessor().getPowerStarNum();
         }
 

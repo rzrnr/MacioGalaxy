@@ -214,25 +214,45 @@ namespace MR {
         return nullptr;
     }
 
+#ifdef PETARI_NATIVE
+    // A galaxy a mod adds without its names in messages.txt (native/CUSTOM_GALAXY.md): "???" as for
+    // a galaxy not yet found, instead of no text (which the layouts would read through).
+    const wchar_t* withUnknownFallback(const wchar_t* pMessage) {
+        return pMessage != nullptr ? pMessage : getGameMessageDirect("GalaxyNameShort_Unknown");
+    }
+
+#endif
     const wchar_t* getGalaxyNameOnCurrentLanguage(const char* pGalaxyName) {
         char messageId[MESSAGE_ID_BUFFER_SIZE];
         snprintf(messageId, sizeof(messageId), "GalaxyName_%s", pGalaxyName);
 
+#ifdef PETARI_NATIVE
+        return withUnknownFallback(getGameMessageDirect(messageId));
+#else
         return getGameMessageDirect(messageId);
+#endif
     }
 
     const wchar_t* getGalaxyNameShortOnCurrentLanguage(const char* pGalaxyName) {
         char messageId[MESSAGE_ID_BUFFER_SIZE];
         snprintf(messageId, sizeof(messageId), "GalaxyNameShort_%s", pGalaxyName);
 
+#ifdef PETARI_NATIVE
+        return withUnknownFallback(getGameMessageDirect(messageId));
+#else
         return getGameMessageDirect(messageId);
+#endif
     }
 
     const wchar_t* getScenarioNameOnCurrentLanguage(const char* pGalaxyName, s32 scenarioNo) {
         char messageId[MESSAGE_ID_BUFFER_SIZE];
         snprintf(messageId, sizeof(messageId), "ScenarioName_%s%d", pGalaxyName, scenarioNo);
 
+#ifdef PETARI_NATIVE
+        return withUnknownFallback(getGameMessageDirect(messageId));
+#else
         return getGameMessageDirect(messageId);
+#endif
     }
 
     void getLayoutMessageID(char* pDst, const char* pSuperMessageId, const char* pSubMessageId) {

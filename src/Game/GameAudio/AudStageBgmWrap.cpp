@@ -110,7 +110,19 @@ inline JAISoundID getScenarioBgmData(int index, int scenarioNo) {
     return sMASenarioBgmData[index][scenarioNo];
 }
 
+#ifdef PETARI_NATIVE
+// A galaxy a mod adds uses an original galaxy's sounds and music (native/CUSTOM_GALAXY.md).
+#include <petari/mod_galaxies.hpp>
+#endif
+
 JAISoundID AudStageBgmWrap::changeStageNameToSoundID(const char* pSceneName, const char* pStageName, s32 scenarioNo) {
+#ifdef PETARI_NATIVE
+    if (PetariNative::ModGalaxies::soundStage != nullptr && pStageName != nullptr) {
+        if (const char* pOriginal = PetariNative::ModGalaxies::soundStage(pStageName)) {
+            pStageName = pOriginal;
+        }
+    }
+#endif
     JAISoundID soundID = -1;
     JAISoundID koopaAppearBgm = getKoopaFortressAppearBgm(pStageName);
     if (koopaAppearBgm != -1) {
