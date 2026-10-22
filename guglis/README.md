@@ -42,7 +42,9 @@ Drei Arten von Änderungen, getrennt gehalten:
 | Änderung | Was sie macht | Fürs offizielle Repo |
 | --- | --- | --- |
 | FineFur | Mod (F1 → Mods → „Fine fur“): Fell mit halb so breiten Haaren, schaltet sofort um. Details in `native/MODS.md` | noch nicht vorgeschlagen |
-| Eigene Galaxien | Mods können ganze Galaxien hinzufügen: Miniatur in einer Kuppel, Namen und Dialoge aus einer `messages.txt`, neue Objekte mit eigener Logik. Ihr Fortschritt liegt getrennt in `ModProgress/`, `GameData.bin` bleibt unberührt. Beispiel „Guglis Testgalaxie“: `python3 native/tools/make_example_galaxy.py`, dann F1 → Mods → Mod folder. Eigener Planet aus Blender mit Anflug-Kamerafahrt, kleiner Aufgabe und lila Stern (eigener Zähler, getrennt von den Hauptsternen): `python3 native/mods/GuglisPlanet/build.py`. Details in `native/CUSTOM_GALAXY.md` | noch nicht vorgeschlagen |
+| Eigene Galaxien | Mods können ganze Galaxien hinzufügen: Miniatur in einer Kuppel, Namen und Dialoge aus einer `messages.txt`, neue Objekte mit eigener Logik. Ihr Fortschritt liegt getrennt in `ModProgress/`, `GameData.bin` bleibt unberührt. Beispiel „Guglis Testgalaxie“: `python3 native/tools/make_example_galaxy.py`, dann F1 → Mods → Mod folder. Eigener Planet aus Blender mit Anflug-Kamerafahrt, kleiner Aufgabe und eigenem Stern (eigener Zähler, getrennt von den Hauptsternen): `python3 native/mods/GuglisPlanet/build.py`. Details in `native/CUSTOM_GALAXY.md` | noch nicht vorgeschlagen |
+| Themenfarbe Haselnuss | Alles Eigene der Mods ist haselnussbraun (#8A5A32): die Sterne der Mod-Galaxien samt Rückflug, ihr Zähler unter der Sternanzeige und ein eigener Startstern-Typ `SuperSpinDriverHazel` mit brauner Flugbahn. Die Originalfarben des Spiels bleiben. Dateien aus `native/mods/theme.py` | noch nicht vorgeschlagen |
+| Himmelsinsel am Sternenschiff | Mod „Sternenschiff“: eine schwebende Insel östlich des Lumagartens (Modell aus Blender, `native/mods/Sternenschiff`) mit Toad, Münzen und Schmetterlingen; haselnussbraune Startsterne hin und zurück. Das Sternenschiff selbst ist in Whitehole über MCP bearbeitet | noch nicht vorgeschlagen |
 
 ### Werkzeuge und Kleinigkeiten
 
