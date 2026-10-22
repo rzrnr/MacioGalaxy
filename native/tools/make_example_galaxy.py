@@ -58,9 +58,10 @@ MESSAGES = f"""# Dialogue of the example galaxy (native/CUSTOM_GALAXY.md): ID = 
 {GALAXY}_Kinopio004 = Fast geschafft!\\nDer Stern ist gleich da vorne.
 """
 
-# Mario starts at (-50, 50, -50) looking down -z, the path ahead along -z.
-NEW_TOAD = (350.0, 50.0, -700.0)
-SPIN_BOXES = [((-450.0, 300.0, -1300.0), 5), ((450.0, 300.0, -1300.0), 3), ((0.0, 300.0, -1800.0), 1)]
+# Mario starts at (-50, 50, -50) on a wide platform (its ground is at y 45); the bridge ahead (-z)
+# starts behind a gap, so the Toad and the boxes stay on the platform, where the coins land.
+NEW_TOAD = (250.0, 45.0, 150.0)
+SPIN_BOXES = [((-400.0, 200.0, 520.0), 5), ((400.0, 200.0, 520.0), 3), ((0.0, 220.0, 380.0), 1)]
 # The sixth miniature in dome 1 (AstroDome, layer A), between the dome's own.
 MINI_POSITION = (-3800.0, 175.0, -1450.0)
 
