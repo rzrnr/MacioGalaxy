@@ -131,4 +131,7 @@ namespace MR {
     NameObj* createSuperSpinDriverYellow(const char*);
     NameObj* createSuperSpinDriverGreen(const char*);
     NameObj* createSuperSpinDriverPink(const char*);
+#ifdef PETARI_NATIVE
+    NameObj* createSuperSpinDriverHazel(const char*);
+#endif
 };  // namespace MR

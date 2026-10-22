@@ -203,6 +203,14 @@ void SuperSpinDriver::initColor() {
         MR::startBrk(this, "Pink");
         mPathDrawer->setColorPink();
         break;
+#ifdef PETARI_NATIVE
+    case 3:
+        // The mods' theme colour (native/mods/theme.py): the hazelnut texture is BTP frame 3 and
+        // the shimmer hazel.brk, both in a mod's SuperSpinDriver.arc; without them it is yellow.
+        MR::startBrk(this, MR::isExistBrk(this, "Hazel") ? "Hazel" : "Yellow");
+        mPathDrawer->setColorHazel();
+        break;
+#endif
     }
 }
 
@@ -1063,4 +1071,11 @@ namespace MR {
     NameObj* createSuperSpinDriverPink(const char* pName) {
         return new SuperSpinDriver(pName, 2);
     }
+
+#ifdef PETARI_NATIVE
+    // A Launch Star in the mods' theme colour (native/CUSTOM_GALAXY.md); not part of the original game.
+    NameObj* createSuperSpinDriverHazel(const char* pName) {
+        return new SuperSpinDriver(pName, 3);
+    }
+#endif
 };  // namespace MR

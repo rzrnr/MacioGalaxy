@@ -22,6 +22,9 @@ public:
     void setColorNormal();
     void setColorGreen();
     void setColorPink();
+#ifdef PETARI_NATIVE
+    void setColorHazel();
+#endif
     void setMaskLength(f32);
     void setFadeScale(f32);
     void sendPoint(const TVec3f&, f32, f32) const;
@@ -53,12 +56,18 @@ public:
     /* 0x14 */ JUTTexture* mPinkTexture;
     /* 0x18 */ JUTTexture* mMaskTexture;
     /* 0x1C */ bool mIsPathAtOpa;
+#ifdef PETARI_NATIVE
+    JUTTexture* mHazelTexture = nullptr;  // the mods' theme colour, when a mod brings it
+#endif
 };
 
 namespace MR {
     void setSpinDriverPathColorNormal() NO_INLINE;
     void setSpinDriverPathColorGreen() NO_INLINE;
     void setSpinDriverPathColorPink() NO_INLINE;
+#ifdef PETARI_NATIVE
+    void setSpinDriverPathColorHazel();
+#endif
     bool isDrawSpinDriverPathAtOpa();
     void onDrawSpinDriverPathAtOpa();
     void offDrawSpinDriverPathAtOpa();

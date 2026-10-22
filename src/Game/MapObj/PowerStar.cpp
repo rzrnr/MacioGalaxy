@@ -52,10 +52,11 @@ void PowerStar_FORCE_MATCH_SDATA2() {
 #endif
 
 #ifdef PETARI_NATIVE
-// Index 1, which the game never selects, is the purple of the stars in galaxies that mods add
-// (native/CUSTOM_GALAXY.md); the mod's PowerStar.arc carries the purple texture for BTP frame 1.
+// Index 1, which the game never selects, is the mods' theme colour (hazelnut) of the stars in
+// galaxies that mods add (native/CUSTOM_GALAXY.md); a mod's PowerStar.arc carries the hazelnut
+// texture for BTP frame 1 (native/mods/theme.py).
 const GXColor lightColor[] = {
-    {0x96, 0x96, 0x32, 0}, {0x78, 0x28, 0x96, 0}, {0x32, 0x96, 0x32, 0}, {0x96, 0x32, 0x32, 0}, {0x64, 0x64, 0x64, 0},
+    {0x96, 0x96, 0x32, 0}, {0x8A, 0x5A, 0x32, 0}, {0x32, 0x96, 0x32, 0}, {0x96, 0x32, 0x32, 0}, {0x64, 0x64, 0x64, 0},
 };
 #else
 const GXColor lightColor[] = {
@@ -65,14 +66,14 @@ const GXColor lightColor[] = {
 
 namespace {
 #ifdef PETARI_NATIVE
-    // A star in a galaxy a mod adds is purple (colour 1): the mod's stars, counted apart.
-    bool isPurpleStage() {
+    // A star in a galaxy a mod adds has the theme colour (colour 1): the mods' stars, counted apart.
+    bool isModStage() {
         return PetariNative::ModGalaxies::isMod(MR::getCurrentStageName());
     }
 
-    // The star brought back to the observatory (the result sequence): purple when it is from a mod's
+    // The star brought back to the observatory (the result sequence): the theme colour when it is from a mod's
     // galaxy, though the current stage is the observatory by then.
-    bool isPurpleResult() {
+    bool isModResult() {
         return PetariNative::ModGalaxies::isMod(GameSequenceFunction::getClearedStageName());
     }
 #endif
@@ -248,7 +249,7 @@ void PowerStar::setupColor(LiveActor* pActor, const NameObj* a2, s32 a3) {
         val = 3;
     }
 #ifdef PETARI_NATIVE
-    if (::isPurpleStage()) {
+    if (::isModStage()) {
         val = 1;
     }
 #endif
@@ -271,7 +272,7 @@ void PowerStar::setupColorAtResultSequence(LiveActor* pPowerStar, bool a2) {
         val = 3;
     }
 #ifdef PETARI_NATIVE
-    if (::isPurpleResult()) {
+    if (::isModResult()) {
         val = 1;
     }
 #endif
@@ -294,7 +295,7 @@ void PowerStar::requestPointLight(const LiveActor* pActor, const NameObj* a2, s3
         colorIdx = 3;
     }
 #ifdef PETARI_NATIVE
-    else if (::isPurpleStage()) {
+    else if (::isModStage()) {
         colorIdx = 1;
     }
 #endif
@@ -313,7 +314,7 @@ void PowerStar::requestPointLightAtResultSequence(const LiveActor* pActor) {
         val = 3;
     }
 #ifdef PETARI_NATIVE
-    else if (::isPurpleResult()) {
+    else if (::isModResult()) {
         val = 1;
     }
 #endif
@@ -327,7 +328,7 @@ f32 PowerStar::getPowerStarWaitRotateSpeed() {
 
 s32 PowerStar::getBtpFrameCurrentStage(s32 a1) {
 #ifdef PETARI_NATIVE
-    if (::isPurpleStage()) {
+    if (::isModStage()) {
         return 1;
     }
 #endif

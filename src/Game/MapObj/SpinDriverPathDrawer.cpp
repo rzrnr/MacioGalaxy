@@ -40,6 +40,12 @@ SpinDriverPathDrawInit::SpinDriverPathDrawInit()
     mOrangeTexture = new JUTTexture(MR::loadTexFromArc("SpinDriverPath.arc", "NormalColor.bti"), 0);
     mGreenTexture = new JUTTexture(MR::loadTexFromArc("SpinDriverPath.arc", "Green.bti"), 0);
     mPinkTexture = new JUTTexture(MR::loadTexFromArc("SpinDriverPath.arc", "Pink.bti"), 0);
+#ifdef PETARI_NATIVE
+    // The mods' hazelnut path (native/mods/theme.py) when a mod brings it.
+    if (MR::isExistResourceInArc("SpinDriverPath.arc", "Hazel.bti")) {
+        mHazelTexture = new JUTTexture(MR::loadTexFromArc("SpinDriverPath.arc", "Hazel.bti"), 0);
+    }
+#endif
     mMaskTexture = new JUTTexture(MR::loadTexFromArc("SpinDriverPath.arc", "Mask.bti"), 0);
 }
 
@@ -94,6 +100,13 @@ namespace MR {
     void setSpinDriverPathColorPink() {
         MR::getSceneObj< SpinDriverPathDrawInit >(SceneObj_SpinDriverPathDrawInit)->mPinkTexture->load(GX_TEXMAP0);
     }
+
+#ifdef PETARI_NATIVE
+    void setSpinDriverPathColorHazel() {
+        SpinDriverPathDrawInit* pInit = MR::getSceneObj< SpinDriverPathDrawInit >(SceneObj_SpinDriverPathDrawInit);
+        (pInit->mHazelTexture != nullptr ? pInit->mHazelTexture : pInit->mOrangeTexture)->load(GX_TEXMAP0);
+    }
+#endif
 
     bool isDrawSpinDriverPathAtOpa() {
         if (!MR::isExistSceneObj(SceneObj_SpinDriverPathDrawInit)) {
@@ -274,6 +287,12 @@ void SpinDriverPathDrawer::setColorPink() {
     mColor = 1;
 }
 
+#ifdef PETARI_NATIVE
+void SpinDriverPathDrawer::setColorHazel() {
+    mColor = 2;
+}
+#endif
+
 void SpinDriverPathDrawer::setMaskLength(f32 mask) {
     if (mask < 1.0f) {
         mMaskLength = 1.0f;
@@ -304,6 +323,12 @@ void SpinDriverPathDrawer::draw() const {
         MR::setSpinDriverPathColorPink();
 
         break;
+#ifdef PETARI_NATIVE
+    case 2:
+        MR::setSpinDriverPathColorHazel();
+
+        break;
+#endif
     default:
         MR::setSpinDriverPathColorNormal();
 

@@ -473,8 +473,8 @@ namespace GameDataFunction {
 };  // namespace GameDataFunction
 
 #ifdef PETARI_NATIVE
-// The stars of mods' galaxies in the current file (native/CUSTOM_GALAXY.md): the purple star counter
-// (Game/Screen/PurpleStarCounter.cpp).
+// The stars of mods' galaxies in the current file (native/CUSTOM_GALAXY.md): their counter
+// (Game/Screen/ModStarCounter.cpp).
 s32 GameDataFunction::getModPowerStarNum() {
     return getCurrentGameDataHolder()->mAllGalaxyStorage->calcModPowerStarNum();
 }

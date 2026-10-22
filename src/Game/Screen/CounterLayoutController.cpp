@@ -5,7 +5,7 @@
 #include "Game/Screen/PlayerLeft.hpp"
 #include "Game/Screen/StarCounter.hpp"
 #ifdef PETARI_NATIVE
-#include "Game/Screen/PurpleStarCounter.hpp"
+#include "Game/Screen/ModStarCounter.hpp"
 #endif
 #include "Game/Screen/StarPieceCounter.hpp"
 #include "Game/Util/DemoUtil.hpp"
@@ -30,7 +30,7 @@ CounterLayoutController::CounterLayoutController()
     : LayoutActor("カウンタ系レイアウト制御", true), mPlayerNotMovingFrame(), _24(), mCoinCounter(), mStarPieceCounter(), mPlayerLeft(),
       mStarCounter(), mHPMeter() {
 #ifdef PETARI_NATIVE
-    mPurpleStarCounter = nullptr;
+    mModStarCounter = nullptr;
 #endif
 }
 
@@ -47,9 +47,9 @@ void CounterLayoutController::init(const JMapInfoIter& rIter) {
     mStarCounter = new StarCounter();
     mStarCounter->initWithoutIter();
 #ifdef PETARI_NATIVE
-    if (PurpleStarCounter::isExistLayout()) {
-        mPurpleStarCounter = new PurpleStarCounter();
-        mPurpleStarCounter->initWithoutIter();
+    if (ModStarCounter::isExistLayout()) {
+        mModStarCounter = new ModStarCounter();
+        mModStarCounter->initWithoutIter();
     }
 #endif
 
@@ -86,8 +86,8 @@ void CounterLayoutController::requestedTicoEat(bool param1) {
         mPlayerLeft->kill();
         mStarCounter->kill();
 #ifdef PETARI_NATIVE
-        if (mPurpleStarCounter != nullptr) {
-            mPurpleStarCounter->kill();
+        if (mModStarCounter != nullptr) {
+            mModStarCounter->kill();
         }
 #endif
     }
@@ -114,8 +114,8 @@ void CounterLayoutController::showAllLayout() {
         mPlayerLeft->forceAppear();
         mStarCounter->appear();
 #ifdef PETARI_NATIVE
-        if (mPurpleStarCounter != nullptr) {
-            mPurpleStarCounter->appear();
+        if (mModStarCounter != nullptr) {
+            mModStarCounter->appear();
         }
 #endif
     }
@@ -128,8 +128,8 @@ void CounterLayoutController::hideAllLayout() {
         mPlayerLeft->disappear();
         mStarCounter->disappear();
 #ifdef PETARI_NATIVE
-        if (mPurpleStarCounter != nullptr) {
-            mPurpleStarCounter->disappear();
+        if (mModStarCounter != nullptr) {
+            mModStarCounter->disappear();
         }
 #endif
     }
@@ -144,7 +144,7 @@ namespace {
 
 bool CounterLayoutController::isHiddenOrWaitAllLayout() const {
 #ifdef PETARI_NATIVE
-    if (mPurpleStarCounter != nullptr && !::isHiddenOrWait(mPurpleStarCounter)) {
+    if (mModStarCounter != nullptr && !::isHiddenOrWait(mModStarCounter)) {
         return false;
     }
 #endif
@@ -184,8 +184,8 @@ void CounterLayoutController::killAllCoounter() {
     mPlayerLeft->kill();
     mStarCounter->kill();
 #ifdef PETARI_NATIVE
-    if (mPurpleStarCounter != nullptr) {
-        mPurpleStarCounter->kill();
+    if (mModStarCounter != nullptr) {
+        mModStarCounter->kill();
     }
 #endif
 }
