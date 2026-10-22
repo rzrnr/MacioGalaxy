@@ -77,6 +77,7 @@ const std::vector<MechanicPlan>& mechanicPlans() {
         {"swim", "OceanRingGalaxy", 2},
         {"flippanel", "FlipPanelExGalaxy", 1},
         {"ray", "SurfingLv1Galaxy", 1},
+        {"purplestar", "GuglisPlanetGalaxy", 1},
     };
     return plans;
 }
@@ -179,6 +180,12 @@ Result MechanicRun::step(const Observation& o, unsigned long frame, Step& step) 
         mHeld[4] = false;
         mReleaseA = 0;
     }
+    if (std::string(mPlan.name) == "purplestar" && mStage >= 3) {
+        // Collecting the star starts a demo: decided here, before the demo check.
+        for (const auto& actor : o.actors) {
+            if (actor.kind == "PowerStar" && actor.state == 3) return pass("the purple star came out after the three spin boxes burst and was collected at " + text(at(actor)));
+        }
+    }
     if (o.demoActive) {
         // A demo (power-up, tutorial) owns Mario: send nothing, restart the step's clock.
         hold(false, false, false, false, false, step);
@@ -191,6 +198,7 @@ Result MechanicRun::step(const Observation& o, unsigned long frame, Step& step) 
     if (name == "swim") return swim(o, step);
     if (name == "flippanel") return flipPanel(o, step);
     if (name == "ray") return ray(o, step);
+    if (name == "purplestar") return purpleStar(o, step);
     return fail("unknown mechanic");
 }
 
@@ -581,6 +589,77 @@ Result MechanicRun::ray(const Observation& o, Step& step) {
     }
     }
     return Result::Running;
+}
+
+
+// 0 note the boxes, 1 choose the nearest left, 2 walk to it and spin until it bursts, 3 wait
+// for the star, 4 walk to it (step() passes once it is collected). Boxes far from the camera
+// are clipped (not published), so their places are noted at the start; a box has burst when
+// it is not published while Mario stands next to it.
+Result MechanicRun::purpleStar(const Observation& o, Step& step) {
+    const V pos = position(o);
+    switch (mStage) {
+    case 0: {
+        if (mStageFrames < 30) return Result::Running;
+        for (const auto& actor : o.actors) {
+            if (actor.kind == "GuglisSpinBox") mDone.push_back(at(actor));
+        }
+        note(std::to_string(mDone.size()) + " spin boxes published, Mario at " + text(pos));
+        if (mDone.size() != 3) return fail("expected three GuglisSpinBox actors, found " + std::to_string(mDone.size()));
+        next(1);
+        return Result::Running;
+    }
+    case 1: {
+        if (mDone.empty()) return fail("no spin box left to break");
+        size_t best = 0;
+        for (size_t i = 1; i < mDone.size(); i++) {
+            if (length(sub(mDone[i], pos)) < length(sub(mDone[best], pos))) best = i;
+        }
+        mMark = mDone[best];
+        mDone.erase(mDone.begin() + static_cast< long >(best));
+        note("to the spin box at " + text(mMark) + ", " + number(length(sub(mMark, pos))) + " away");
+        next(2);
+        return Result::Running;
+    }
+    case 2: {
+        const Observation::Actor* box = nearestActor(o, "GuglisSpinBox", mMark);
+        const bool published = box != nullptr && length(sub(at(*box), mMark)) < 10.0f;
+        const float d = approach(o, mMark, step);
+        if (!published && d < 300.0f) {
+            hold(false, false, false, false, false, step);
+            note("the spin box at " + text(mMark) + " burst after " + std::to_string(mStageFrames) + " frames");
+            next(++mCount >= 3 ? 3 : 1);
+            return Result::Running;
+        }
+        if (d < 110.0f && mStageFrames % 40 == 0) {
+            step.presses.push_back({Button::Spin, true});
+            mSpinHeld = true;
+            step.assertFocus = true;
+        }
+        if (mStageFrames % 120 == 0) note("spin box: " + number(d) + " across the ground, " + (published ? std::to_string(box->state) + " hits left" : std::string("not in view")));
+        if (mStageFrames > 2400) return fail("the spin box at " + text(mMark) + " did not burst: Mario " + number(d) + " from it");
+        return Result::Running;
+    }
+    case 3: {
+        hold(false, false, false, false, false, step);
+        const Observation::Actor* star = nearestActor(o, "PowerStar", pos);
+        if (star != nullptr && star->state == 1) {
+            mMark = at(*star);
+            note("the purple star waits at " + text(mMark) + ", " + number(length(sub(mMark, pos))) + " from Mario");
+            next(4);
+        } else if (mStageFrames > 900) {
+            return fail("no star waiting 900 frames after the third box burst");
+        }
+        return Result::Running;
+    }
+    default: {
+        const float d = approach(o, mMark, step);
+        if (d < 150.0f && mStageFrames % 50 == 0) tapA(step);
+        if (mStageFrames % 120 == 0) note("to the star: " + number(d) + " across the ground, Mario at " + text(pos));
+        if (mStageFrames > kApproachLimit * 2) return fail("the star was not collected: Mario " + number(d) + " from it");
+        return Result::Running;
+    }
+    }
 }
 
 }  // namespace PetariNative::App::Smoke

@@ -19,6 +19,9 @@ inline const char* (*languagePrefix)() = nullptr;
 
 // Whether a mod adds this galaxy (its scenario archive is a mod's, not the disc's).
 inline bool (*isModGalaxy)(const char* galaxy) = nullptr;
+// Whether a mod adds an object archive of this name (ObjectData/<name>.arc, not on the disc): a
+// placement of that name with no class of its own is the mod's planet (PlanetMap).
+inline bool (*isModObject)(const char* name) = nullptr;
 // The original galaxy whose sounds and music a mod galaxy uses; null for other stages.
 inline const char* (*soundStage)(const char* galaxy) = nullptr;
 
@@ -31,5 +34,14 @@ inline void (*copyProgress)(const char* dstSlot, const char* srcSlot) = nullptr;
 inline bool isMod(const char* galaxy) {
     return isModGalaxy != nullptr && galaxy != nullptr && isModGalaxy(galaxy);
 }
+
+inline bool isObject(const char* name) {
+    return isModObject != nullptr && name != nullptr && isModObject(name);
+}
+
+// The purple stars (stars of mods' galaxies) the current file holds, and whether the current
+// stage is a mod's galaxy; set by the game code (GameDataFunction.cpp), for the counter overlay.
+inline int (*purpleStarCount)() = nullptr;
+inline bool (*inModGalaxy)() = nullptr;
 
 }  // namespace PetariNative::ModGalaxies

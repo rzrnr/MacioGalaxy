@@ -118,6 +118,17 @@ bool GameDataAllGalaxyStorage::isModGalaxy(s32 index) const {
     return index >= 0 && index < 64 && mModGalaxy[index];
 }
 
+// The stars the file holds in galaxies that mods add: the purple stars, counted apart.
+s32 GameDataAllGalaxyStorage::calcModPowerStarNum() const {
+    s32 powerStarNum = 0;
+    for (s32 idx = 0; idx < getGalaxyNum(); idx++) {
+        if (isModGalaxy(idx)) {
+            powerStarNum += mSomeGalaxyStorages[idx]->getPowerStarNumOwned();
+        }
+    }
+    return powerStarNum;
+}
+
 // When the player's file is saved (SaveDataHandler::storeUserFile): the mod galaxies' progress, to
 // the mod store. Not in serialize, which also builds blank files when the game starts.
 void GameDataAllGalaxyStorage::saveModProgress() const {

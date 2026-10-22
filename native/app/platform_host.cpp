@@ -108,6 +108,14 @@ bool isModGalaxy(const std::string& galaxy) {
     return !std::filesystem::exists(gDiscRoot / "files" / path, ec) && !std::filesystem::exists(gDiscRoot / "DATA/files" / path, ec);
 }
 
+// An object archive a mod adds (ObjectData/<name>.arc, not on the disc).
+bool isModObject(const std::string& name) {
+    const std::string path = "ObjectData/" + name + ".arc";
+    if (gModPaths.count(lower(path)) == 0) return false;
+    std::error_code ec;
+    return !std::filesystem::exists(gDiscRoot / "files" / path, ec) && !std::filesystem::exists(gDiscRoot / "DATA/files" / path, ec);
+}
+
 // ModProgress/<slot>.txt: "<galaxy> stars=<bits> visited=<bits> coins=<8 numbers>" per line.
 struct GalaxyProgress {
     unsigned stars = 0, visited = 0;
@@ -292,6 +300,10 @@ bool preparePlatform(const Paths& paths, std::string* error) {
         namespace Mods = PetariNative::ModGalaxies;
         Mods::messages = petari_host_mod_messages;
         Mods::isModGalaxy = petari_host_is_mod_galaxy;
+        Mods::isModObject = [](const char* name) {
+            PetariNative::HostAllocationScope host;
+            return name != nullptr && PetariNative::App::Host::isModObject(name);
+        };
         Mods::soundStage = petari_host_mod_galaxy_sound_stage;
         Mods::loadProgress = petari_host_mod_progress_load;
         Mods::saveProgress = petari_host_mod_progress_save;

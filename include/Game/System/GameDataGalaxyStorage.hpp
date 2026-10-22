@@ -99,6 +99,7 @@ public:
     // the user directory's ModProgress/.
     bool isModGalaxy(s32 index) const;
     void saveModProgress() const;
+    s32 calcModPowerStarNum() const;
     bool mModGalaxy[64];
     const char* mSlotName;
 #endif
