@@ -2,14 +2,14 @@
 
 Opens a galaxy (the disc with the enabled mods on top) as objects, areas, gravity and paths in the
 scene, edits them with Blender's own tools, saves the changed zones as a MacioGalaxy mod, and plays
-them, headless with pictures or in the game. The sidebar's "Galaxy" tab (N in the 3D view).
+them, headless with pictures or in the game. The interface: ui.py (the 3D view's sidebar, N).
 """
 bl_info = {
     "name": "MacioGalaxy Editor",
     "author": "rzrnr",
     "version": (0, 1, 0),
     "blender": (4, 2, 0),
-    "location": "3D View > Sidebar > Galaxy",
+    "location": "3D View > Sidebar (N) > Galaxie, Objekte, Eigenschaften, Spiel",
     "description": "Edit Super Mario Galaxy levels and play them in MacioGalaxy",
     "category": "Import-Export",
 }
@@ -23,9 +23,10 @@ from bpy.props import BoolProperty, EnumProperty, StringProperty  # noqa: E402
 
 from . import game as game_io  # noqa: E402
 from . import scene_io  # noqa: E402
+from . import ui  # noqa: E402
 from .catalog import KIND_LABEL, Catalog  # noqa: E402
 from .models import ModelLibrary  # noqa: E402
-from .convert import basis_from_game, to_game  # noqa: E402
+from .convert import to_game  # noqa: E402
 from .galaxy import USER, GameData, Path_, PathPoint, read_tree  # noqa: E402
 
 _cache = {}
@@ -104,9 +105,13 @@ def _scenarios(self, context):
         galaxy = open_galaxy(scene)
     except (OSError, KeyError):
         return [("1", "1", "")]
-    items = [(str(s.no), f"{s.no}: {s.name}", s.name) for s in galaxy.scenarios]
-    _cache["scenario_items"] = items  # Blender needs the strings kept alive
-    return items
+    # One list per galaxy, kept: Blender holds on to the strings of the list it was given.
+    key = ("scenario_items", scene.mge_user, galaxy.name)
+    if key not in _cache:
+        names = game_data(scene).messages(f"ScenarioName_{galaxy.name}")
+        _cache[key] = [(str(s.no), f"{s.no}: {names.get(f'ScenarioName_{galaxy.name}{s.no}') or s.name}", s.name)
+                       for s in galaxy.scenarios]
+    return _cache[key]
 
 
 def _models_changed(self, context):
@@ -120,7 +125,7 @@ def _scenario_changed(self, context):
     scene = context.scene
     if scene.get("smg_galaxy"):
         scene["smg_scenario"] = int(scene.mge_scenario)
-        scene_io.apply_scenario(scene, open_galaxy(scene))
+        ui.apply_scenario(scene, open_galaxy(scene))
 
 
 # --- operators -------------------------------------------------------------------------------
@@ -145,6 +150,7 @@ class MGE_OT_open(bpy.types.Operator):
         _cache.pop(("models", scene.mge_user), None)  # mods may have changed models since
         count = scene_io.import_galaxy(context, galaxy, galaxy.scenarios[0].no, catalog(scene), model_library(scene))
         scene.mge_scenario = str(galaxy.scenarios[0].no)
+        ui.sync_zones(scene, galaxy)
         if not scene.mge_mod:
             origin = scene.get("smg_main_origin")
             scene.mge_mod = origin if origin and origin != "disc" else "BlenderEdits"
@@ -273,16 +279,6 @@ class MGE_OT_add_path(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class MGE_OT_scenario(bpy.types.Operator):
-    bl_idname = "mge.apply_scenario"
-    bl_label = "Ebenen des Szenarios zeigen"
-    bl_options = {"REGISTER"}
-
-    def execute(self, context):
-        scene_io.apply_scenario(context.scene, open_galaxy(context.scene))
-        return {"FINISHED"}
-
-
 def export_mod(operator, context):
     """Writes the changed zones into the target mod; returns the zones written (or None on error)."""
     scene = context.scene
@@ -392,95 +388,6 @@ class MGE_OT_play(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# --- panels ----------------------------------------------------------------------------------
-
-
-class MGE_PT_galaxy(bpy.types.Panel):
-    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", "Galaxy"
-    bl_label = "Galaxie"
-
-    def draw(self, context):
-        scene, layout = context.scene, self.layout
-        layout.prop(scene, "mge_galaxy", text="", icon="WORLD")
-        layout.operator(MGE_OT_open.bl_idname, icon="FILE_FOLDER")
-        if scene.get("smg_galaxy"):
-            layout.prop(scene, "mge_scenario", text="Szenario")
-            layout.prop(scene, "mge_models", text="Modelle des Spiels", icon="MESH_MONKEY")
-            box = layout.box()
-            box.label(text=f"Offen: {galaxy_label(scene, scene['smg_galaxy'])}")
-            col = box.column(align=True)
-            col.operator(MGE_OT_add.bl_idname, text="Objekt", icon="ADD").kind = "OBJECT"
-            col.operator(MGE_OT_add.bl_idname, text="Gravity", icon="FORCE_FORCE").kind = "GRAVITY"
-            col.operator(MGE_OT_add.bl_idname, text="Area", icon="MESH_CUBE").kind = "AREA"
-            col.operator(MGE_OT_add.bl_idname, text="Alle Arten", icon="VIEWZOOM").kind = "ALL"
-            col.operator(MGE_OT_add_path.bl_idname, icon="CURVE_BEZCURVE")
-            box.label(text="Ziel: aktive Ebene (Outliner)", icon="INFO")
-
-
-class MGE_PT_object(bpy.types.Panel):
-    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", "Galaxy"
-    bl_label = "Auswahl"
-
-    @classmethod
-    def poll(cls, context):
-        return context.active_object is not None and context.active_object.get("smg_kind")
-
-    def draw(self, context):
-        obj, layout = context.active_object, self.layout
-        kind = obj["smg_kind"]
-        name = obj.get(scene_io.PREFIX + "name", "")
-        cat = catalog(context.scene)
-        entry = cat.entries.get(name)
-        layout.label(text=f"{KIND_LABEL.get(kind, kind)} in {obj['smg_zone']} · {scene_io._layer_of(obj)}")
-        if entry and entry["label"] != name:
-            layout.label(text=entry["label"])
-        if entry and entry["notes"]:
-            col = layout.column(align=True)
-            for line in _wrap(entry["notes"], 48)[:6]:
-                col.label(text=line)
-        col = layout.column(align=True)
-        for key in sorted((k for k in obj.keys() if k.startswith(scene_io.PREFIX)), key=_field_order):
-            field = key[len(scene_io.PREFIX):]
-            info = cat.parameter(name, field)
-            col.prop(obj, f'["{key}"]', text=f"{field} · {info[0]}" if info else field)
-        if kind == "path":
-            layout.label(text="Punkte: Bearbeitungsmodus (Tab), Griffe = Kontrollpunkte")
-
-
-def _field_order(key):
-    order = ["name", "l_id", "Obj_arg", "Range", "Distant", "SW_", "CommonPath_ID", "CameraSetId", "MessageId"]
-    field = key[len(scene_io.PREFIX):]
-    return next((i for i, prefix in enumerate(order) if field.startswith(prefix)), len(order)), field
-
-
-def _wrap(text, width):
-    words, lines, line = text.split(), [], ""
-    for word in words:
-        if len(line) + len(word) + 1 > width:
-            lines.append(line)
-            line = word
-        else:
-            line = f"{line} {word}".strip()
-    return lines + ([line] if line else [])
-
-
-class MGE_PT_game(bpy.types.Panel):
-    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", "Galaxy"
-    bl_label = "Spiel"
-
-    def draw(self, context):
-        scene, layout = context.scene, self.layout
-        layout.prop(scene, "mge_mod", text="Mod")
-        layout.operator(MGE_OT_save.bl_idname, icon="FILE_TICK")
-        row = layout.row(align=True)
-        row.operator(MGE_OT_preview.bl_idname, icon="RENDER_STILL")
-        row.prop(scene, "mge_warp", text="", icon="PIVOT_CURSOR")
-        layout.operator(MGE_OT_play.bl_idname, icon="PLAY")
-        if scene.mge_status:
-            layout.label(text=scene.mge_status)
-        layout.prop(scene, "mge_user", text="Spielordner")
-
-
 # --- registration ----------------------------------------------------------------------------
 
 
@@ -492,8 +399,7 @@ def _gravity_handler(scene, depsgraph):
             scene_io.refresh_gravity(obj)
 
 
-CLASSES = (MGE_OT_open, MGE_OT_add, MGE_OT_add_path, MGE_OT_scenario, MGE_OT_save, MGE_OT_preview, MGE_OT_play,
-           MGE_PT_galaxy, MGE_PT_object, MGE_PT_game)
+CLASSES = (MGE_OT_open, MGE_OT_add, MGE_OT_add_path, MGE_OT_save, MGE_OT_preview, MGE_OT_play)
 
 
 def register():
@@ -510,12 +416,14 @@ def register():
     bpy.types.Scene.mge_models = BoolProperty(name="Modelle", default=True, update=_models_changed,
                                               description="Die Modelle des Spiels zeigen statt der Platzhalter-Würfel")
     bpy.types.Scene.mge_status = StringProperty(default="")
+    ui.register()
     bpy.app.handlers.depsgraph_update_post.append(_gravity_handler)
 
 
 def unregister():
     if _gravity_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_gravity_handler)
+    ui.unregister()
     for name in ("mge_user", "mge_galaxy", "mge_scenario", "mge_mod", "mge_warp", "mge_status", "mge_models"):
         delattr(bpy.types.Scene, name)
     for cls in reversed(CLASSES):
