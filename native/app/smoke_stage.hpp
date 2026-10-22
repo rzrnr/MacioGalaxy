@@ -49,6 +49,9 @@ struct StageConfig {
     unsigned long tailFrames = 600;
     // PETARI_MECHANIC: check this mechanic (smoke_mechanics.hpp) instead of the generic exercise.
     std::string mechanic;
+    // PETARI_STAGE_PAUSE_TAP=1: the pause press is a one-frame tap, as a player taps Escape
+    // (the input layer must stretch it to the game's 12-frame hold), not an 18-frame hold.
+    bool pauseTap = false;
     // PETARI_STAGE_PROBE=1: after the pause checks, a lock-up probe (idle 20 s logging the player's
     // lock state, three spaced A taps, B, Plus twice, then the stick) before the idle tail.
     bool probe = false;
