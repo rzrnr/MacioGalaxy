@@ -32,6 +32,7 @@
 #include <petari/display_mode.hpp>
 #include <petari/efb_dump_mark.hpp>
 #include <petari/input.hpp>
+#include <petari/platform/crash.hpp>
 
 #include "host.hpp"
 #include "smoke_background.hpp"
@@ -52,6 +53,9 @@ namespace {
 void logMessage(AuroraLogLevel level, const char* module, const char* message, unsigned int length) {
     std::fprintf(stderr, "[%s] %.*s\n", module, static_cast<int>(length), message);
     if (level == LOG_FATAL) {
+        // The crash report keeps the reason (e.g. a shader Dawn rejected): a
+        // player who starts the app from the Finder never sees stderr.
+        PetariNative::Platform::Crash::recordFatalMessage(module, message, length);
         std::abort();
     }
 }

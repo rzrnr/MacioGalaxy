@@ -130,6 +130,17 @@ void testCrashReports() {
     auto [fatal, fatalReport] = crashInChild(dir, [&] { OSFatal(black, black, "disc read error"); });
     check(WIFSIGNALED(fatal) && WTERMSIG(fatal) == SIGABRT && has(fatalReport, "last panic: disc read error"), "OSFatal reports its message and aborts");
 
+    // A renderer fatal (Aurora LOG_FATAL) longer than a report line, kept in full.
+    std::string shaderError = "Error while parsing WGSL: :12:5 error: unresolved value 'tex9'\n";
+    shaderError += std::string(1500, 'x') + " end of excerpt";
+    auto [host, hostReport] = crashInChild(dir, [&] {
+        PCrash::recordFatalMessage("aurora::gpu", shaderError.data(), shaderError.size());
+        std::abort();
+    });
+    check(WIFSIGNALED(host) && has(hostReport, "fatal message:\n  [aurora::gpu] Error while parsing WGSL: :12:5 error"),
+          "host fatal message in the report");
+    check(has(hostReport, "x end of excerpt\n"), "host fatal message not cut at a report line");
+
     auto [fpu, fpuReport] = crashInChild(dir, [] {
         static OSContext ctx;
         OSFillFPUContext(&ctx);
