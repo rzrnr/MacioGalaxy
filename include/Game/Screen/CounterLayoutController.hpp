@@ -6,6 +6,7 @@ class CoinCounter;
 class MarioMeter;
 class PlayerLeft;
 class StarCounter;
+class PurpleStarCounter;
 class StarPieceCounter;
 
 class CounterLayoutController : public LayoutActor {
@@ -40,4 +41,7 @@ public:
     /* 0x30 */ PlayerLeft* mPlayerLeft;
     /* 0x34 */ StarCounter* mStarCounter;
     /* 0x38 */ MarioMeter* mHPMeter;
+#ifdef PETARI_NATIVE
+    PurpleStarCounter* mPurpleStarCounter;  // with mods' galaxies only (Game/Screen/PurpleStarCounter.hpp)
+#endif
 };

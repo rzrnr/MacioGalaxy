@@ -2,6 +2,7 @@
 #include "Game/Camera/EditorPlaytest.hpp"
 #endif
 #include "Game/MapObj/PowerStar.hpp"
+#include "Game/System/GameSequenceFunction.hpp"
 #include "Game/Camera/CameraTargetArg.hpp"
 #include "Game/LiveActor/LiveActorGroup.hpp"
 #include "Game/LiveActor/ModelObj.hpp"
@@ -67,6 +68,12 @@ namespace {
     // A star in a galaxy a mod adds is purple (colour 1): the mod's stars, counted apart.
     bool isPurpleStage() {
         return PetariNative::ModGalaxies::isMod(MR::getCurrentStageName());
+    }
+
+    // The star brought back to the observatory (the result sequence): purple when it is from a mod's
+    // galaxy, though the current stage is the observatory by then.
+    bool isPurpleResult() {
+        return PetariNative::ModGalaxies::isMod(GameSequenceFunction::getClearedStageName());
     }
 #endif
     const char* const cAppearDemoName = "パワースター出現";
@@ -264,7 +271,7 @@ void PowerStar::setupColorAtResultSequence(LiveActor* pPowerStar, bool a2) {
         val = 3;
     }
 #ifdef PETARI_NATIVE
-    if (::isPurpleStage()) {
+    if (::isPurpleResult()) {
         val = 1;
     }
 #endif
@@ -306,7 +313,7 @@ void PowerStar::requestPointLightAtResultSequence(const LiveActor* pActor) {
         val = 3;
     }
 #ifdef PETARI_NATIVE
-    else if (::isPurpleStage()) {
+    else if (::isPurpleResult()) {
         val = 1;
     }
 #endif

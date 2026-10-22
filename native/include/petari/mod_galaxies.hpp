@@ -32,9 +32,4 @@ inline bool isObject(const char* name) {
     return isModObject != nullptr && name != nullptr && isModObject(name);
 }
 
-// The purple stars (stars of mods' galaxies) the current file holds, and whether the current
-// stage is a mod's galaxy; set by the game code (GameDataFunction.cpp), for the counter overlay.
-inline int (*purpleStarCount)() = nullptr;
-inline bool (*inModGalaxy)() = nullptr;
-
 }  // namespace PetariNative::ModGalaxies

@@ -15,7 +15,8 @@ From the planet made in Blender (planet_blender.py) and your own copy of the dis
   GroupSwitchWatcher turns switch 20 on, and GuglisStarAppear brings the scenario's star out above
   the tallest pillar, seen by its own camera, from where it flies down beside the pillar;
 - ObjectData/PowerStar.arc: the star model with a purple texture in its unused colour slot, which
-  the port shows for the stars of mods' galaxies (purple stars, counted apart from the game's);
+  the port shows for the stars of mods' galaxies (purple stars, counted apart from the game's), and
+  LayoutData/PurpleStars.arc, their counter under the game's star counter;
 - StageData/AstroDome.arc: the Terrace (dome 1) with the planet's miniature, and those of other mods'
   galaxies found in the user directory (only one mod's AstroDome.arc is used);
 - messages.txt and mod.txt.
@@ -302,9 +303,11 @@ def build(disc: Path, mod: Path, planet_dir: Path, from_blend: bool):
     (files / f"StageData/{GALAXY}/{GALAXY}Scenario.arc").write_bytes(build_scenario(disc))
 
     sys.path.insert(0, str(HERE))
-    from purple_star import purple_power_star  # noqa: E402
+    from purple_star import purple_power_star, purple_star_counter  # noqa: E402
 
     (files / "ObjectData/PowerStar.arc").write_bytes(purple_power_star((disc / "ObjectData/PowerStar.arc").read_bytes()))
+    (files / "LayoutData").mkdir()
+    (files / "LayoutData/PurpleStars.arc").write_bytes(purple_star_counter((disc / "LayoutData/StarCounter.arc").read_bytes()))
 
     # Dome 1 (the Terrace) gets the miniature. AstroDome.arc is one file, and only one mod's copy is
     # used (the highest priority's): this one holds the miniatures of the other mods' galaxies too.

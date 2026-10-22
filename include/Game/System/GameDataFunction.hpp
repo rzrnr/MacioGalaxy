@@ -27,6 +27,9 @@ namespace GameDataFunction {
     s32 calcCurrentPowerStarNum();
     s32 getPowerStarNumOwned(const char*);
     s32 getPowerStarNumMax();
+#ifdef PETARI_NATIVE
+    s32 getModPowerStarNum();
+#endif
     s32 getPictureBookChapterCanRead();
     u32 getPictureBookChapterAlreadyRead();
     void setPictureBookChapterAlreadyRead(int);

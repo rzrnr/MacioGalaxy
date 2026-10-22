@@ -47,39 +47,104 @@ def material(name, rgb):
     return mat
 
 
+PATH_WIDTH = 0.13  # radians from the path's middle to where its weight is 0
+PATH_EDGE = 0.35  # the path is soil where its weight is above this
+
+
+def path_centre(lon):
+    """The latitude of the path's middle line at a longitude (radians)."""
+    return 0.35 * math.sin(2.0 * lon) + 0.15 * math.sin(5.0 * lon + 1.0)
+
+
 def path_weight(direction):
     """How much of the soil path lies here: a winding band around the planet."""
     lon = math.atan2(direction.y, direction.x)
     lat = math.asin(max(-1.0, min(1.0, direction.z)))
-    centre = 0.35 * math.sin(2.0 * lon) + 0.15 * math.sin(5.0 * lon + 1.0)
-    distance = abs(lat - centre)
-    return max(0.0, 1.0 - distance / 0.13)
+    return max(0.0, 1.0 - abs(lat - path_centre(lon)) / PATH_WIDTH)
+
+
+def path_edge_offset(direction):
+    """Radians outside the path's edge (negative inside the path: soil)."""
+    lon = math.atan2(direction.y, direction.x)
+    lat = math.asin(max(-1.0, min(1.0, direction.z)))
+    return abs(lat - path_centre(lon)) - PATH_WIDTH * (1.0 - PATH_EDGE)
+
+
+def edge_crossing(a, b, fa, fb):
+    """Where the path's edge crosses the arc from a to b (bisection on the sphere)."""
+    for _ in range(12):
+        mid = (a + b).normalized()
+        fm = path_edge_offset(mid)
+        if (fm < 0.0) == (fa < 0.0):
+            a, fa = mid, fm
+        else:
+            b, fb = mid, fm
+    return (a + b).normalized()
+
+
+def path_cut_sphere():
+    """An icosphere cut along the path's edge (marching triangles): unit directions, and triangles
+    with their material, 0 grass, 1 soil. The edge follows the path's curve, not the triangles."""
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=5, radius=1.0)
+    bm.verts.ensure_lookup_table()
+    points = [v.co.normalized() for v in bm.verts]
+    triangles = [[v.index for v in f.verts] for f in bm.faces]
+    bm.free()
+    offsets = [path_edge_offset(p) for p in points]
+    crossings = {}
+
+    def crossing(i, j):
+        key = (min(i, j), max(i, j))
+        if key not in crossings:
+            points.append(edge_crossing(points[i], points[j], offsets[i], offsets[j]))
+            offsets.append(0.0)
+            crossings[key] = len(points) - 1
+        return crossings[key]
+
+    faces = []
+    for tri in triangles:
+        inside = [offsets[i] < 0.0 for i in tri]
+        if all(inside) or not any(inside):
+            faces.append((tri, 1 if inside[0] else 0))
+            continue
+        # One corner is alone on its side: rotate it first, keeping the winding.
+        lone = next(k for k in range(3) if inside.count(inside[k]) == 1)
+        a, b, c = tri[lone], tri[(lone + 1) % 3], tri[(lone + 2) % 3]
+        ab, ac = crossing(a, b), crossing(a, c)
+        lone_kind = 1 if inside[lone] else 0
+        faces.append(([a, ab, ac], lone_kind))
+        faces.append(([ab, b, c], 1 - lone_kind))
+        faces.append(([ab, c, ac], 1 - lone_kind))
+    return points, faces
 
 
 def build_planet(col, mats):
     mesh = bpy.data.meshes.new("GuglisTestPlanet")
+    points, faces = path_cut_sphere()
     bm = bmesh.new()
-    bmesh.ops.create_icosphere(bm, subdivisions=5, radius=RADIUS)
-    for vert in bm.verts:
-        direction = vert.co.normalized()
-        hills = 0.45 * noise.noise(direction * 2.2 + Vector((SEED, 0, 0))) + 0.18 * noise.noise(direction * 6.0)
-        flatten = path_weight(direction)  # the path is a little lower and smoother
-        vert.co = direction * (RADIUS + hills * (1.0 - 0.7 * flatten) - 0.12 * flatten)
+    verts = [bm.verts.new(surface_point(p)) for p in points]
+    for tri, kind in faces:
+        face = bm.faces.new([verts[i] for i in tri])
+        face.material_index = kind
     bm.normal_update()
     color_layer = bm.loops.layers.color.new("Col")
     for face in bm.faces:
-        centre = face.calc_center_median().normalized()
-        face.material_index = 1 if path_weight(centre) > 0.35 else 0  # 0 grass, 1 soil
         for loop in face.loops:
             direction = loop.vert.co.normalized()
             height = loop.vert.co.length - RADIUS  # -0.6 .. +0.6
             speckle = 0.06 * noise.noise(direction * 40.0)
             if face.material_index == 0:
-                shade = 0.72 + 0.32 * height + speckle
+                # Grass darkens towards the path, as if trodden.
+                near_path = min(1.0, path_weight(direction) / PATH_EDGE)
+                shade = (0.72 + 0.32 * height + speckle) * (1.0 - 0.22 * near_path)
             else:
                 shade = 0.48 + 0.2 * height + speckle
             shade = max(0.2, min(0.92, shade))
             loop[color_layer] = (shade, shade, shade, 1.0)
+    flipped = sum(1 for face in bm.faces if face.normal.dot(face.calc_center_median()) <= 0.0)
+    if flipped:
+        print(f"GUGLIS PLANET: {flipped} faces turned inside out by the path edge")
     bm.to_mesh(mesh)
     bm.free()
     for poly in mesh.polygons:

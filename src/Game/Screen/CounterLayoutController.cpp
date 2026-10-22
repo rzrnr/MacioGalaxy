@@ -4,6 +4,9 @@
 #include "Game/Screen/MarioMeter.hpp"
 #include "Game/Screen/PlayerLeft.hpp"
 #include "Game/Screen/StarCounter.hpp"
+#ifdef PETARI_NATIVE
+#include "Game/Screen/PurpleStarCounter.hpp"
+#endif
 #include "Game/Screen/StarPieceCounter.hpp"
 #include "Game/Util/DemoUtil.hpp"
 #include "Game/Util/GamePadUtil.hpp"
@@ -26,6 +29,9 @@ namespace NrvCounterLayoutController {
 CounterLayoutController::CounterLayoutController()
     : LayoutActor("カウンタ系レイアウト制御", true), mPlayerNotMovingFrame(), _24(), mCoinCounter(), mStarPieceCounter(), mPlayerLeft(),
       mStarCounter(), mHPMeter() {
+#ifdef PETARI_NATIVE
+    mPurpleStarCounter = nullptr;
+#endif
 }
 
 void CounterLayoutController::init(const JMapInfoIter& rIter) {
@@ -40,6 +46,12 @@ void CounterLayoutController::init(const JMapInfoIter& rIter) {
     mPlayerLeft->initWithoutIter();
     mStarCounter = new StarCounter();
     mStarCounter->initWithoutIter();
+#ifdef PETARI_NATIVE
+    if (PurpleStarCounter::isExistLayout()) {
+        mPurpleStarCounter = new PurpleStarCounter();
+        mPurpleStarCounter->initWithoutIter();
+    }
+#endif
 
     appear();
 }
@@ -73,6 +85,11 @@ void CounterLayoutController::requestedTicoEat(bool param1) {
         mCoinCounter->kill();
         mPlayerLeft->kill();
         mStarCounter->kill();
+#ifdef PETARI_NATIVE
+        if (mPurpleStarCounter != nullptr) {
+            mPurpleStarCounter->kill();
+        }
+#endif
     }
 
     _24 = true;
@@ -96,6 +113,11 @@ void CounterLayoutController::showAllLayout() {
         mStarPieceCounter->forceAppear(false);
         mPlayerLeft->forceAppear();
         mStarCounter->appear();
+#ifdef PETARI_NATIVE
+        if (mPurpleStarCounter != nullptr) {
+            mPurpleStarCounter->appear();
+        }
+#endif
     }
 }
 
@@ -105,6 +127,11 @@ void CounterLayoutController::hideAllLayout() {
         mStarPieceCounter->disappear(false);
         mPlayerLeft->disappear();
         mStarCounter->disappear();
+#ifdef PETARI_NATIVE
+        if (mPurpleStarCounter != nullptr) {
+            mPurpleStarCounter->disappear();
+        }
+#endif
     }
 }
 
@@ -116,6 +143,11 @@ namespace {
 }  // namespace
 
 bool CounterLayoutController::isHiddenOrWaitAllLayout() const {
+#ifdef PETARI_NATIVE
+    if (mPurpleStarCounter != nullptr && !::isHiddenOrWait(mPurpleStarCounter)) {
+        return false;
+    }
+#endif
     return ::isHiddenOrWait(mCoinCounter) && ::isHiddenOrWait(mStarPieceCounter) && ::isHiddenOrWait(mPlayerLeft) && ::isHiddenOrWait(mStarCounter);
 }
 
@@ -151,6 +183,11 @@ void CounterLayoutController::killAllCoounter() {
     mStarPieceCounter->kill();
     mPlayerLeft->kill();
     mStarCounter->kill();
+#ifdef PETARI_NATIVE
+    if (mPurpleStarCounter != nullptr) {
+        mPurpleStarCounter->kill();
+    }
+#endif
 }
 
 bool CounterLayoutController::tryEndTicoEatStarPiece() {

@@ -10,7 +10,6 @@
 #include "Game/System/GameSequenceDirector.hpp"
 #include "Game/System/GameSequenceProgress.hpp"
 #include "Game/System/GameSystem.hpp"
-#include "Game/System/GameSystemSceneController.hpp"
 #include "Game/System/SaveDataHandleSequence.hpp"
 #include "Game/System/ScenarioDataParser.hpp"
 #include "Game/System/SysConfigFile.hpp"
@@ -474,29 +473,9 @@ namespace GameDataFunction {
 };  // namespace GameDataFunction
 
 #ifdef PETARI_NATIVE
-// For the purple star counter (native/app/stats_overlay.cpp, native/CUSTOM_GALAXY.md): read on the
-// game thread at the frame seam, so only while a file and a scene exist.
-namespace {
-    UserFile* currentUserFileOrNull() {
-        GameSystem* pSystem = SingletonHolder< GameSystem >::get();
-        if (pSystem == nullptr || pSystem->mSequenceDirector == nullptr || pSystem->mSequenceDirector->mSaveDataHandleSequence == nullptr) {
-            return nullptr;
-        }
-        return pSystem->mSequenceDirector->mSaveDataHandleSequence->getCurrentUserFile();
-    }
-
-    int purpleStarCount() {
-        UserFile* pFile = currentUserFileOrNull();
-        return pFile != nullptr ? pFile->mGameDataHolder->mAllGalaxyStorage->calcModPowerStarNum() : 0;
-    }
-
-    bool inModGalaxy() {
-        GameSystem* pSystem = SingletonHolder< GameSystem >::get();
-        return pSystem != nullptr && pSystem->mSceneController != nullptr && currentUserFileOrNull() != nullptr &&
-               PetariNative::ModGalaxies::isMod(pSystem->mSceneController->mCurrSceneControlInfo.mStage);
-    }
-
-    const bool sPurpleStarHooks = (PetariNative::ModGalaxies::purpleStarCount = purpleStarCount,
-                                   PetariNative::ModGalaxies::inModGalaxy = inModGalaxy, true);
-}  // namespace
+// The stars of mods' galaxies in the current file (native/CUSTOM_GALAXY.md): the purple star counter
+// (Game/Screen/PurpleStarCounter.cpp).
+s32 GameDataFunction::getModPowerStarNum() {
+    return getCurrentGameDataHolder()->mAllGalaxyStorage->calcModPowerStarNum();
+}
 #endif
