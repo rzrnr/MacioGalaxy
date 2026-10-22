@@ -2,6 +2,7 @@
 // presses out.
 #include "smoke_mechanics.hpp"
 #include "smoke_goodegg.hpp"
+#include <petari/efb_dump_mark.hpp>
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -80,6 +81,7 @@ const std::vector<MechanicPlan>& mechanicPlans() {
         {"ray", "SurfingLv1Galaxy", 1},
         {"modstar", "GuglisPlanetGalaxy", 1},
         {"launchstar", "*", 0},
+        {"talk", "*", 0},
     };
     return plans;
 }
@@ -202,6 +204,7 @@ Result MechanicRun::step(const Observation& o, unsigned long frame, Step& step) 
     if (name == "ray") return ray(o, step);
     if (name == "modstar") return modStar(o, step);
     if (name == "launchstar") return launchStar(o, step);
+    if (name == "talk") return talk(o, step);
     return fail("unknown mechanic");
 }
 
@@ -739,6 +742,47 @@ Result MechanicRun::launchStar(const Observation& o, Step& step) {
         return pass("the Launch Star flew Mario to " + text(pos) + ", " + number(miss) + " from the target");
     }
     }
+}
+
+// Walk to PETARI_MECHANIC_TARGET, stand still and press A while the game offers the talk
+// (Talk.Start). The stage driver runs the talk (talkOpened/talkClosed); passes after it.
+void MechanicRun::talkOpened() {
+    if (std::string(mPlan.name) == "talk") PetariNative::EfbDump::mark("talk");  // PETARI_SURFACE_DUMP_LABELS=talk
+}
+
+void MechanicRun::talkClosed(unsigned long frames) { mTalkFrames = frames; }
+
+Result MechanicRun::talk(const Observation& o, Step& step) {
+    V target{0, 0, 0};
+    const char* spec = std::getenv("PETARI_MECHANIC_TARGET");
+    if (spec == nullptr || std::sscanf(spec, "%f,%f,%f", &target.x, &target.y, &target.z) != 3) {
+        return fail("PETARI_MECHANIC_TARGET=x,y,z (the person to talk to) is not set");
+    }
+    bool offered = false;
+    for (const Observation::Target& shown : o.targets) {
+        offered = offered || (shown.id == "Talk.Start" && (shown.flags & kTargetSelectable));
+    }
+    if (mTalkFrames > 0) return pass("the talk opened and closed again after " + std::to_string(mTalkFrames) + " frames");
+    if (offered) mOfferedFrame = mFrame;
+    // Stop in front of the person (the talk is offered within reach, not inside it).
+    const float d = length(flat(o, sub(target, position(o))));
+    if (d > 120.0f) {
+        approach(o, target, step);
+        mCount = 0;
+    } else {
+        // Stand still on the ground; A while the game offers the talk (the A balloon
+        // can blink) talks; while walking A would jump.
+        const bool pressing = mHeld[4] && mReleaseA > mFrame;
+        hold(false, false, false, false, pressing, step);
+        const bool recent = mOfferedFrame != 0 && mFrame - mOfferedFrame <= 30;
+        if (++mCount >= 20 && recent && o.playerOnGround && !pressing && (mBestFrame == 0 || mFrame - mBestFrame >= 60)) {
+            mBestFrame = mFrame;
+            note("Talk.Start offered at " + text(position(o)) + ": A");
+            tapA(step);
+        }
+    }
+    if (mStageFrames > kApproachLimit) return fail("no talk offered within " + std::to_string(kApproachLimit) + " frames; " + number(d) + " from " + text(target) + ", Mario at " + text(position(o)));
+    return Result::Running;
 }
 
 }  // namespace PetariNative::App::Smoke

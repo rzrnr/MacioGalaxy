@@ -463,7 +463,10 @@ Step StageDriver::step(const Observation& o) {
             std::string ids;
             for (const Observation::Target& target : o.targets) ids += (ids.empty() ? "" : ", ") + target.id;
             note(std::string("talk open while ") + phase() + "; tapping A through it (targets: " + (ids.empty() ? "none" : ids) + ")");
-            if (mMechanic) mMechanic->releaseAll(step);
+            if (mMechanic) {
+                mMechanic->releaseAll(step);
+                mMechanic->talkOpened();
+            }
         }
         if (mTalkFrames > kTalkLimit) {
             finish(Result::Fail, "not ready: a talk stayed open for " + std::to_string(kTalkLimit) + " frames", step);
@@ -488,6 +491,7 @@ Step StageDriver::step(const Observation& o) {
     }
     if (mTalkFrames > 0) {
         note("talk closed after " + std::to_string(mTalkFrames) + " frames");
+        if (mMechanic) mMechanic->talkClosed(mTalkFrames);
         mTalkFrames = 0;
     }
     const bool exercising = mPhase > Phase::Ready && mPhase != Phase::PauseOpen && mPhase != Phase::Paused &&

@@ -10,9 +10,11 @@
 #include <petari/host_allocation.hpp>
 #include <petari/platform/mod_galaxy.hpp>
 
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Text of the enabled disc-file mods (native/app/platform_host.cpp): NPC lines and other messages
@@ -210,6 +212,12 @@ bool MessageData::getMessageDirect(TalkMessageInfo* pMessageInfo, const char* pM
         pMessageInfo->mBalloonType = 0;
         pMessageInfo->_A = -1;
         pMessageInfo->_B = -1;
+        // Once per ID: a mod's line was found (the smoke run's talk check looks for it).
+        PetariNative::HostAllocationScope host;
+        static auto* pLogged = new std::unordered_set< std::string >();
+        if (pLogged->insert(found->first).second) {
+            std::fprintf(stderr, "[mods] message %s from a mod\n", pMessage);
+        }
         return true;
     }
 #endif
