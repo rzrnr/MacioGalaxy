@@ -435,7 +435,7 @@ void noteActivity(const Report& report) {
     }
 }
 
-void tickChannel(s32 chan) {
+void tickChannel(s32 chan, bool extra) {
     Channel& ch = gChannels[chan];
     struct TickScope {
         TickScope() { gInReportTick = true; }
@@ -453,7 +453,7 @@ void tickChannel(s32 chan) {
         if (chan == 0) {
             model().setGameReads(gGameReads.load(std::memory_order_relaxed));
             gFreshInput = false;
-            input = model().nextReport(ch.calibration);
+            input = model().nextReport(ch.calibration, extra);
             activity = model().takeActivity();
         }
     }
@@ -520,9 +520,10 @@ void tickChannel(s32 chan) {
     }
 }
 
-void tick() {
+// extra: a report between the 200 Hz ticks (sampleNow); see RemoteModel::nextReport.
+void tick(bool extra = false) {
     for (s32 chan = 0; chan < kChannels; ++chan) {
-        tickChannel(chan);
+        tickChannel(chan, extra);
     }
 }
 
@@ -539,12 +540,16 @@ void sampleNow() {
         return;
     }
     Interrupts guard;
+    if (gClock == Clock::Manual && gInitialized) {
+        tick(true);  // tests: the extra report, with the tick left to pumpReports
+        return;
+    }
     if (!gAlarmRunning) {
         return;
     }
     const OSTime period = OSMillisecondsToTicks(5);
     OSCancelAlarm(&gAlarm);
-    tick();
+    tick(true);
     OSSetPeriodicAlarm(&gAlarm, OSGetTime() + period, period, alarmHandler);
 }
 

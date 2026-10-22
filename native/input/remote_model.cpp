@@ -429,7 +429,7 @@ bool RemoteModel::takeActivity() {
     return activity;
 }
 
-void RemoteModel::updateOutput() {
+void RemoteModel::updateOutput(bool ageOutputs) {
     const int minimum = std::max(mSettings.minimumPulseReports, 1);
     const int pauseMinimum = std::max(mSettings.pauseTapReports, minimum);
     constexpr std::uint32_t kPauseButtons = 0x0010 | 0x1000;  // Plus, Minus
@@ -449,7 +449,7 @@ void RemoteModel::updateOutput() {
                 --mPendingPresses[bit];
             }
         }
-        if (age < (1 << 20)) {
+        if (ageOutputs && age < (1 << 20)) {
             ++age;
         }
     }
@@ -513,11 +513,11 @@ void RemoteModel::updateMotion(float stickX, float stickY) {
     mRoll = approach(mRoll, targetRoll, step);
 }
 
-Report RemoteModel::nextReport(const PointerCalibration& calibration) {
+Report RemoteModel::nextReport(const PointerCalibration& calibration, bool extra) {
     ++mReportIndex;
     refreshRaw();  // the title prompt may have lapsed
     const std::uint32_t previous = mOutput;
-    updateOutput();
+    updateOutput(!extra);
     const std::uint32_t rising = mOutput & ~previous;
     if ((rising & kBitPostureToggle) != 0) {
         mPosture = mPosture == Posture::Pointing ? Posture::Upright : Posture::Pointing;

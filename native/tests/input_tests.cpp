@@ -1491,6 +1491,24 @@ void testPauseTap() {
         rig.frames_(20);
         check(heldScene.opens == 1, name + " held: pauses once");
     }
+    // Fresh input every frame (the mouse moving, as the Instant pointer invites): the frame
+    // seam's sampleNow adds a report each frame. The tap must still last its 50 reports of
+    // 5 ms, not 50 reports counted with the extra ones (about 190 ms, under 12 frames).
+    {
+        PauseScene moving;
+        In::mouseMoved(600.0f, 300.0f);
+        In::sampleNow();
+        press(In::Key::Escape);
+        lift(In::Key::Escape);
+        for (int f = 0; f < 20; ++f) {
+            In::mouseMoved(600.0f + static_cast<float>(f), 300.0f);
+            In::sampleNow();
+            rig.frame();
+            moving.update(button, true);
+        }
+        check(moving.paused && moving.opens == 1, "Escape tap pauses while the mouse moves");
+        rig.frames_(30);
+    }
     // Other buttons keep their short pulse.
     press(In::Key::Space);
     lift(In::Key::Space);
