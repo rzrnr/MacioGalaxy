@@ -16,30 +16,35 @@ ln -s "$PWD/native/blender/macio_galaxy_editor" ~/Library/Application\ Support/B
 ```
 
 Then Blender → Preferences → Add-ons → "MacioGalaxy Editor" on. The add-on runs from the checkout, so
-a pull updates it (restart Blender). In the 3D view: sidebar (N), tab **Galaxy**.
+a pull updates it (restart Blender). In the 3D view: sidebar (N), the tabs **Galaxie** to **Spiel**.
 
 ## Use
 
-- **Galaxie öffnen**: pick a galaxy in the search field, by its name in the game ("Good Egg Galaxy
+The editor's own tabs in the 3D view's sidebar (N): **Galaxie**, **Objekte**, **Eigenschaften**,
+**Spiel**.
+
+- **Galaxie**: pick a galaxy in the search field, by its name in the game ("Good Egg Galaxy
   (EggStarGalaxy)"; the observatory is "Observatory Grounds (AstroGalaxy)") or its internal name, and
-  open it. One galaxy at a time; opening another
-  replaces it. **Szenario** shows the layers that scenario uses and hides the others (they stay in
-  the scene and are saved).
-- The scene: a collection `SMG <Galaxy>`, one per zone, one per layer (`<Zone> common`, `<Zone>
-  layera`, ...) and `<Zone> Paths`. The main zone places the other zones; each placement is a
-  `Zone <Name>` object, and the zone's contents are its children: move it and the zone moves.
-- Move, rotate, scale, duplicate (Shift+D) and delete as usual. **Auswahl** lists the object's fields
-  (name, l_id, Obj_arg0..7, switches, ...) with what they mean, from Whitehole's object database when it
-  is there (`../Whitehole/src/dist/data/objectdb.json`). To move an object to another layer, move it to
-  that layer's collection.
-- **Objekt / Gravity / Area / Alle Arten**: search the game's objects (by how often the game uses them)
-  and place one at the 3D cursor in the active layer collection (Outliner), with the values of its
-  first placement on the disc, so it starts out working. **Path hinzufügen**: a two-point path; edit
-  its points in Edit Mode (Tab); the handles are the game's control points.
-- **Modelle des Spiels** (on by default) draws objects with their models; off, every object is a
-  coloured stand-in. The 3D view's solid shading shows textures (Color: Texture).
-- Gravity draws its range (Range, Distant, scale, Obj_arg) and redraws when you change them. Areas
-  draw their shape (box from the bottom, centred box, sphere, cylinder, bowl).
+  open it (the folder button). One galaxy at a time. **Szenarien** lists the scenarios by their names
+  in the game; choosing one shows the zones and layers it uses. **Zonen und Ebenen**: every zone with
+  an eye, and the selected zone's layers with an eye each (✓: used by the scenario); "Alles zeigen" or
+  back to the scenario's. **Anzeigen** switches what is drawn: objects, map parts, areas, cameras,
+  gravity, start points, paths, zone placements, other (sounds, positions, demos).
+  **Modelle des Spiels** (on) draws objects with their models, off as coloured stand-ins.
+- **Objekte**: **In der Galaxie** lists every placed object (its name in the game, its zone and
+  layer), filtered by kind and zone and searchable; a click selects it, **Zeigen** frames it. **Neues
+  Objekt** is the game's catalog with preview pictures, by kind or by the object database's category
+  (Enemies, Planets, ...): choose one and **Am 3D-Cursor einfügen** places it in the active layer (the
+  Outliner's active layer collection, else the selected object's). **Path hinzufügen** adds a two-point
+  path. **Vorschaubilder erzeugen** renders the pictures once in a second, headless Blender
+  (`thumbnails.py`; about two minutes for all, waiting while the game runs).
+- **Eigenschaften**: the selected object's picture, name in the game, description, layer (a menu
+  moves it to another layer), **Lage im Spiel** (position, rotation in degrees, scale in game units in
+  its zone, editable), **Argumente** with their meaning from the object database (unused ones folded
+  away; gravity also shows Range, Distant, ...), **Schalter**, **Verknüpfungen** (path, camera,
+  message, group ids) and **Weitere Felder**.
+- Move, rotate, scale, duplicate (Shift+D) and delete as usual in the viewport. To move an object to
+  another layer, use the layer menu or move it to that layer's collection.
 - **Spiel**: **Als Mod speichern** writes the changed zones to `<user>/mods/<Mod>/files/StageData`
   (`Mod`: by default the mod the galaxy came from, else `BlenderEdits`), switches the mod on in
   `mods.txt` and raises its priority above any enabled mod with the same files. **Vorschau
@@ -47,6 +52,9 @@ a pull updates it (restart Blender). In the 3D view: sidebar (N), tab **Galaxy**
   starts at the 3D cursor) and opens the pictures in Preview; it refuses while the game runs (two
   games on one GPU have crashed the running one). **Im Spiel starten** saves and starts the game: after
   you load a file it goes straight to the galaxy.
+- The scene: a collection `SMG <Galaxy>`, one per zone, one per layer and `<Zone> Paths`. The main zone
+  places the other zones; each placement is a `Zone <Name>` object whose children are the zone's
+  contents: move it and the zone moves.
 
 ## Models
 

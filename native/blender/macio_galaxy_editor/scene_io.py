@@ -31,7 +31,6 @@ COLORS = {"objinfo": (1.0, 0.55, 0.1, 1), "mappartsinfo": (0.25, 0.5, 1.0, 1), "
           "soundinfo": (0.6, 0.6, 0.6, 1), "generalposinfo": (0.6, 0.6, 0.6, 1), "debugmoveinfo": (0.5, 0.5, 0.5, 1)}
 WIRE = {"areaobjinfo", "cameracubeinfo", "planetobjinfo"}
 MODEL_KINDS = {"objinfo", "mappartsinfo", "childobjinfo"}  # drawn with the game's model when it has one
-HIDDEN_KINDS = {"soundinfo", "generalposinfo", "debugmoveinfo", "demoobjinfo"}  # shown, but off at first
 
 
 # --- meshes ----------------------------------------------------------------------------------
@@ -227,7 +226,6 @@ def import_galaxy(context, galaxy, scenario_no, catalog, library=None):
             count += 1
     scene["smg_galaxy"], scene["smg_scenario"] = galaxy.name, scenario_no
     scene["smg_main_origin"] = main.origin
-    apply_scenario(scene, galaxy)
     return count
 
 
@@ -263,26 +261,43 @@ def make_path(path: Path_, zone, collection, parent=None):
     return obj
 
 
-def apply_scenario(scene, galaxy):
-    """Shows the layers the scenario uses; the others stay in the scene, hidden."""
-    root = bpy.data.collections.get(f"SMG {galaxy.name}")
-    if root is None:
-        return
-    scenario = galaxy.scenario(scene.get("smg_scenario", galaxy.scenarios[0].no))
-    main_layers = scenario.layers(galaxy.name)
-    for zone_coll in root.children:
-        zone = zone_coll.name
-        active_zone = zone == galaxy.name or scenario.masks.get(zone, 0) != 0 or zone not in scenario.masks
-        layers = scenario.layers(zone)
-        for coll in zone_coll.children:
-            layer = coll.get("smg_layer")
-            coll.hide_viewport = not active_zone or (layer not in ("path", None) and layer not in layers)
+GROUPS = {"objects": {"objinfo", "childobjinfo"}, "mapparts": {"mappartsinfo"}, "areas": {"areaobjinfo"},
+          "cameras": {"cameracubeinfo"}, "gravity": {"planetobjinfo"}, "starts": {"startinfo"}, "paths": {"path"},
+          "zones": {"stageobjinfo"}, "other": {"soundinfo", "generalposinfo", "debugmoveinfo", "demoobjinfo"}}
+GROUP_OF = {kind: group for group, kinds in GROUPS.items() for kind in kinds}
+
+
+def apply_visibility(root, zones: dict, layers: dict, groups: set):
+    """Shows an object when its zone is on (zones: name -> bool), its layer is on (layers: zone -> set of
+    visible layers; paths belong to no layer) and its group is on (groups: names from GROUPS)."""
     for obj in root.all_objects:
-        if obj.get("smg_kind") == "stageobjinfo":
-            layer = obj.users_collection[0].get("smg_layer") if obj.users_collection else "common"
-            obj.hide_set(layer not in main_layers)
-        elif obj.get("smg_kind") in HIDDEN_KINDS:
-            obj.hide_set(True)
+        kind = obj.get("smg_kind")
+        if not kind:
+            continue
+        zone = obj.get("smg_zone")
+        if kind == "stageobjinfo":  # a placement row of the main zone, named after the zone it places
+            placed = obj.get(PREFIX + "name", "")
+            visible = zones.get(zone, True) and _layer_of(obj) in layers.get(zone, ()) and zones.get(placed, True)
+        elif kind == "path":
+            visible = zones.get(zone, True)
+        else:
+            visible = zones.get(zone, True) and _layer_of(obj) in layers.get(zone, ())
+        visible = visible and GROUP_OF.get(kind, "other") in groups
+        if obj.hide_get() == visible:
+            obj.hide_set(not visible)
+
+
+def set_zone_local(obj, matrix):
+    """Places the object so that its matrix in its zone is matrix (the inverse of _zone_local)."""
+    if obj.parent is not None and obj.parent.get("smg_kind") == "stageobjinfo":
+        obj.matrix_basis = obj.matrix_parent_inverse.inverted() @ matrix
+    elif obj.parent is None:
+        obj.matrix_basis = matrix
+    else:
+        zone_parent = obj.parent
+        while zone_parent is not None and zone_parent.get("smg_kind") != "stageobjinfo":
+            zone_parent = zone_parent.parent
+        obj.matrix_world = zone_parent.matrix_world @ matrix if zone_parent is not None else matrix
 
 
 # --- export ----------------------------------------------------------------------------------
