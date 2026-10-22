@@ -99,6 +99,16 @@ extern "C" const char* SDL_GetScancodeName(SDL_Scancode scancode) {
     }
 }
 
+// pressButton queues SDL key events only under PETARI_SMOKE_SDL_KEYS, which these tests
+// do not set.
+extern "C" bool SDL_PushEvent(SDL_Event*) {
+    return false;
+}
+
+extern "C" const char* SDL_GetError(void) {
+    return "";
+}
+
 namespace {
 
 SDL_Event key(SDL_Scancode scancode, bool down, bool repeat = false) {
