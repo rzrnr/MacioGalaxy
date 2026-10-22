@@ -34,7 +34,7 @@ RotateAccelType RotateStopTime RotateType ShadowType SignMotionType PressType Fa
 Power Gravity_type DemoName TimeSheetName PosName Camera_id type closed num_pnt path_arg0 path_arg1 path_arg2
 path_arg3 path_arg4 path_arg5 path_arg6 path_arg7 usage no Path_ID point_arg0 point_arg1 point_arg2 point_arg3
 point_arg4 point_arg5 point_arg6 point_arg7 pnt0_x pnt0_y pnt0_z pnt1_x pnt1_y pnt1_z pnt2_x pnt2_y pnt2_z id
-ScenarioNo ScenarioName PowerStarId AppearPowerStarObj Comet LuigiModeTimer IsHidden ErrorCheck ZoneName""".split()
+ScenarioNo ScenarioName PowerStarId AppearPowerStarObj Comet LuigiModeTimer IsHidden ErrorCheck ZoneName Index""".split()
 NAME_OF = {jmap_hash(n): n for n in FIELD_NAMES}
 TRANSFORM = {f"{p}_{a}" for p in ("pos", "dir", "scale") for a in "xyz"}
 
@@ -117,6 +117,67 @@ class GameData:
 
     def open(self, galaxy: str) -> "Galaxy":
         return Galaxy(self, galaxy)
+
+    def messages(self, prefix: str, language: str = "UsEnglish") -> dict:
+        """Message ID -> text for IDs starting with prefix: the disc's (<language>/MessageData/Message.arc),
+        else the enabled mods' messages.txt (the first file that has it, as the game)."""
+        out = {}
+        path = self.disc / language / "MessageData/Message.arc"
+        if path.exists():
+            tree = read_tree(path.read_bytes())
+            ids = Table(tree.files["messageid.tbl"])
+            bmg = tree.files["message.bmg"]
+            info, data = _bmg_sections(bmg)
+            for r in range(len(ids.rows)):
+                label = ids.get(r, "MessageId")
+                if label.startswith(prefix):
+                    out[label] = _bmg_text(bmg, info, data, ids.get(r, "Index"))
+        for mod in self.enabled_mods():
+            for name in (f"messages.{language}.txt", "messages.txt"):
+                text = mod.root / name
+                if not text.exists():
+                    continue
+                for line in text.read_text(errors="replace").splitlines():
+                    key, sep, value = line.partition("=")
+                    key = key.strip()
+                    if sep and key.startswith(prefix) and not line.lstrip().startswith("#"):
+                        out.setdefault(key, value.strip().replace("\\n", " "))
+        return out
+
+    def galaxy_names(self) -> dict:
+        """Galaxy -> its name in the game (GalaxyName_<Galaxy>), where it has one."""
+        names = self.messages("GalaxyName_")
+        return {key[len("GalaxyName_"):]: value for key, value in names.items() if value}
+
+
+def _bmg_sections(bmg: bytes):
+    """(INF1 offset, DAT1 data offset) of a BMG message file."""
+    at, info, data = 0x20, None, None
+    for _ in range(struct.unpack_from(">I", bmg, 12)[0]):
+        tag, size = bmg[at:at + 4], struct.unpack_from(">I", bmg, at + 4)[0]
+        if tag == b"INF1":
+            info = at
+        elif tag == b"DAT1":
+            data = at + 8
+        at += size
+    return info, data
+
+
+def _bmg_text(bmg: bytes, info: int, data: int, index: int) -> str:
+    """Message index's text (UTF-16BE), control codes left out."""
+    entry_size = struct.unpack_from(">H", bmg, info + 10)[0]
+    at = data + struct.unpack_from(">I", bmg, info + 16 + index * entry_size)[0]
+    chars = []
+    while at + 1 < len(bmg):
+        code = struct.unpack_from(">H", bmg, at)[0]
+        if code == 0:
+            break
+        if code == 0x1A:  # escape: a byte with its whole length follows
+            at += max(bmg[at + 2], 3)
+            continue
+        chars.append(chr(code) if code != 10 else " ")
+        at += 2
+    return "".join(chars).strip()
 
 
 # --- galaxies and zones -----------------------------------------------------------------------

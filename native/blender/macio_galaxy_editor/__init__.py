@@ -24,6 +24,7 @@ from bpy.props import BoolProperty, EnumProperty, StringProperty  # noqa: E402
 from . import game as game_io  # noqa: E402
 from . import scene_io  # noqa: E402
 from .catalog import KIND_LABEL, Catalog  # noqa: E402
+from .models import ModelLibrary  # noqa: E402
 from .convert import basis_from_game, to_game  # noqa: E402
 from .galaxy import USER, GameData, Path_, PathPoint, read_tree  # noqa: E402
 
@@ -45,6 +46,16 @@ def catalog(scene) -> Catalog:
     return _cache[key]
 
 
+def model_library(scene):
+    """The game's models for this scene (None while "Modelle" is off)."""
+    if not scene.mge_models:
+        return None
+    key = ("models", scene.mge_user)
+    if key not in _cache:
+        _cache[key] = ModelLibrary(game_data(scene))
+    return _cache[key]
+
+
 def open_galaxy(scene):
     key = ("galaxy", scene.mge_user, scene.get("smg_galaxy"))
     if key not in _cache:
@@ -53,16 +64,36 @@ def open_galaxy(scene):
 
 
 def forget(scene):
-    for key in [k for k in _cache if k[0] in ("game", "galaxy")]:
+    for key in [k for k in _cache if k[0] in ("game", "galaxy", "names")]:
         del _cache[key]
 
 
 # --- properties ------------------------------------------------------------------------------
 
 
+def galaxy_names(scene) -> dict:
+    key = ("names", scene.mge_user)
+    if key not in _cache:
+        _cache[key] = game_data(scene).galaxy_names()
+    return _cache[key]
+
+
+def galaxy_label(scene, name):
+    shown = galaxy_names(scene).get(name)
+    return f"{shown} ({name})" if shown else name
+
+
 def _galaxy_search(self, context, edit_text):
-    names = game_data(context.scene).galaxies()
-    return [n for n in names if edit_text.lower() in n.lower()]
+    """Galaxies as "<name in the game> (<internal name>)", found by either."""
+    scene = context.scene
+    text = edit_text.lower()
+    labels = [galaxy_label(scene, n) for n in game_data(scene).galaxies()]
+    return sorted(label for label in labels if text in label.lower())
+
+
+def _galaxy_from_field(text: str) -> str:
+    text = text.strip()
+    return text[text.rindex("(") + 1:-1] if text.endswith(")") and "(" in text else text
 
 
 def _scenarios(self, context):
@@ -76,6 +107,13 @@ def _scenarios(self, context):
     items = [(str(s.no), f"{s.no}: {s.name}", s.name) for s in galaxy.scenarios]
     _cache["scenario_items"] = items  # Blender needs the strings kept alive
     return items
+
+
+def _models_changed(self, context):
+    scene = context.scene
+    root = bpy.data.collections.get(f"SMG {scene.get('smg_galaxy')}")
+    if root is not None:
+        scene_io.show_models(root, model_library(scene))
 
 
 def _scenario_changed(self, context):
@@ -96,7 +134,7 @@ class MGE_OT_open(bpy.types.Operator):
 
     def execute(self, context):
         scene = context.scene
-        name = scene.mge_galaxy.strip()
+        name = _galaxy_from_field(scene.mge_galaxy)
         forget(scene)
         game = game_data(scene)
         if name not in game.galaxies():
@@ -104,7 +142,8 @@ class MGE_OT_open(bpy.types.Operator):
             return {"CANCELLED"}
         galaxy = game.open(name)
         _cache[("galaxy", scene.mge_user, name)] = galaxy
-        count = scene_io.import_galaxy(context, galaxy, galaxy.scenarios[0].no, catalog(scene))
+        _cache.pop(("models", scene.mge_user), None)  # mods may have changed models since
+        count = scene_io.import_galaxy(context, galaxy, galaxy.scenarios[0].no, catalog(scene), model_library(scene))
         scene.mge_scenario = str(galaxy.scenarios[0].no)
         if not scene.mge_mod:
             origin = scene.get("smg_main_origin")
@@ -120,7 +159,8 @@ def _setup_views(context):
             if area.type == "VIEW_3D":
                 for space in area.spaces:
                     if space.type == "VIEW_3D":
-                        space.shading.color_type = "OBJECT"
+                        space.shading.color_type = "TEXTURE"
+                        space.shading.wireframe_color_type = "OBJECT"
                         space.clip_end = max(space.clip_end, 20000.0)
 
 
@@ -192,7 +232,8 @@ class MGE_OT_add(bpy.types.Operator):
         cursor = context.scene.cursor.matrix.copy()
         local = parent.matrix_world.inverted() @ cursor if parent is not None else cursor
         values = cat.defaults(name)
-        obj = scene_io.new_object(name, entry["kind"], zone, values, local.normalized(), coll, cat, parent=parent)
+        obj = scene_io.new_object(name, entry["kind"], zone, values, local.normalized(), coll, cat, parent=parent,
+                                  library=model_library(context.scene))
         for other in context.selected_objects:
             other.select_set(False)
         obj.select_set(True)
@@ -364,8 +405,9 @@ class MGE_PT_galaxy(bpy.types.Panel):
         layout.operator(MGE_OT_open.bl_idname, icon="FILE_FOLDER")
         if scene.get("smg_galaxy"):
             layout.prop(scene, "mge_scenario", text="Szenario")
+            layout.prop(scene, "mge_models", text="Modelle des Spiels", icon="MESH_MONKEY")
             box = layout.box()
-            box.label(text=f"Offen: {scene['smg_galaxy']}")
+            box.label(text=f"Offen: {galaxy_label(scene, scene['smg_galaxy'])}")
             col = box.column(align=True)
             col.operator(MGE_OT_add.bl_idname, text="Objekt", icon="ADD").kind = "OBJECT"
             col.operator(MGE_OT_add.bl_idname, text="Gravity", icon="FORCE_FORCE").kind = "GRAVITY"
@@ -459,11 +501,14 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.Scene.mge_user = StringProperty(name="Spielordner", subtype="DIR_PATH", default=str(USER),
                                               description="Benutzerordner von MacioGalaxy (Disc, Mods, mods.txt)")
-    bpy.types.Scene.mge_galaxy = StringProperty(name="Galaxie", search=_galaxy_search, default="AstroGalaxy")
+    bpy.types.Scene.mge_galaxy = StringProperty(name="Galaxie", search=_galaxy_search, default="Good Egg Galaxy (EggStarGalaxy)",
+                                                description="Name im Spiel oder interner Name (Sternenschiff: AstroGalaxy)")
     bpy.types.Scene.mge_scenario = EnumProperty(name="Szenario", items=_scenarios, update=_scenario_changed)
     bpy.types.Scene.mge_mod = StringProperty(name="Ziel-Mod", default="",
                                              description="Mod-Ordner, in den gespeichert wird (mods/<Name>)")
     bpy.types.Scene.mge_warp = BoolProperty(name="Am 3D-Cursor starten", default=False)
+    bpy.types.Scene.mge_models = BoolProperty(name="Modelle", default=True, update=_models_changed,
+                                              description="Die Modelle des Spiels zeigen statt der Platzhalter-Würfel")
     bpy.types.Scene.mge_status = StringProperty(default="")
     bpy.app.handlers.depsgraph_update_post.append(_gravity_handler)
 
@@ -471,7 +516,7 @@ def register():
 def unregister():
     if _gravity_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_gravity_handler)
-    for name in ("mge_user", "mge_galaxy", "mge_scenario", "mge_mod", "mge_warp", "mge_status"):
+    for name in ("mge_user", "mge_galaxy", "mge_scenario", "mge_mod", "mge_warp", "mge_status", "mge_models"):
         delattr(bpy.types.Scene, name)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

@@ -126,8 +126,16 @@ check("Coin" in names, "new Coin written")
 coin = [r for r in rows["jmp/placement/common/objinfo"] if r.values["name"] == "Coin" and abs(r.values["pos_x"] - 1234) < 0.5]
 check(len(coin) == 1 and abs(coin[0].values["pos_y"] - 567) < 0.5 and abs(coin[0].values["pos_z"] + 890) < 0.5,
       "the Coin at the 3D cursor in game coordinates")
-ids = [r.values["l_id"] for t in rows.values() for r in t if "l_id" in r.values and r.kind in ("objinfo", "mappartsinfo")]
-check(len(ids) == len(set(ids)), "l_id unique among objects and map parts (the duplicate got its own)")
+from collections import Counter  # noqa: E402
+
+def repeated(zone_rows):
+    counts = Counter(r.values["l_id"] for r in zone_rows if r.kind in ("objinfo", "mappartsinfo"))
+    return {k for k, n in counts.items() if n > 1}
+
+already = repeated(list(GameData(user / "nothing", disc=USER / "Disc/RMGE01").open(main).zone(main).records())) | \
+    repeated(list(before.records()))
+check(repeated([r for t in rows.values() for r in t]) <= already,
+      "no new l_id shared by two objects or map parts (the duplicate got its own; the disc repeats some)")
 grav = [r for r in rows.get("jmp/placement/common/planetobjinfo", []) if r.values["name"] == "GlobalPointGravity"
         and abs(r.values["Range"] - 2500) < 0.1]
 check(len(grav) == 1, "new GlobalPointGravity with Range 2500")

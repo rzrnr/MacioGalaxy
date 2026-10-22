@@ -5,8 +5,9 @@ with Blender's own tools, saves the changed zones as a MacioGalaxy mod, and play
 player's disc (`<user>/Disc/RMGE01`) with the enabled mods on top, as the game does; nothing of the
 disc leaves the machine.
 
-Stage 1: objects, map parts, areas, gravity, start points and paths. Objects are stand-ins (coloured
-boxes with a nose toward their front), not the game's models yet.
+Objects, map parts, areas, gravity, start points and paths; objects and map parts drawn with the
+game's models and textures (stand-in boxes for the rest: start points, logic objects).
+
 
 ## Install
 
@@ -19,7 +20,9 @@ a pull updates it (restart Blender). In the 3D view: sidebar (N), tab **Galaxy**
 
 ## Use
 
-- **Galaxie öffnen**: pick a galaxy (search field), open it. One galaxy at a time; opening another
+- **Galaxie öffnen**: pick a galaxy in the search field, by its name in the game ("Good Egg Galaxy
+  (EggStarGalaxy)"; the observatory is "Observatory Grounds (AstroGalaxy)") or its internal name, and
+  open it. One galaxy at a time; opening another
   replaces it. **Szenario** shows the layers that scenario uses and hides the others (they stay in
   the scene and are saved).
 - The scene: a collection `SMG <Galaxy>`, one per zone, one per layer (`<Zone> common`, `<Zone>
@@ -33,6 +36,8 @@ a pull updates it (restart Blender). In the 3D view: sidebar (N), tab **Galaxy**
   and place one at the 3D cursor in the active layer collection (Outliner), with the values of its
   first placement on the disc, so it starts out working. **Path hinzufügen**: a two-point path; edit
   its points in Edit Mode (Tab); the handles are the game's control points.
+- **Modelle des Spiels** (on by default) draws objects with their models; off, every object is a
+  coloured stand-in. The 3D view's solid shading shows textures (Color: Texture).
 - Gravity draws its range (Range, Distant, scale, Obj_arg) and redraws when you change them. Areas
   draw their shape (box from the bottom, centred box, sphere, cylinder, bowl).
 - **Spiel**: **Als Mod speichern** writes the changed zones to `<user>/mods/<Mod>/files/StageData`
@@ -42,6 +47,25 @@ a pull updates it (restart Blender). In the 3D view: sidebar (N), tab **Galaxy**
   starts at the 3D cursor) and opens the pictures in Preview; it refuses while the game runs (two
   games on one GPU have crashed the running one). **Im Spiel starten** saves and starts the game: after
   you load a file it goes straight to the galaxy.
+
+## Models
+
+- An object's model is `ObjectData/<Name>.arc` (the winning enabled mod's, else the disc's), or the
+  archive Whitehole's `modelsubstitutions.json` names (`BenefitItemOneUp` → `KinokoOneUp`, ...);
+  observatory pieces add their dome by Obj_arg0 (`AstroDomeEntrance` 2 → `AstroDomeEntranceWell`,
+  as `AstroMapObjFunction::getModelName`);
+  inside, `<name>.bdl`/`.bmd`. `native/tools/j3d_scene.py` poses it at rest: JNT1 joints through the
+  INF1 tree (`parent · T · Rz · Ry · Rx · S`), rigid DRW1 matrices applied, skinned (EVP1) vertices
+  left in model space; display lists decoded with numpy. `native/tools/gx_texture.py` decodes every
+  GX texture format.
+- Converted once into `~/Library/Caches/MacioGalaxyEditor` (`models/<hash>.npz`, `textures/<hash>.png`);
+  every object of a name shares one mesh. Every galaxy opens with its models (none fails); Good Egg
+  (104 models) in about 6 s once cached. Objects without a model (lights, effects, demo starters)
+  stay stand-ins.
+- Materials approximate the game's TEV: the texture stage 0 samples (wrap modes, UV set) times vertex
+  colours or the material colour, alpha clip/blend, backface culling. An environment map (the coin,
+  the stars) becomes its mean colour. Colours the game sets at run time stay grey (the Lumas' body).
+  Animated characters stand in their rest pose.
 
 ## How it maps
 
@@ -56,9 +80,9 @@ a pull updates it (restart Blender). In the 3D view: sidebar (N), tab **Galaxy**
 - Archives are rebuilt with `native/tools/rarc_tree.py` (folders, new and removed files: a new path's
   point table) and written as plain RARC, which the game reads as well as Yaz0.
 
-## Limits (stage 1)
+## Limits
 
-- Stand-ins instead of models; sphere, cylinder and bowl areas use scale_x for their radius in the
+- Materials are approximations (see Models); sphere, cylinder and bowl areas use scale_x for their radius in the
   game, while Blender stretches them with every axis.
 - Not editable yet: camera parameters (`cameraparam.bcam`), scenarios and their layers, new zones or
   galaxies, the galaxy's place in the observatory.
