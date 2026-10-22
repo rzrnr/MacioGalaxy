@@ -1,9 +1,11 @@
 // Window events and remapped controls for the native input layer.
 
+#include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_scancode.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -169,7 +171,22 @@ void pressButton(int button, bool down) {
         return;
     }
     const Input::Binding& input = inputs.front();
-    if (input.device == Input::Binding::Device::Key) {
+    // PETARI_SMOKE_SDL_KEYS=1 (a visible run, not PETARI_SMOKE_BACKGROUND, which isolates the
+    // keyboard): keys go into SDL's event queue as a keyboard would put them, so they take the
+    // frame seam's way (early hand-over before the game reads its controllers, then the pump).
+    static const bool sdlKeys = [] {
+        const char* value = std::getenv("PETARI_SMOKE_SDL_KEYS");
+        return value != nullptr && value[0] == '1';
+    }();
+    if (input.device == Input::Binding::Device::Key && sdlKeys) {
+        SDL_Event event{};
+        event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+        event.key.scancode = static_cast<SDL_Scancode>(input.code);
+        event.key.down = down;
+        if (!SDL_PushEvent(&event)) {
+            std::fprintf(stderr, "PETARI SMOKE: could not queue a key event: %s\n", SDL_GetError());
+        }
+    } else if (input.device == Input::Binding::Device::Key) {
         Input::keyEvent(input.code, down, false);
     } else {
         Input::mouseButtonEvent(static_cast<Input::MouseButton>(input.code), down);
