@@ -44,6 +44,11 @@
 //             the nearest published "LaunchStar" that accepts Mario and spin until it holds him;
 //             once he is back on the ground, PETARI_MECHANIC_TARGET="x,y,z" (optional)
 //             must be within 900 units of where he landed.
+//   talk      any stage (with PETARI_STAGE_WARP near the person). Walk to
+//             PETARI_MECHANIC_TARGET="x,y,z" and stand still until the game offers the talk,
+//             press A; the talk must open and close again (the stage driver taps A through
+//             it). Pictures of it: PETARI_SURFACE_DUMP_LABELS=talk. A mod's NPC line says
+//             "[mods] message <ID> from a mod" in the log.
 //
 // FAIL names the step and the measurements. Every step is logged with positions.
 #include <string>
@@ -72,6 +77,9 @@ public:
     void clearLog() { mLog.clear(); }
     // Releases every key this run holds (the stage driver calls it when finishing).
     void releaseAll(Step& step);
+    // The stage driver taps A through talks itself and tells the run when one opens and closes.
+    void talkOpened();
+    void talkClosed(unsigned long frames);
 
     struct V {
         float x, y, z;
@@ -85,6 +93,7 @@ private:
     Result ray(const Observation& o, Step& step);
     Result modStar(const Observation& o, Step& step);
     Result launchStar(const Observation& o, Step& step);
+    Result talk(const Observation& o, Step& step);
     // steerTo with stuck recovery: no 40 units of progress in 120 frames jumps; the
     // third time on one target sidesteps for 45 frames. Returns the flat distance.
     float approach(const Observation& o, V target, Step& step);
@@ -122,6 +131,8 @@ private:
     float mApproachBest = 0;
     unsigned long mApproachBestFrame = 0;
     int mStuck = 0;
+    unsigned long mOfferedFrame = 0;  // talk: the last frame the game offered the talk
+    unsigned long mTalkFrames = 0;    // talk: the length of the last talk that closed
     unsigned long mSidestepUntil = 0;
 };
 

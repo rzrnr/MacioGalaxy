@@ -139,14 +139,19 @@ stays:
 `native/mods/Sternenschiff` adds a sky island east of the Luma garden: a grassy island on
 a rock (modelled in Blender, `island_blender.py`, written by `build.py` as
 `ObjectData/GuglisSkyIsland.arc` with its collision), a Toad with his own lines, a ring of
-coins, butterflies, and two hazelnut Launch Stars: one in the garden to the island, one
+Star Bits, butterflies, and two hazelnut Launch Stars: one in the garden to the island, one
 on the island back. The observatory itself (`StageData/AstroGalaxy.arc`) was edited in
 Whitehole through its MCP tools (Whitehole fork, `mac/README.md`) and exported with
 `game_export_mod`; new things go on the common layer, which every state of the
 observatory shows.
 
-- The Toad's line: `AstroGalaxy_Kinopio090` in the mod's `messages.txt` (a Toad with
-  MessageId 90 in the zone AstroGalaxy).
+- The Toad's line: `AstroGalaxy_Kinopio200` in the mod's `messages.txt` (a Toad with
+  MessageId 200 in the zone AstroGalaxy). A new NPC needs a MessageId the disc does not
+  use in its zone: a disc message wins over the mods' (the observatory's Toads use 000-100),
+  and with it comes its talk flow. MessageId 90, the Toad with Peach's letter, ends by
+  handing out a star, and the island has none to give: the game crashed.
+- No Power Stars or coins in the observatory, as on the disc: collectibles there are
+  Star Bits.
 - A Launch Star takes Mario only once he has been over 350 units from it: start the
   smoke run's `launchstar` check (below) from there.
 - The mod replaces `StageData/AstroGalaxy.arc` as a whole, so two mods changing the
@@ -206,3 +211,7 @@ that long afterwards, tapping A, through the return to the observatory.
 `PETARI_MECHANIC=launchstar` (any stage, with `PETARI_STAGE_WARP` near the star) flies the
 nearest Launch Star and checks the landing against `PETARI_MECHANIC_TARGET=x,y,z`: e.g.
 `PETARI_STAGE=AstroGalaxy`, warp `5450,300,450`, target `10300,270,-900` (garden to island).
+`PETARI_MECHANIC=talk` walks to the person at `PETARI_MECHANIC_TARGET` and talks to them:
+the island's Toad with warp `10600,450,-900`, target `10150,260,-1250`. The log names a
+mod's line (`[mods] message AstroGalaxy_Kinopio200 from a mod`);
+`PETARI_SURFACE_DUMP_LABELS=talk` takes pictures of the talk.
