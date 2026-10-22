@@ -32,8 +32,8 @@ The branch `guglis-edits` is the official `main` plus three kinds of edits, kept
 | Edit | What it does | Upstream |
 | --- | --- | --- |
 | Honeyhive lawn fix | Keeps negative texture LOD biases on arm64, so the grass is textured again | [PR #3](https://github.com/classicrob/MacioGalaxy/pull/3) |
-| Observatory talk fix | The Comet Observatory's NPCs read their progress flags again: the Mail Toad hands over his letters, and the Toads, Rosalina and the Lumas say the lines for the current progress | proposal in preparation |
-| macOS library memory fix | Memory that macOS libraries (CoreAudio, Core Animation) allocate on the game thread stays out of the game's heaps; the game crashed when macOS freed it on one of its own threads, for example with AirPods at the first sound | proposal in preparation |
+| Observatory talk fix | The Comet Observatory's NPCs read their progress flags again: the Mail Toad hands over his letters, and the Toads, Rosalina and the Lumas say the lines for the current progress | prepared, not submitted: branch `fix-observatory-talk` |
+| macOS library memory fix | Memory that macOS libraries (CoreAudio, Core Animation) allocate on the game thread stays out of the game's heaps; the game crashed when macOS freed it on one of its own threads, for example with AirPods at the first sound | prepared, not submitted: branch `fix-framework-allocations` |
 
 ### Improvements
 
@@ -44,8 +44,8 @@ The branch `guglis-edits` is the official `main` plus three kinds of edits, kept
 | Instant pointer | A switch in F1 → Mods: the Star Pointer is drawn where the mouse points in every frame, without the Wii Remote's smoothing | not yet proposed |
 | Graphics page | F1 → Graphics: render at 480p (the Wii's), 720p, 1080p, 1440p, 4K or the display's resolution; FSR 1, bicubic or bilinear upscaling; RCAS sharpening; FXAA; a stats overlay with FPS and a frame time graph | not yet proposed |
 | 120 fps | F1 → Graphics → Frame rate 120 (a prototype): an extra frame between two game steps, with the camera and models halfway | not yet proposed |
-| V-Sync | F1 → Graphics → V-Sync (on, low latency, or variable refresh on ProMotion in fullscreen): the game's clock follows the display, so every frame stays on screen equally long, against micro-stutter | proposal in preparation (on, low latency) |
-| Input latency | F1 → Graphics → Input latency Reduced: each game step is drawn in its own frame instead of the next, with fresher input; a key press shows about 17 ms sooner | proposal in preparation |
+| V-Sync | F1 → Graphics → V-Sync (on, low latency, or variable refresh on ProMotion in fullscreen): the game's clock follows the display, so every frame stays on screen equally long, against micro-stutter | prepared, not submitted: branch `vsync-display-sync` (off, on, low latency) |
+| Input latency | F1 → Graphics → Input latency Reduced: each game step is drawn in its own frame instead of the next, with fresher input; a key press shows about 17 ms sooner | prepared, not submitted: branch `input-latency` |
 
 ### Content mods
 

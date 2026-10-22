@@ -21,8 +21,8 @@ Drei Arten von Änderungen, getrennt gehalten:
 | Änderung | Was sie macht | Fürs offizielle Repo |
 | --- | --- | --- |
 | Grastextur Honeyhive | Negativer Textur-LOD-Bias wird auf arm64 richtig übersetzt, der Rasen ist wieder texturiert | vorgeschlagen: PR [#3](https://github.com/classicrob/MacioGalaxy/pull/3), Branch `fix-negative-lod-bias` |
-| Gespräche im Observatorium | Die Bedingungen in den Gesprächen standen in falscher Reihenfolge, deshalb lasen die Figuren im Kometen-Observatorium ihren Spielfortschritt nie: Der Brief-Toad behielt seinen Brief, Toads, Rosalina und Lumas sagten nur ihre ersten Sätze. Jetzt wie im Original (geprüft an `main.dol`) | PR in Vorbereitung |
-| Speicher macOS-fremder Bibliotheken | Speicher, den macOS-Bibliotheken (CoreAudio, Core Animation) auf dem Spiel-Thread anlegen, landet nicht mehr im Wii-Speicher. Vorher stürzte das Spiel ab, sobald macOS ihn auf einem eigenen Thread freigab, zum Beispiel mit AirPods beim ersten Ton | PR in Vorbereitung |
+| Gespräche im Observatorium | Die Bedingungen in den Gesprächen standen in falscher Reihenfolge, deshalb lasen die Figuren im Kometen-Observatorium ihren Spielfortschritt nie: Der Brief-Toad behielt seinen Brief, Toads, Rosalina und Lumas sagten nur ihre ersten Sätze. Jetzt wie im Original (geprüft an `main.dol`) | vorbereitet, nicht eingereicht: Branch `fix-observatory-talk`; für Petari nur als Patch, siehe [vorschlaege/](vorschlaege/README.md) |
+| Speicher macOS-fremder Bibliotheken | Speicher, den macOS-Bibliotheken (CoreAudio, Core Animation) auf dem Spiel-Thread anlegen, landet nicht mehr im Wii-Speicher. Vorher stürzte das Spiel ab, sobald macOS ihn auf einem eigenen Thread freigab, zum Beispiel mit AirPods beim ersten Ton | vorbereitet, nicht eingereicht: Branch `fix-framework-allocations` |
 | CoreAudio-Linkfix | Ohne ihn bricht der Build auf diesem Mac beim Linken ab | noch nicht vorgeschlagen |
 
 ### Allgemeine Verbesserungen
@@ -34,8 +34,8 @@ Drei Arten von Änderungen, getrennt gehalten:
 | Instant pointer | Schalter unter F1 → Mods → „Instant pointer“: Der Star Pointer wird in jedem Bild an der aktuellen Mausposition gezeichnet, ohne die Wiimote-Glättung. Details in `native/MODS.md` | noch nicht vorgeschlagen |
 | Grafik-Seite | F1 → Graphics: Renderauflösung Display, 480p (Wii), 720p, 1080p, 1440p oder 4K; Upscaling mit FSR 1, Bicubic oder Bilinear; RCAS-Schärfe; FXAA; Statistik-Overlay mit FPS, Frame-Zeit-Graph und FPS im Fenstertitel. Details in `native/GRAPHICS.md` | noch nicht vorgeschlagen |
 | 120 FPS mit Zwischenbildern | F1 → Graphics → Frame rate 120 (Prototyp): ein zusätzliches Bild zwischen zwei Spielschritten, Kamera und Modelle auf halbem Weg. Details in `native/FRAME_RATE.md` | noch nicht vorgeschlagen |
-| V-Sync | F1 → Graphics → V-Sync (Off, On, Low latency, Variable für ProMotion im Vollbild): Der Spieltakt folgt dem Monitor, jedes Bild steht gleich lang, gegen Mikroruckler | PR in Vorbereitung (On und Low latency) |
-| Input latency | F1 → Graphics → Input latency Reduced: Jeder Spielschritt wird im selben Bild gezeichnet statt im nächsten, dazu frischere Eingaben; eine Taste ist rund 17 ms früher im Bild | PR in Vorbereitung |
+| V-Sync | F1 → Graphics → V-Sync (Off, On, Low latency, Variable für ProMotion im Vollbild): Der Spieltakt folgt dem Monitor, jedes Bild steht gleich lang, gegen Mikroruckler | vorbereitet, nicht eingereicht: Branch `vsync-display-sync` (Off, On und Low latency) |
+| Input latency | F1 → Graphics → Input latency Reduced: Jeder Spielschritt wird im selben Bild gezeichnet statt im nächsten, dazu frischere Eingaben; eine Taste ist rund 17 ms früher im Bild | vorbereitet, nicht eingereicht: Branch `input-latency` |
 
 ### Inhalts-Mods
 
