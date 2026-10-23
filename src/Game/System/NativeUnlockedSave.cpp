@@ -384,6 +384,17 @@ namespace {
 }  // namespace
 
 namespace NativeUnlockedSave {
+    void prepareTestbedFile(GameDataHolder* pHolder, const char* pGalaxyName) {
+        unlockGameData(pHolder, true);
+
+        GalaxyStatusAccessor accessor = MR::makeGalaxyStatusAccessor(pGalaxyName);
+        for (s32 starId = 1; starId <= accessor.getPowerStarNum(); starId++) {
+            pHolder->setPowerStar(pGalaxyName, starId, false);
+        }
+
+        std::fprintf(stderr, "PETARI TESTBED: file 1 set up in memory (all missions but %s's stars, not saved)\n", pGalaxyName);
+    }
+
     bool isRequested() {
         return !PetariNative::UnlockedSave::variant.empty() && sPhase != Phase_Done;
     }

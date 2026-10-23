@@ -5,7 +5,7 @@
 - Bottom left: the legend of the wire shapes' colours, for the kinds that are shown.
 - Without a galaxy: a card in the middle saying what to do first.
 - Q (in this workspace only; elsewhere Blender's Quick Favorites): a pie with the editor's tools, the
-  automatic test, saving and playing.
+  automatic test, saving, test play (the testbed) and playing in the whole game.
 """
 import sys
 
@@ -177,7 +177,10 @@ class MGE_MT_pie(bpy.types.Menu):
         pie.operator("wm.tool_set_by_id", text="Schwerkraft", icon="FORCE_FORCE").name = "mge.tool_gravity"
         pie.operator("mge.preview", text="Automatisch testen", icon="RENDER_STILL")
         pie.operator("mge.save_mod", text="Speichern", icon="FILE_TICK")
-        pie.operator("mge.play", text="Selbst spielen", icon="PLAY")
+        play = pie.column(align=True)
+        play.scale_y = 1.2
+        play.operator("mge.testplay", text="Testspielen", icon="PLAY")
+        play.operator("mge.play", text="Im ganzen Spiel", icon="WORLD")
         pie.operator("mge.view_start", text="Zum Start", icon="HOME")
 
 

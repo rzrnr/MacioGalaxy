@@ -31,6 +31,8 @@
 #ifdef PETARI_NATIVE
 // Progress telemetry and the automated smoke run (native/app); observation only.
 #include <petari/milestone.hpp>
+#include <petari/test_fixture.hpp>
+#include <petari/testbed.hpp>
 #endif
 
 namespace {
@@ -145,6 +147,15 @@ void GameSequenceProgress::startScene() {
 
 void GameSequenceProgress::endScene() {
     if (isNerve(GET_NERVE_ANON(GameSequenceProgressLogo))) {
+#ifdef PETARI_NATIVE
+        // Level testbed: no title or file select. File 1 is set up in memory and
+        // the game's after-loading galaxy move takes the fixture's entry.
+        if (PetariNative::Testbed::active) {
+            GameSequenceFunction::startTestbedGameData(PetariNative::TestFixture::stage.c_str());
+            GameSequenceFunction::reserveUserName(L"Mario");
+            MR::requestChangeStageInGameAfterLoadingGameData();
+        } else
+#endif
         MR::requestChangeSceneAfterBoot();
 
         GameSystemFunction::setResetOperationApplicationReset();

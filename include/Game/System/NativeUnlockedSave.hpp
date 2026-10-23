@@ -6,6 +6,7 @@
 // SaveDataHandler, and checks it after the game's own reload. The Wii build
 // does not compile it in.
 #ifdef PETARI_NATIVE
+class GameDataHolder;
 class SaveDataHandler;
 class SaveDataHandleSequence;
 class UserFile;
@@ -21,6 +22,11 @@ namespace NativeUnlockedSave {
 
     // True once the save has been written and a reload should start.
     bool isSaveWritten(bool isSequenceIdle);
+
+    // The level testbed's file (petari/testbed.hpp), in memory only: as all-missions
+    // (story through, every galaxy open, opening demos seen and missions visited),
+    // except that pGalaxyName's stars are still to be won.
+    void prepareTestbedFile(GameDataHolder* pHolder, const char* pGalaxyName);
 
     // Reports the reason and exits the process with status 1.
     void fail(const char* pReason);

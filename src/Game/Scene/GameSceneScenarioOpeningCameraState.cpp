@@ -16,6 +16,7 @@
 
 #ifdef PETARI_NATIVE
 #include "Game/System/CutsceneSkip.hpp"
+#include <petari/testbed.hpp>
 #endif
 
 namespace {
@@ -106,6 +107,10 @@ bool GameSceneScenarioOpeningCameraState::trySkipTrigger() const {
     // Hold-to-skip mod: the game's own skip, also on a first visit.
     if (CutsceneSkip::isActive()) {
         OSReport("[skip] galaxy-entry camera: skipped at step %d\n", getNerveStep());
+        return true;
+    }
+    // Level testbed: the skip the player could take, taken at once.
+    if (PetariNative::Testbed::active && PetariNative::Testbed::skipOpeningCamera && MR::isAlreadyVisitedCurrentStageAndScenario()) {
         return true;
     }
 #endif

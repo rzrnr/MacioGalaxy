@@ -199,6 +199,11 @@ struct Drive {
     // Published once per mount; immutable while mounted, so path lookups run
     // without the lock.
     std::atomic<Fst*> fst{nullptr};
+    // refreshOverlay: FSTs replaced while mounted (never freed, as lookups may
+    // still use them), and a count that tells the drive thread its open files
+    // belong to an older table.
+    std::vector<Fst*> retired;
+    u32 generation = 0;
     MountInfo info;
     u32 currentDirectory = 0;
 
@@ -366,6 +371,7 @@ void runDrive() {
     PetariNative::HostAllocationScope hostAllocations;
     Drive& d = drive();
     OpenFiles files;
+    u32 filesGeneration = 0;
     OSDisableInterrupts();
     while (true) {
         OS::hostWait(d.changed, [&] { return d.stopRequested || (!d.paused && anyQueued(d)); });
@@ -389,6 +395,10 @@ void runDrive() {
             }
         }
         const Fst& fst = *d.fst.load();
+        if (filesGeneration != d.generation) {
+            files.clear();  // entry numbers of an older table
+            filesGeneration = d.generation;
+        }
         storeState(block, DVD_STATE_BUSY);
         d.changed.notify_all();
 
@@ -486,6 +496,43 @@ void startDriveLocked(Drive& d) {
 
 }  // namespace
 
+namespace {
+// The disc's FST (sys/fst.bin, or a scan of files/) with the overlay applied.
+bool buildFst(const fs::path& base, bool ignoreDiscFst, const std::vector<OverlayFile>& overlay, Fst& fst, MountInfo& info,
+              std::string* error) {
+    std::error_code ec;
+    info.filesDirectory = base / "files";
+    const fs::path fstPath = base / "sys" / "fst.bin";
+    if (!ignoreDiscFst && fs::is_regular_file(fstPath, ec)) {
+        std::vector<u8> image;
+        if (!loadFile(fstPath, image, error) || !Fst::fromDiscImage(image, info.filesDirectory, fst, error)) {
+            return false;
+        }
+        info.source = FstSource::DiscFst;
+    } else {
+        if (!Fst::fromDirectory(info.filesDirectory, fst, error)) {
+            return false;
+        }
+        info.source = FstSource::DirectoryScan;
+    }
+    if (!overlay.empty()) {
+        Fst::OverlayResult applied;
+        if (!fst.applyOverlay(overlay, applied, error)) {
+            return false;
+        }
+        for (const std::string& skipped : applied.skipped) {
+            std::fprintf(stderr, "[mods] skipped %s\n", skipped.c_str());
+        }
+        info.overlayReplaced = applied.replaced;
+        info.overlayAdded = applied.added;
+        std::fprintf(stderr, "[mods] disc overlay applied: %u files replaced, %u added\n", applied.replaced, applied.added);
+    }
+    info.entryCount = fst.entryCount();
+    info.fileCount = fst.fileCount();
+    return true;
+}
+}  // namespace
+
 bool mount(const MountOptions& options, std::string* error) {
     // The FST lives for the whole mount, independent of game heaps.
     PetariNative::HostAllocationScope hostAllocations;
@@ -506,34 +553,9 @@ bool mount(const MountOptions& options, std::string* error) {
 
     auto fst = std::make_unique<Fst>();
     MountInfo info;
-    info.filesDirectory = base / "files";
-    const fs::path fstPath = base / "sys" / "fst.bin";
-    if (!options.ignoreDiscFst && fs::is_regular_file(fstPath, ec)) {
-        std::vector<u8> image;
-        if (!loadFile(fstPath, image, error) || !Fst::fromDiscImage(image, info.filesDirectory, *fst, error)) {
-            return false;
-        }
-        info.source = FstSource::DiscFst;
-    } else {
-        if (!Fst::fromDirectory(info.filesDirectory, *fst, error)) {
-            return false;
-        }
-        info.source = FstSource::DirectoryScan;
+    if (!buildFst(base, options.ignoreDiscFst, options.overlay, *fst, info, error)) {
+        return false;
     }
-    if (!options.overlay.empty()) {
-        Fst::OverlayResult applied;
-        if (!fst->applyOverlay(options.overlay, applied, error)) {
-            return false;
-        }
-        for (const std::string& skipped : applied.skipped) {
-            std::fprintf(stderr, "[mods] skipped %s\n", skipped.c_str());
-        }
-        info.overlayReplaced = applied.replaced;
-        info.overlayAdded = applied.added;
-        std::fprintf(stderr, "[mods] disc overlay applied: %u files replaced, %u added\n", applied.replaced, applied.added);
-    }
-    info.entryCount = fst->entryCount();
-    info.fileCount = fst->fileCount();
 
     DVDDiskID id{};
     const fs::path bootPath = base / "sys" / "boot.bin";
@@ -572,6 +594,39 @@ bool mount(const MountOptions& options, std::string* error) {
     d.info = std::move(info);
     d.currentDirectory = 0;
     d.fst.store(fst.release());
+    d.changed.notify_all();
+    return true;
+}
+
+bool refreshOverlay(const std::vector<OverlayFile>& overlay, std::string* error) {
+    PetariNative::HostAllocationScope hostAllocations;
+    Drive& d = drive();
+    fs::path base;
+    FstSource source = FstSource::DiscFst;
+    {
+        InterruptGuard guard;
+        if (d.fst.load() == nullptr) {
+            if (error) *error = "no disc is mounted";
+            return false;
+        }
+        base = d.info.filesDirectory.parent_path();
+        source = d.info.source;
+    }
+    // Built outside the lock: reading the disc's FST and sizing the mod files.
+    auto fst = std::make_unique<Fst>();
+    MountInfo info;
+    if (!buildFst(base, source == FstSource::DirectoryScan, overlay, *fst, info, error)) {
+        return false;
+    }
+    InterruptGuard guard;
+    if (d.executing != nullptr || anyQueued(d)) {
+        if (error) *error = "the drive is busy";
+        return false;
+    }
+    info.hasDiskId = d.info.hasDiskId;
+    d.info = std::move(info);
+    d.retired.push_back(d.fst.exchange(fst.release()));
+    ++d.generation;
     d.changed.notify_all();
     return true;
 }

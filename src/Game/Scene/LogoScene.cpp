@@ -25,6 +25,7 @@
 #include <JSystem/JKernel/JKRDvdRipper.hpp>
 
 #ifdef PETARI_NATIVE
+#include <petari/testbed.hpp>
 extern "C" bool petari_mod_enabled(int mod);
 #endif
 
@@ -158,9 +159,9 @@ void LogoScene::exeStrapFadein() {
     // Mods -> Skip the Wii strap screen (native/MODS.md): before the reminder
     // shows, straight on to waiting for the system archive and mounting the
     // save, as after the reminder. Decided here, not in init, so the scene
-    // starts exactly as the original does.
+    // starts exactly as the original does. The level testbed always skips it.
     constexpr int kModSkipStrap = 13;  // PetariNative::Mods::Mod::SkipStrap
-    if (MR::isFirstStep(this) && petari_mod_enabled(kModSkipStrap)) {
+    if (MR::isFirstStep(this) && (petari_mod_enabled(kModSkipStrap) || PetariNative::Testbed::active)) {
         setNerve(GET_NERVE_ANON(LogoSceneWaitReadDoneSystemArchive));
         return;
     }

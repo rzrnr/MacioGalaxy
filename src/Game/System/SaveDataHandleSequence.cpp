@@ -223,6 +223,20 @@ void SaveDataHandleSequence::startLoad(int userFileIndex, bool isPlayerMario) {
     setNerve(GET_NERVE_ANON(SaveDataHandleSequenceNoOperation));
 }
 
+#ifdef PETARI_NATIVE
+void SaveDataHandleSequence::startTestbedFile(const char* pGalaxyName) {
+    // As startCreateUserFile, without the save; then the testbed's progression.
+    restoreUserFile(mCurrentUserFile, 0, true);
+    mCurrentUserFile->resetAllData();
+    mCurrentUserFile->setCreated();
+    NativeUnlockedSave::prepareTestbedFile(mCurrentUserFile->mGameDataHolder, pGalaxyName);
+
+    _24 = 2;
+
+    setNerve(GET_NERVE_ANON(SaveDataHandleSequenceNoOperation));
+}
+#endif
+
 void SaveDataHandleSequence::storeMiiOrIconId(int userFileIndex, const void* pMiiId, const u32* pIconId) {
     restoreUserFile(mCurrentUserFile, userFileIndex);
     mCurrentUserFile->setMiiOrIconId(pMiiId, pIconId);

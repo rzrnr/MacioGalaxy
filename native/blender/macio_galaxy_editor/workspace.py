@@ -128,7 +128,8 @@ class MGE_MT_game(bpy.types.Menu):
         layout.operator("mge.preview", text="Vorschau (unsichtbar)", icon="RENDER_STILL")
         layout.prop(context.scene, "mge_warp", text="Vorschau am Mario-Start")
         layout.separator()
-        layout.operator("mge.play", text="Selbst spielen", icon="PLAY")
+        layout.operator("mge.testplay", text="Testspielen (Testbed)", icon="PLAY")
+        layout.operator("mge.play", text="Im ganzen Spiel spielen", icon="WORLD")
 
 
 def _topbar(self, context):

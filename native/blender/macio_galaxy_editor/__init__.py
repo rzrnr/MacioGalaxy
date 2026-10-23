@@ -515,7 +515,7 @@ def _show_in_image_editor(context, pictures):
 
 class MGE_OT_play(bpy.types.Operator):
     bl_idname = "mge.play"
-    bl_label = "Selbst spielen"
+    bl_label = "Im ganzen Spiel spielen"
     bl_description = "Speichern und das Spiel starten: nach dem Laden eines Spielstands geht es direkt in diese Galaxie"
 
     @classmethod
@@ -530,6 +530,61 @@ class MGE_OT_play(bpy.types.Operator):
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class MGE_OT_testplay(bpy.types.Operator):
+    bl_idname = "mge.testplay"
+    bl_label = "Testspielen"
+    bl_description = ("Speichern und die Galaxie im Testbed spielen: nur diese Galaxie mit der echten Spiellogik, ohne "
+                      "Titel und Spielstand. Läuft es schon, lädt es die Änderungen neu und startet die Mission neu; "
+                      "mit dem Startpunkt-Knopf beginnt Mario am Vorschau-Startpunkt")
+    _timer = None
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.scene.get("smg_galaxy"))
+
+    def _start(self, context, fresh=False):
+        scene = context.scene
+        spawn = tuple(to_game(scene.cursor.location)) if scene.mge_warp else None
+        self.args = (game_data(scene), scene["smg_galaxy"], int(scene.mge_scenario), spawn)
+        self.testplay = game_io.Testplay(*self.args, fresh=fresh)
+
+    def execute(self, context):
+        if export_mod(self, context) is None:
+            return {"CANCELLED"}
+        try:
+            self._start(context)
+        except RuntimeError as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+        self.retried = False
+        self._timer = context.window_manager.event_timer_add(0.25, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        context.scene.mge_status = "Testbed lädt neu …" if self.testplay.mode == "reload" else "Testbed startet …"
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type != "TIMER":
+            return {"PASS_THROUGH"}
+        result = self.testplay.poll()
+        if result is None:
+            return {"PASS_THROUGH"}
+        ok, seconds, message = result
+        if not ok and self.testplay.mode == "reload" and not self.retried:
+            # In-process reload refused: a fresh start instead.
+            self.retried = True
+            try:
+                self.testplay = game_io.Testplay(*self.args, fresh=True)
+                context.scene.mge_status = "Testbed startet neu …"
+                return {"PASS_THROUGH"}
+            except RuntimeError as error:
+                message = str(error)
+        context.window_manager.event_timer_remove(self._timer)
+        text = f"Testbed {message}: spielbar nach {seconds:.1f} s" if ok else f"Testbed: {message}"
+        context.scene.mge_status = text
+        self.report({"INFO" if ok else "WARNING"}, text)
         return {"FINISHED"}
 
 
@@ -567,7 +622,7 @@ def _adopt(names):
 
 
 CLASSES = (MGE_OT_open, MGE_OT_add, MGE_OT_add_path, MGE_OT_save, MGE_OT_save_shortcut, MGE_OT_preview, MGE_OT_play,
-           MGE_OT_mod_toggle, MGE_OT_view_start)
+           MGE_OT_testplay, MGE_OT_mod_toggle, MGE_OT_view_start)
 _keymaps = []
 
 

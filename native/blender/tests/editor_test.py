@@ -8,6 +8,8 @@ then moves, adds, duplicates and deletes objects, adds gravity and a path, chang
 zone's placement, saves into the mod "EditorTest", and reads the archives back to check each edit.
 Then: a duplicated path, a coin line, rows after an undo past a save, one angle typed (the others as
 the zone stored them), a field copied to all selected, an object moved to another zone, a point_arg.
+Last, Testspielen against a stand-in testbed (a socket of its own, no game): a running testbed of the
+same galaxy gets a reload with the spawn, another galaxy is told to quit and a new one is started.
 Prints EDITOR TEST PASS or the first failure and exits non-zero.
 """
 import shutil
@@ -256,4 +258,64 @@ check(len(moved_rows) == 1, f"{mover_name} written in {other_zone}")
 check(not any(v["name"] == mover_name and v.get("l_id") == mover_id for v in values), f"{mover_name} gone from {main}")
 point = next(p for p in zone.paths() if p.values.get("l_id") == path_id).points[1].values
 check(point["point_arg0"] == 5 and point["point_arg2"] == 7, "point_arg written for point 2")
+
+# Testspielen: the editor's side of the testbed's control socket (native/app/testbed_main.cpp).
+import os  # noqa: E402
+import socket  # noqa: E402
+import threading  # noqa: E402
+from macio_galaxy_editor import game as game_io  # noqa: E402
+
+# Unix sockets take at most 103 bytes of path: beside the editor's own, not in WORK_DIR.
+control = game_io.TESTBED / "editor-test.sock"
+control.parent.mkdir(parents=True, exist_ok=True)
+if control.exists():
+    control.unlink()
+received = []
+state = {"stage": galaxy_name, "reloads": 0}
+listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+listener.bind(str(control))
+listener.listen(4)
+
+
+def serve():
+    while True:
+        try:
+            client, _ = listener.accept()
+        except OSError:
+            return
+        line = client.makefile().readline().strip()
+        received.append(line)
+        if line.startswith("reload"):
+            state["reloads"] += 1
+            reply = "ok reload queued"
+        elif line == "status":
+            reply = (f"ok stage={state['stage']} scenario=1 control=1 reloads={state['reloads']} launch=3.10 "
+                     f"reload=0.85 pid=0")
+        else:
+            reply = "ok quitting"
+        client.sendall((reply + "\n").encode())
+        client.close()
+
+
+threading.Thread(target=serve, daemon=True).start()
+game = GameData(user)
+testplay = game_io.Testplay(game, galaxy_name, 1, spawn=(100.0, 2000.0, -50.0), control=control)
+check(testplay.mode == "reload" and "reload 100,2000,-50" in received, "a running testbed of this galaxy reloads, with the spawn")
+check(testplay.poll() == (True, 0.85, "neu geladen"), "the reload is reported with the testbed's time")
+state["stage"] = "OtherGalaxy"
+fake = work / "fake_testbed.sh"
+fake.write_text(f"#!/bin/sh\necho \"$@\" > {work / 'fake_args.txt'}\n")
+fake.chmod(0o755)
+os.environ["MGE_TESTBED"] = str(fake)
+if game_io.game_running():
+    print("skipped: starting a new testbed (the player's game runs)")
+else:
+    testplay = game_io.Testplay(game, galaxy_name, 1, control=control, user=work / "tb-user")
+    testplay.process.wait()
+    started = (work / "fake_args.txt").read_text().split()
+    check("quit" in received and started[started.index("--stage") + 1] == galaxy_name and
+          started[started.index("--control") + 1] == str(control) and "--spawn" not in started,
+          "another galaxy: the old testbed quits and a new one starts")
+listener.close()
+control.unlink()
 print("EDITOR TEST PASS")
