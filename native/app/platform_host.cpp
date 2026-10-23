@@ -3,6 +3,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
+#include <fstream>
 #include <system_error>
 #include <revolution/dvd.h>
 #include <revolution/nand.h>
@@ -20,6 +22,8 @@
 #include <petari/platform/power.hpp>
 #include <petari/platform/sc.hpp>
 #include <petari/platform/vi.hpp>
+#include <petari/host_allocation.hpp>
+#include <petari/pause_log.h>
 
 #include "host.hpp"
 #include "smoke.hpp"
@@ -28,6 +32,26 @@ extern "C" void petari_game_main(void);          // src/Game/System/GameSystem.c
 extern "C" void petari_attach_vi_renderer(void);  // native/gx/vi_bridge.cpp
 extern "C" void petari_present_install(void);     // native/gx/present/present_host.cpp
 extern "C" bool petari_gx_waiting_for_pipeline();  // native/gx/patch_aurora_pipeline.py
+
+// The user directory, for the pause log (set by preparePlatform).
+static std::filesystem::path gPauseLogRoot;
+
+// A refused pause press (pause_log.h). The file stays small: past 256 KiB it starts over.
+extern "C" void petari_host_pause_log(const char* line) {
+    PetariNative::HostAllocationScope host;
+    std::fprintf(stderr, "[pause] %s\n", line);
+    const std::filesystem::path& root = gPauseLogRoot;
+    if (root.empty()) return;
+    const std::filesystem::path file = root / "pause-log.txt";
+    std::error_code ec;
+    const bool restart = std::filesystem::file_size(file, ec) > 256 * 1024 && !ec;
+    std::ofstream out(file, restart ? std::ios::trunc : std::ios::app);
+    if (!out) return;
+    const std::time_t now = std::time(nullptr);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+    out << stamp << "  " << line << "\n";
+}
 
 namespace PetariNative::App::Host {
 
@@ -64,6 +88,7 @@ void dumpHangState(const char* reason) {
 }  // namespace
 
 bool preparePlatform(const Paths& paths, std::string* error) {
+    gPauseLogRoot = paths.user;
     const std::filesystem::path crashes = paths.user / "Crashes";
     const std::filesystem::path nand = paths.user / "NAND";
     std::error_code ec;

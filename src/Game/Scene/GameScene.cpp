@@ -656,6 +656,18 @@ bool GameScene::isPermitToPauseMenu() const {
            !MR::isWipeBlank() && !MR::isPlayerDead() && !MR::isPlayerDamaging();
 }
 
+#ifdef PETARI_NATIVE
+const char* GameScene::pauseRefusal() const {
+    if (MR::isStageDisablePauseMenu()) return "the stage has no pause menu";
+    if (!isNerve(GET_NERVE(GameScene, GameSceneAction))) return "not in play (scene start, star, result or another screen)";
+    if (MR::isDemoActive()) return "a demo or talk";
+    if (MR::isWipeActive() || MR::isWipeBlank()) return "a screen wipe";
+    if (MR::isPlayerDead()) return "Mario lost a life";
+    if (MR::isPlayerDamaging()) return "Mario was hit";
+    return nullptr;
+}
+#endif
+
 void GameScene::requestShowGalaxyMap() {
     setNerve(GET_NERVE(GameScene, GameSceneGalaxyMap));
 }

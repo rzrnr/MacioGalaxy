@@ -207,6 +207,13 @@ is held, with A and B up. Plus and Minus presses therefore last at least
 updated while paused, and the pause menu closes on a new press, so the long
 press can neither reopen nor close the menu by itself.
 
+A press of + or - that does not open the pause menu leaves a line in
+`pause-log.txt` in the user directory (`GameScenePauseControl.cpp`,
+`petari/pause_log.h`): the stage, how many frames in a row it was held, and
+what refused it while held (a demo or talk, a wipe, not in play, Mario hit or
+losing a life, A or B held, the remote moving). Presses that close the pause
+menu are not followed; past 256 KiB the file starts over.
+
 ## WPAD behaviour
 
 - `WPADInit` (called by `KPADInit`) starts the reports. Channel 0 connects

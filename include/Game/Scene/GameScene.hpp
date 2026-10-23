@@ -58,6 +58,10 @@ public:
     void startStagePlayFirst();
     void startStagePlayRetry();
     bool isPermitToPauseMenu() const;
+#ifdef PETARI_NATIVE
+    // Why isPermitToPauseMenu is false (its first failing condition), or nullptr.
+    const char* pauseRefusal() const;
+#endif
     void requestShowGalaxyMap();
     void requestStaffRoll();
     bool isDrawMirror() const;
