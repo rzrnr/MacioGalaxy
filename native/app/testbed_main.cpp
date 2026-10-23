@@ -504,7 +504,7 @@ bool prepareUser(const fs::path& user, const fs::path& player, std::string* erro
         *error = "--user must not be the player's folder";
         return false;
     }
-    for (const char* stale : {"NAND", "ModProgress"}) fs::remove_all(user / stale, ec);
+    for (const char* stale : {"NAND", "ModProgress", "mods-saves"}) fs::remove_all(user / stale, ec);
     for (const char* name : {"controls.txt", "mods.txt", "camera.txt", "cheats.txt", "sound.txt", "graphics.txt"}) {
         fs::remove(user / name, ec);
         if (fs::is_regular_file(player / name, ec)) fs::copy_file(player / name, user / name, ec);

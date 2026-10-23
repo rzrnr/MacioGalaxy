@@ -2,8 +2,11 @@
 
 A disc-file mod (native/MODS.md, "Mod folder") can add a whole galaxy: its level, a
 miniature in a Comet Observatory dome, its names and dialogue, and objects with new
-logic. This page shows how with an example, "Guglis Testgalaxie", and what the port
-does so that such a mod never touches the game's own save. "Your own planet" builds
+logic. The galaxy itself is registered the official way, with a `galaxy.json`
+(docs/dev/level-editor/new-galaxies.md: names, missions, borrowed music, its own save
+beside `GameData.bin`, and the "Mod galaxies" section of Level Select); this page adds
+what that registry does not have: the dome miniature, dialogue, new objects, a planet
+from Blender and the theme colour. It shows how with an example, "Guglis Testgalaxie". "Your own planet" builds
 a galaxy from a planet modelled in Blender; "The observatory" adds a sky island to the
 Comet Observatory; "The theme colour" is the mods' hazelnut brown.
 
@@ -34,11 +37,12 @@ The mod's files:
 | File | What it is |
 | --- | --- |
 | `files/StageData/ExampleGalaxy.arc` | the level: placement, collision, cameras (Sweet Sweet's, plus the Toad and the boxes) |
-| `files/StageData/ExampleGalaxy/ExampleGalaxyScenario.arc` | its scenario and zone lists; the game finds galaxies by this file alone |
+| `files/StageData/ExampleGalaxy/ExampleGalaxyScenario.arc` | its scenario and zone lists |
+| `galaxy.json` | the registry entry: the galaxy's name, short name and mission name, and the music it borrows (Sweet Sweet Galaxy's); without it the game skips the galaxy |
 | `files/ObjectData/MiniExampleGalaxy.arc` | the dome miniature's model (Good Egg's, renamed) |
 | `files/StageData/AstroDome.arc` | the domes, with a `MiniExampleGalaxy` placed in dome 1 (layer A) |
-| `messages.txt` | names and dialogue |
-| `mod.txt` | name, description, and the galaxy's sounds |
+| `messages.txt` | dialogue |
+| `mod.txt` | the mod's name and description |
 
 ## Building your own
 
@@ -49,8 +53,15 @@ The mod's files:
   `j3d_mesh.py` writes a model, `kcl_write.py` its collision, `rarc_write.py` an
   object archive.
 - **The galaxy's name** is the scenario archive's: `StageData/<Galaxy>/<Galaxy>Scenario.arc`
-  (with `ScenarioData.bcsv` and `ZoneList.bcsv`) and `StageData/<Galaxy>.arc`. At
-  most 64 galaxies (the game has 48), at most 7 stars each.
+  (with `ScenarioData.bcsv` and `ZoneList.bcsv`) and `StageData/<Galaxy>.arc`, at most 40
+  characters of `[A-Za-z0-9_]`. At most 64 galaxies (the game has 48), at most 8 missions
+  and 7 stars each.
+- **Its registry entry** (required): `galaxy.json` beside `files/`, as in
+  docs/dev/level-editor/new-galaxies.md 5: `{"format": 1, "galaxies": [{"name": "<Galaxy>",
+  "title": {"en": ...}, "shortTitle": {"en": ...}, "missions": [{"en": ...}], "music":
+  "<disc galaxy>"}]}`. The names are the galaxy's in the observatory, Level Select and the
+  pause menu ("en" is the fallback for every language); `music` is the disc galaxy whose
+  music and sound banks it borrows. A galaxy without an entry is skipped.
 - **Its dome:** place an object `Mini<Galaxy>` (Obj_arg0 0) in `AstroDome.arc`'s layer
   of the dome (layer A is the Terrace, B the Fountain and so on) and supply
   `ObjectData/Mini<Galaxy>.arc`. The port makes every `Mini<Galaxy>` of a mod's galaxy
@@ -61,14 +72,11 @@ The mod's files:
   goes before `messages.txt` for that language. In the text: `\n` a new line (a
   balloon shows three), `[page]` the next page, `[wait N]` N frames, `[color N]` a
   colour (0 back to normal), `[player]` the player's name.
-  - `GalaxyName_<Galaxy>`, `GalaxyNameShort_<Galaxy>`, `ScenarioName_<Galaxy><N>`: the
-    names. Missing, the galaxy is called "???".
+  - The galaxy's names are `galaxy.json`'s, not `messages.txt`'s.
   - NPC lines: `<Zone>_<Actor><MessageId, three digits>`, e.g. `ExampleGalaxy_Kinopio005`
     for a Toad (Kinopio) with MessageId 5 in the zone ExampleGalaxy. Every NPC needs its
     line: without one its balloon has no text, which is likely to crash when Mario talks
     to it.
-- **Sounds and music:** `<Galaxy>.sound=<original galaxy>` in `mod.txt` uses that
-  galaxy's sound effects and music (Sweet Sweet Galaxy's without the line).
 - **New logic:** a C++ class in `src/Game/...` and a row in the `NameObjFactory.cpp`
   table, as `GuglisSpinBox`; place it by name like any object. That part is code in
   the port, not in the mod.
@@ -160,20 +168,26 @@ observatory shows.
 ## The game's save stays the game's
 
 Turning a mod on, playing it, turning it off or deleting it never changes the game's
-own progress:
+own progress. The registry does most of it (docs/dev/level-editor/new-galaxies.md 2):
 
-- **The save file:** a mod's galaxies are never written to `GameData.bin`. Their
-  stars, best coin counts and "visited" marks go to `ModProgress/<slot>.txt` in the
-  user directory (`mario1.txt`, `luigi1.txt` …), written when the game saves your
-  file, read when it loads it, cleared when a file is created or deleted and copied
-  with it. `GameData.bin` stays exactly what the game alone would write, so it also
-  works in Dolphin, Nebula or on a Wii (`native/tools/convert_save.py`).
+- **The save file:** a mod's galaxies are never written to `GameData.bin`. Their stars,
+  best coin counts and "visited" marks go to `mods-saves/<Mod>.json` in the user directory,
+  per user file (`mario1`, `luigi1` …), written when the game saves your file and read when
+  it loads it. Here the port adds: they are **cleared when a file is created or deleted and
+  copied with it** (`SaveDataHandler.cpp`, `ModGalaxy::clearRecords`/`copyRecords`), in the
+  sidecars of every mod, also those that are off, so a new file never inherits another's mod
+  stars. `GameData.bin` stays exactly what the game alone would write, so it also works in
+  Dolphin, Nebula or on a Wii (`native/tools/convert_save.py`).
 - **The star count:** a mod's stars do not count for the game's own goals (domes,
-  Grand Stars, the 120-star ending) or its star total.
-- **Unlocking:** a mod's galaxy has no flag in the game's flag table: it is open from
-  the start, and nothing about it is saved.
+  Grand Stars, the 120-star ending) or its star total; the port counts them apart (the
+  hazelnut counter).
+- **Unlocking:** a registered galaxy is open from the start, and nothing about it goes
+  into the game's flags.
 - **Off again:** without the mod its galaxy, miniature and texts are simply gone; its
-  progress waits in `ModProgress/` for when it is turned on again.
+  progress waits in `mods-saves/` for when it is turned on again.
+
+Saves of the earlier port version kept this progress in `ModProgress/<slot>.txt`; the game no
+longer reads that folder.
 
 What a mod still shares with the game: lives, coins and Star Bits collected in its
 galaxy count as in any other. A mod that changes one of the game's own levels (not
@@ -181,29 +195,29 @@ a new galaxy) changes that level, and its stars count as the game's.
 
 ## How the port does it
 
-- `native/app/platform_host.cpp`: which galaxies mods add (their scenario archive is
-  a mod's and not on the disc), their progress files, the mods' `messages.txt` and
-  `mod.txt` sound lines. The game code reaches them through the hooks in
-  `native/include/petari/mod_galaxies.hpp`, which stay empty without the app.
-- `MessageHolder.cpp`: messages not on the disc come from the mods' text.
-- `GameDataGalaxyStorage.cpp`, `SaveDataHandler.cpp`, `GameDataFunction.cpp`: mod
-  galaxies kept out of the file and the star totals, their progress per slot.
-- `GameEventFlagChecker.cpp`, `GameDataConst.cpp`, `GameEventFlagTable.cpp`: a galaxy
-  without a flag or a `GalaxyID` row is open and needs no stars, instead of crashing.
+The registry (upstream): `native/platform/dvd/mod_galaxy.cpp` reads the `galaxy.json` files
+and keeps the save sidecars; the game asks it for names (`MessageHolder.cpp`), music
+(`AudSceneMgr.cpp`, `AudStageBgmTable.cpp`, `AudStageBgmWrap.cpp`), flags, totals and the
+records (`GameDataGalaxyStorage.cpp`, `GameDataHolder.cpp`). On top of it:
+
+- `native/app/platform_host.cpp`: the mods' `messages.txt` and which object archives a mod
+  adds. The game code reaches them through `native/include/petari/mod_galaxies.hpp`, whose
+  `isMod` asks the registry.
+- `MessageHolder.cpp`: after the registry's names and the disc, the mods' text.
+- `SaveDataHandler.cpp`: a mod galaxy's records cleared and copied with the user file.
 - `NameObjFactory.cpp`, `MiniatureGalaxyHolder.cpp`, `MiniatureGalaxy.cpp`,
   `AstroDomeOrbit.cpp`: `Mini<Galaxy>` miniatures, six to eight orbits in a dome.
-- `AudSceneMgr.cpp`, `AudStageBgmWrap.cpp`: the borrowed sounds and music.
-- `MessageUtil.cpp`: "???" for a galaxy name no file supplies.
 - `PowerStar.cpp`: the theme colour for stars in mods' galaxies, and the one brought back
   to the observatory; `ModStarCounter.cpp`, `CounterLayoutController.cpp`: their counter;
-  `GameDataFunction.cpp`: the count.
+  `GameDataFunction.cpp`, `GameDataGalaxyStorage.cpp`: the count.
 - `SuperSpinDriver.cpp`, `SpinDriverPathDrawer.cpp`, `NameObjFactory.cpp`: the hazelnut
   Launch Star `SuperSpinDriverHazel`.
 - `NameObjFactory.cpp`: a mod's own object archive placed by name is a planet (`PlanetMap`);
   `GuglisStarAppear`, a challenge's star.
 
 Testing a mod's galaxy without the observatory: `--test-fixture stage` with
-`PETARI_STAGE=<Galaxy>` accepts a galaxy that a mod in the user directory adds. The
+`PETARI_STAGE=<Galaxy>` accepts a galaxy that a mod in the user directory adds and
+registers. The
 smoke run's `PETARI_MECHANIC=modstar` plays the planet's challenge
 (`PETARI_STAGE=GuglisPlanetGalaxy`, `PETARI_MOD_FOLDERS=GuglisPlanet`): it breaks the three
 boxes and collects the star. With `PETARI_STAGE_AFTER_FRAMES=<frames>` the run goes on

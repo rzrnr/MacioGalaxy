@@ -10,6 +10,7 @@ The main zone places the other zones (jmp/placement/<layer>/stageobjinfo: zone n
 A file comes from the highest-priority enabled mod that has it (mods.txt Folder.<Mod>=on, mod.txt
 priority=, then the name), else from the disc: the precedence of native/app/platform_host.cpp.
 """
+import json
 import re
 import struct
 import sys
@@ -107,20 +108,52 @@ class GameData:
         return path.read_bytes(), origin
 
     def galaxies(self):
-        """Galaxy names: StageData/<Name>/<Name>Scenario.arc on the disc or in an enabled mod."""
+        """Galaxy names: StageData/<Name>/<Name>Scenario.arc on the disc, or in an enabled mod that
+        registers it in its galaxy.json (the game loads no other new galaxy)."""
         names = set()
+        registered = self.registry()
         for root in [self.disc] + [m.root / "files" for m in self.enabled_mods()]:
             stage = root / "StageData"
             if stage.is_dir():
-                names |= {d.name for d in stage.iterdir() if (d / f"{d.name}Scenario.arc").exists()}
+                names |= {d.name for d in stage.iterdir() if (d / f"{d.name}Scenario.arc").exists()
+                          and (root == self.disc or d.name in registered)}
         return sorted(names)
+
+    def registry(self) -> dict:
+        """The enabled mods' new galaxies (galaxy.json, docs/dev/level-editor/new-galaxies.md 5): name ->
+        its entry (title, shortTitle, missions, music), the first mod's in precedence order."""
+        out = {}
+        for mod in self.enabled_mods():
+            path = mod.root / "galaxy.json"
+            try:
+                data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            except (OSError, ValueError):
+                continue
+            for entry in data.get("galaxies", []):
+                if isinstance(entry, dict) and entry.get("name"):
+                    out.setdefault(entry["name"], dict(entry, mod=mod.name))
+        return out
+
+    def _registry_messages(self, prefix: str) -> dict:
+        """The names galaxy.json gives (in English, the game's fallback): GalaxyName_, GalaxyNameShort_,
+        ScenarioName_<G><n>."""
+        def text(value):
+            return value.get("en") or next(iter(value.values()), "") if isinstance(value, dict) else ""
+        out = {}
+        for name, entry in self.registry().items():
+            title = text(entry.get("title", {}))
+            ids = {f"GalaxyName_{name}": title, f"GalaxyNameShort_{name}": text(entry.get("shortTitle", {})) or title}
+            ids.update({f"ScenarioName_{name}{n}": text(m) for n, m in enumerate(entry.get("missions", []), 1)})
+            out.update({k: v for k, v in ids.items() if k.startswith(prefix) and v})
+        return out
 
     def open(self, galaxy: str) -> "Galaxy":
         return Galaxy(self, galaxy)
 
     def messages(self, prefix: str, language: str = "UsEnglish") -> dict:
         """Message ID -> text for IDs starting with prefix: the disc's (<language>/MessageData/Message.arc),
-        else the enabled mods' messages.txt (the first file that has it, as the game)."""
+        else the names in the enabled mods' galaxy.json, else their messages.txt (the first file that
+        has it, as the game)."""
         out = {}
         path = self.disc / language / "MessageData/Message.arc"
         if path.exists():
@@ -132,6 +165,8 @@ class GameData:
                 label = ids.get(r, "MessageId")
                 if label.startswith(prefix):
                     out[label] = _bmg_text(bmg, info, data, ids.get(r, "Index"))
+        for key, value in self._registry_messages(prefix).items():
+            out.setdefault(key, value)
         for mod in self.enabled_mods():
             for name in (f"messages.{language}.txt", "messages.txt"):
                 text = mod.root / name

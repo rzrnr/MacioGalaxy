@@ -163,12 +163,58 @@ static void testSidecar() {
     fs::remove_all(dir);
 }
 
+// A user file created, deleted or copied (SaveDataHandler): its records follow it in every sidecar,
+// also of a mod that is off now, so a new file in that slot inherits nothing.
+static void testClearAndCopy() {
+    namespace fs = std::filesystem;
+    G::clear();
+    std::string error;
+    G::loadText(R"({"format":1,"galaxies":[{"name":"ModTestGalaxy","title":"T"}]})", "GalaxyTest", &error);
+    G::loadText(R"({"format":1,"galaxies":[{"name":"OtherModGalaxy","title":"O"}]})", "OtherMod", &error);
+    const fs::path dir = fs::temp_directory_path() / "petari_mod_galaxy_clear";
+    fs::remove_all(dir);
+    G::setSaveDirectory(dir);
+    G::GalaxyRecord a;
+    a.galaxy = "ModTestGalaxy";
+    a.stars = 1;
+    a.coins[0] = 30;
+    G::GalaxyRecord b = a;
+    b.galaxy = "OtherModGalaxy";
+    b.stars = 2;
+    check(G::saveRecords("mario1", {a, b}, &error) && G::saveRecords("luigi1", {a}, &error), "save two user files");
+
+    check(G::copyRecords("mario2", "mario1", &error), "copy a user file");
+    const std::vector< G::GalaxyRecord > copied = G::loadRecords("mario2");
+    bool copiedA = false, copiedB = false;
+    for (const G::GalaxyRecord& r : copied) {
+        copiedA = copiedA || (r.galaxy == "ModTestGalaxy" && r.stars == 1 && r.coins[0] == 30);
+        copiedB = copiedB || (r.galaxy == "OtherModGalaxy" && r.stars == 2);
+    }
+    check(copied.size() == 2 && copiedA && copiedB, "the copy has the source's records in both sidecars");
+
+    G::clear();  // OtherMod is off now: its sidecar is still cleared
+    G::loadText(R"({"format":1,"galaxies":[{"name":"ModTestGalaxy","title":"T"}]})", "GalaxyTest", &error);
+    check(G::clearRecords("mario1", &error), "clear a user file");
+    check(G::loadRecords("mario1").empty() && G::loadRecords("luigi1").size() == 1, "cleared: only that file's records go");
+    G::loadText(R"({"format":1,"galaxies":[{"name":"OtherModGalaxy","title":"O"}]})", "OtherMod", &error);
+    bool otherLeft = false;
+    for (const G::GalaxyRecord& r : G::loadRecords("mario1")) otherLeft = otherLeft || r.galaxy == "OtherModGalaxy";
+    check(!otherLeft, "the sidecar of a mod that was off is cleared too");
+    check(G::loadRecords("mario2").size() == 2, "the copy keeps its records");
+
+    check(G::copyRecords("mario2", "mario3", &error), "copy an empty user file over one with records");
+    check(G::loadRecords("mario2").empty(), "an empty source leaves the destination empty");
+    G::setSaveDirectory({});
+    fs::remove_all(dir);
+}
+
 int main() {
     testParse();
     testRefused();
     testSaveKey();
     testLoadFromFolders();
     testSidecar();
+    testClearAndCopy();
     if (sFailures != 0) {
         std::fprintf(stderr, "%d mod galaxy check(s) failed\n", sFailures);
         return 1;

@@ -29,6 +29,7 @@ The disc is only read; the mod is derived from it, so it stays on this machine.
     python3 native/mods/GuglisPlanet/build.py [--from-blend] [--blend-out DIR] [--disc DIR] [--user DIR]
 """
 import argparse
+import json
 import math
 import shutil
 import struct
@@ -66,14 +67,17 @@ STAR_CAMERA = 1  # the star's CameraSetId
 MOD_TXT = f"""name=Guglis Testplanet
 description=Ein eigener Planet aus Blender: Anflug mit Kamerafahrt, drei Drehkisten, ein lila Stern
 priority=1
-{GALAXY}.sound=EggStarGalaxy
 """
 
-MESSAGES = f"""# Texts of the planet galaxy (native/CUSTOM_GALAXY.md): ID = text.
-GalaxyName_{GALAXY} = Guglis Testplanet
-GalaxyNameShort_{GALAXY} = Guglis Testplanet
-ScenarioName_{GALAXY}1 = Der lila Stern
-"""
+# The registry entry (docs/dev/level-editor/new-galaxies.md 5): names, the mission and the music it
+# borrows. The text is German; "en" is the fallback for every language.
+GALAXY_JSON = {"format": 1, "galaxies": [{
+    "name": GALAXY,
+    "title": {"en": "Guglis Testplanet", "de": "Guglis Testplanet"},
+    "shortTitle": {"en": "Guglis Testplanet", "de": "Guglis Testplanet"},
+    "missions": [{"en": "Der lila Stern", "de": "Der lila Stern"}],
+    "music": "EggStarGalaxy",
+}]}
 
 
 def blender_to_game(points):
@@ -316,7 +320,8 @@ def build(disc: Path, mod: Path, planet_dir: Path, from_blend: bool):
     (files / "StageData/AstroDome.arc").write_bytes(dome.build(True))
 
     (mod / "mod.txt").write_text(MOD_TXT, encoding="utf-8")
-    (mod / "messages.txt").write_text(MESSAGES, encoding="utf-8")
+    (mod / "galaxy.json").write_text(json.dumps(GALAXY_JSON, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (mod / "messages.txt").unlink(missing_ok=True)  # its names are galaxy.json's now
     return radius
 
 
