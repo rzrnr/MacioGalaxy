@@ -1338,6 +1338,38 @@ void testCheatsPage() {
           "without a file in play the 1-Ups stay unset");
 }
 
+// Six mods, the Mod folder and Cheats: eleven items, still inside the image and apart.
+void testElevenItemModsPage() {
+    HM::Menu menu = newMenu();
+    HM::ModsEntry entries[6];
+    for (int i = 0; i < 6; i++) {
+        std::snprintf(entries[i].label, sizeof(entries[i].label), "Mod %d", i + 1);
+    }
+    menu.setMods(entries, 6);
+    HM::FolderModEntry folder[1];
+    std::strcpy(folder[0].label, "A folder mod");
+    menu.setFolderMods(folder, 1);
+    menu.setCheats(HM::CheatOptions{});
+    openToList(menu);
+    menu.update(press(Down));
+    menu.update(press(Down));
+    menu.update(press(A));
+    const HM::View view = menu.view();
+    bool apart = true;
+    for (int i = 0; i + 1 < view.itemCount; i++) {
+        apart = apart && view.items[i].rect.y1 <= view.items[i + 1].rect.y0;
+    }
+    check(view.itemCount == 11 && std::strcmp(view.items[5].label, "Mod 6: Off") == 0 &&
+              std::strcmp(view.items[9].label, "Cheats...") == 0 && std::strcmp(view.items[10].label, "Back") == 0,
+          "six mods, camera, Level Select, Mod folder, Cheats and Back");
+    check(view.panel.y0 >= -1.0f && view.panel.y1 <= 1.0f && view.items[10].rect.y1 < view.panel.y1 && apart &&
+              view.messageY < view.items[0].rect.y0 && view.items[0].rect.y1 - view.items[0].rect.y0 >= 0.1f,
+          "eleven items fit inside the panel and the image without overlapping, each still 0.1 high");
+    for (int i = 0; i < 5; i++) menu.update(press(Down));
+    menu.update(press(A));
+    check(menu.mods()[5].on && menu.takeModToggles() == 32u, "the sixth mod toggles");
+}
+
 void testCameraPage() {
     HM::Menu menu = newMenu();
     HM::ModsEntry entries[3];
@@ -1617,6 +1649,7 @@ int main() {
     testLevelSelect();
     testCameraPage();
     testCheatsPage();
+    testElevenItemModsPage();
     testGraphicsPage();
     testVolumeSlider();
     testBridgeInput();

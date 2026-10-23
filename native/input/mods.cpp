@@ -13,12 +13,14 @@ namespace PetariNative::Mods {
 namespace {
 
 constexpr int kCount = static_cast<int>(Mod::Count);
-constexpr const char* kNames[kCount] = {"CollectStarBits", "ShootEnemy", "OdysseyMovement", "FineFur", "InstantPointer"};
+constexpr const char* kNames[kCount] = {"CollectStarBits", "ShootEnemy", "OdysseyMovement", "FineFur", "InstantPointer", "SkipStrap"};
 constexpr const char* kDescriptions[kCount] = {"Collect visible Star Bits", "Fire a Star Bit at the nearest enemy",
-                                               "Odyssey movement", "Fine fur", "Instant pointer"};
+                                               "Odyssey movement", "Fine fur", "Instant pointer",
+                                               "Skip the Wii strap screen"};
 // Input::Action::Count: the mod is a mode with no button of its own.
 constexpr Input::Action kActions[kCount] = {Input::Action::ModCollectStarBits, Input::Action::ModShootEnemy,
-                                            Input::Action::Count, Input::Action::Count, Input::Action::Count};
+                                            Input::Action::Count, Input::Action::Count, Input::Action::Count,
+                                            Input::Action::Count};
 
 std::atomic<bool> gEnabled[kCount];
 std::mutex gFileMutex;
@@ -43,7 +45,7 @@ bool parseInto(const std::string& text, bool (&out)[kCount], std::string* error)
             if (key == kNames[i]) index = i;
         }
         if (index < 0 || (value != "on" && value != "off")) {
-            *error = "line " + std::to_string(number) + ": expected <CollectStarBits|ShootEnemy|OdysseyMovement|FineFur|InstantPointer>=on|off";
+            *error = "line " + std::to_string(number) + ": expected <CollectStarBits|ShootEnemy|OdysseyMovement|FineFur|InstantPointer|SkipStrap>=on|off";
             return false;
         }
         out[index] = value == "on";

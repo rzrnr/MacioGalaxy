@@ -125,9 +125,9 @@ struct Rect {
     bool contains(float x, float y) const { return x >= x0 && x < x1 && y >= y0 && y < y1; }
 };
 
-constexpr int kMaxItems = 10;
+constexpr int kMaxItems = 11;
 constexpr int kMaxControls = 20;
-constexpr int kMaxMods = 5;
+constexpr int kMaxMods = 6;
 constexpr int kMaxFolderMods = 64;   // detected disc-file mods (native/MODS.md)
 constexpr int kFolderPageSize = 3;   // toggles per page of the Mod folder page
 

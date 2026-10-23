@@ -20,6 +20,10 @@
 #include "Game/Util/SystemUtil.hpp"
 #include <JSystem/JKernel/JKRDvdRipper.hpp>
 
+#ifdef PETARI_NATIVE
+extern "C" bool petari_mod_enabled(int mod);
+#endif
+
 const wchar_t* pIsbnNumber = L"0000000000000";
 const wchar_t* pRegistNumber = L"0000000000";
 const wchar_t* pOtherNumber = L"0000000";
@@ -52,6 +56,14 @@ LogoScene::~LogoScene() {
 }
 
 void LogoScene::init() {
+#ifdef PETARI_NATIVE
+    // Mods -> Skip the Wii strap screen (native/MODS.md): straight on to loading
+    // the system archive and the save, which the reminder otherwise waits for.
+    constexpr int kModSkipStrap = 5;  // PetariNative::Mods::Mod::SkipStrap
+    if (petari_mod_enabled(kModSkipStrap)) {
+        initNerve(GET_NERVE_ANON(LogoSceneWaitReadDoneSystemArchive));
+    } else
+#endif
     if (MR::isEqualString(MR::getCurrentRegionPrefix(), "Cn")) {
         initNerve(GET_NERVE_ANON(LogoSceneCensorshipFadein));
     } else {

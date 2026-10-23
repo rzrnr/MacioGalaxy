@@ -2055,6 +2055,10 @@ void testMods() {
               std::string(Mods::description(Mods::Mod::InstantPointer)) == "Instant pointer",
           "InstantPointer parses, is mod 4 (kModInstantPointer in WPadPointer.cpp) and has no button");
     Mods::setEnabled(Mods::Mod::InstantPointer, false);
+    check(Mods::parse("SkipStrap=on\n", &error) && petari_mod_enabled(5) && !petari_mod_take_press(5) &&
+              std::string(Mods::description(Mods::Mod::SkipStrap)) == "Skip the Wii strap screen",
+          "SkipStrap parses, is mod 5 (kModSkipStrap in LogoScene.cpp) and has no button");
+    Mods::setEnabled(Mods::Mod::SkipStrap, false);
     const std::string text = Mods::serialize();
     Mods::resetForTesting();
     check(Mods::parse(text, &error) && Mods::enabled(Mods::Mod::ShootEnemy) && !Mods::enabled(Mods::Mod::CollectStarBits),

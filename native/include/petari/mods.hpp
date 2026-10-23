@@ -17,6 +17,7 @@ enum class Mod : int {
     OdysseyMovement,  // Mario moves with Super Mario Odyssey's physics (docs/dev/ODYSSEY_MOVEMENT.md); no button
     FineFur,          // fur's random hair map at 64 x 64 instead of 32 x 32 (finer hairs); no button, applies at once
     InstantPointer,   // the Star Pointer is drawn where the mouse points in every frame, unsmoothed; no button
+    SkipStrap,        // boot goes past the Wii Remote strap reminder (LogoScene); no button, next start
     Count
 };
 

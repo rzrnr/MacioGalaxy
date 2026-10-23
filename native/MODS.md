@@ -10,6 +10,7 @@ unmodified game and every test run behave exactly as before.
 | Odyssey movement (`OdysseyMovement`) | none (a mode; it uses the normal Jump, Crouch and Spin buttons) | Mario moves with Super Mario Odyssey's physics and moveset: see "Odyssey movement" below. |
 | Fine fur (`FineFur`) | none (a look; it switches at once) | Fur hairs half as wide, for high render resolutions: see "Fine fur" below. |
 | Instant pointer (`InstantPointer`) | none (it switches at once) | The Star Pointer follows the mouse without delay: see "Instant pointer" below. |
+| Skip the Wii strap screen (`SkipStrap`) | none (from the next start) | The game starts without the Wii Remote strap reminder: see "Skip the Wii strap screen" below. |
 
 ## Turning mods on
 
@@ -171,7 +172,14 @@ stay hidden while you fly. `PhotoMode` and `PhotoShot` are remappable in
 `controls.txt`. The other photo controls follow the bindings they share with play
 (the stick keys, A, NunchukZ, the camera keys, TiltHold, Walk, Start, Plus).
 
-## Cheats
+## Skip the Wii strap screen
+
+At every start the game shows the reminder to put on the Wii Remote strap. It
+stays at least 7.5 seconds (450 frames) before a button lets you past, and
+moves on by itself after 20 seconds. Behind it the game loads its system
+archive and the save. With `SkipStrap=on` the game goes straight to that
+loading and then to the title screen. The setting takes effect at the next start.
+
 
 F1 → Mods → **Cheats...** (the entry before Back):
 
