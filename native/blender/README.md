@@ -21,40 +21,45 @@ a pull updates it (restart Blender). In the 3D view: sidebar (N), the tabs **Gal
 ## Use
 
 The editor works in its own workspace **Galaxie** (a tab beside Layout, Modeling, ...). Opening a
-galaxy switches to it (made the first time from a copy of Layout: the Properties editor and the
-timeline closed, the Outliner as the zone/layer tree, a space-blue viewport; `workspace.py`). A galaxy
-opens in a scene of its own, "Mario Galaxy", when the current scene holds other things.
+galaxy switches to it (made the first time from a copy of Layout: the Properties editor, the timeline
+and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens in a scene of its own,
+"Mario Galaxy", when the current scene holds other things (the workspace starts in it, empty).
 
 - **The sidebar (N), tab Galaxie**: a welcome checklist (disc found, object palette ready) and the
   galaxy to open, searched by its name in the game ("Good Egg Galaxy (EggStarGalaxy)"; the observatory is
-  "Observatory Grounds (AstroGalaxy)") or its internal name. Once open: **Spielen** (target mod and a
-  switch to turn it on or off in `mods.txt`, **Speichern** = ⌘S in this workspace, **Schnelltest
-  (Bilder)** = the headless run with pictures, **Im Spiel starten**), **Szenarien** (each with the main
+  "Observatory Grounds (AstroGalaxy)") or its internal name. Once open: **Szenarien** (each with the main
   zone's layers it uses), **Zonen und Ebenen** (an eye and a solo button per zone; the selected zone's
-  layers, ✓ = used by the scenario), **Anzeigen** (the kinds drawn, with their colours as the legend;
+  layers, ✓ = used by the scenario), **Spielen** (target mod and a switch to turn it on or off in
+  `mods.txt`, **Speichern** = ⌘S in this workspace, **Automatisch testen (Bilder)** = the headless run
+  with pictures, optionally from the Vorschau-Start, **Selbst spielen**), **Anzeigen** (the kinds drawn, with their colours as the legend;
   the sky and cameras start off), **Objektliste** (search, kind, zone; layer and ID per row).
-- **Tab Objekt**: the selected object's picture, name in the game, description, ID, a layer menu (for
+- **Tab Objekt**: the selected object's picture, internal name, description, ID, a layer menu (for
   every selected object), **Lage im Spiel** (position, rotation, scale in game units, editable), and its
   fields: **Argumente** with their meaning and a menu of the values the object database lists (unused
   ones folded away), **Schalter**, **Verknüpfungen** (MessageId shows the message's text, CommonPath_ID
-  has a path chooser), **Weitere Felder**.
+  has a path chooser), **Weitere Felder**; at the bottom Speichern, Testen and Spielen.
 - **The object palette**: a strip at the bottom of the 3D view (an asset shelf, `shelf.py`) with every
-  placeable object, level part and gravity as a picture. A click chooses it for the Setzen tool and
+  placeable object, level part and gravity as a picture, in German catalogs (Objekte/Gegenstände,
+  Gegner, Levelteile, ..., Schwerkraft; an older palette is rebuilt in the background). A click chooses it for the Setzen tool and
   switches to it; dragging it onto a planet places it there. The full catalog (areas, cameras, ...) is
   the asset library "Mario Galaxy" in the Asset Browser and the Setzen tool's search (German names
   like "Münze", "Gumba" work too).
 - **The toolbar** (left, `tools.py`, with their own icons): **Setzen** (a click on a surface places the
   chosen object standing on it, at the chosen height, in the clicked object's zone and layer; a click
-  on a small placed object selects it, Ctrl/⌘+click places anyway; nothing is placed into empty space),
-  **Pfad zeichnen** (points on surfaces, straight unless "Kurven"; Enter or right click ends; the path
-  has its ID at once), **Schwerkraft** (a click on a planet: the gravity at the middle of its bounds with a
-  fitting Range), **Vorschau-Start** (where Mario starts in the quick test).
-- **The HUD** (`hud.py`): the galaxy and scenario, where new things go, what the active tool does, a
-  dot while there are unsaved changes, and the colour legend; without a galaxy a card says what to do.
-- **Q** opens a pie menu with the tools, quick test, saving, "show everything" and "back to the start"
+  on a small placed object selects it, Ctrl/⌘+click places anyway; nothing is placed into empty space;
+  a layer the scenario does not use is warned about), **Pfad zeichnen** (points on surfaces, straight
+  unless "Kurven"; Enter or right click ends; the path has its ID at once; then a menu offers a coin line
+  or purple coin line along it, RailCoin with CommonPath_ID and a coin count for its length), **Schwerkraft** (a click on a planet: the gravity at the middle of its bounds with a
+  fitting Range), **Vorschau-Start** (where Mario starts in the automatic test).
+- **The HUD** (`hud.py`): the galaxy and scenario, where new things go, what the active tool does, the
+  selection's keys, "● ungespeichert" while there are unsaved changes (also after deleting), and the
+  colour legend above the palette; without a galaxy a card says what to do.
+- **Q** opens a pie menu with the tools, automatic test, saving, playing and "back to the start"
   (in this workspace; elsewhere Blender's Quick Favorites). **Zum Start** frames Mario's start.
-- Move, rotate, scale, duplicate (Shift+D) and delete as usual. Opening another galaxy with unsaved
-  changes asks first.
+- Move, rotate, scale, duplicate (Shift+D) and delete as usual; a duplicated path gets its own ID, and a
+  path's point_arg values stay with their points when points are added or removed. A path of several
+  parts (Shift+D in edit mode) is refused on saving: P separates the parts into paths. Saving is an
+  undo step. Opening another galaxy with unsaved changes asks first.
 - **Objekt-Palette aufbauen** / **Vorschaubilder erzeugen** (menu Galaxie in the top bar) rebuild the
   palette and the pictures (models are rendered in a second, headless Blender at low priority, waiting
   while the game runs; areas, cameras and gravity are drawn as wire pictures without Blender).
