@@ -1102,6 +1102,7 @@ class MGE_PT_show(bpy.types.Panel):
                 grid.prop(context.scene, f"mge_show_{key}", text=label, icon_value=swatch, toggle=True)
             else:
                 grid.prop(context.scene, f"mge_show_{key}", text=label, icon=icon, toggle=True)
+        self.layout.prop(context.scene, "mge_line_width", text="Linienstärke", slider=True)
 
 
 class MGE_PT_objects(bpy.types.Panel):

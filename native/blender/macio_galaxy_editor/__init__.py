@@ -26,6 +26,7 @@ from . import game as game_io  # noqa: E402
 from . import scene_io  # noqa: E402
 from . import assets  # noqa: E402
 from . import hud  # noqa: E402
+from . import outlines  # noqa: E402
 from . import shelf  # noqa: E402
 from . import tools  # noqa: E402
 from . import ui  # noqa: E402
@@ -589,6 +590,7 @@ def register():
     workspace.register()
     shelf.register()
     hud.register()
+    outlines.register()
     bpy.app.handlers.depsgraph_update_post.append(_gravity_handler)
     keyconfig = bpy.context.window_manager.keyconfigs.addon
     if keyconfig is not None:
@@ -604,6 +606,7 @@ def unregister():
     _keymaps.clear()
     if _gravity_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_gravity_handler)
+    outlines.unregister()
     hud.unregister()
     shelf.unregister()
     workspace.unregister()
