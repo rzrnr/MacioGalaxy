@@ -387,6 +387,13 @@ def export_mod(operator, context):
     scene = context.scene
     galaxy = open_galaxy(scene)
     mod = scene.mge_mod.strip() or "BlenderEdits"
+    # Only what is in the galaxy's collection is saved: say so for objects moved out of it (M, Outliner).
+    root = bpy.data.collections.get(f"SMG {galaxy.name}")
+    inside = set(root.all_objects) if root is not None else set()
+    outside = [o.name for o in scene.objects if o.get("smg_kind") and o not in inside]
+    if outside:
+        operator.report({"WARNING"}, f"{len(outside)} Galaxie-Objekte liegen außerhalb von „SMG {galaxy.name}“ und "
+                                     f"fehlen im Mod (z. B. {outside[0]}): zurück in eine Ebene legen")
     try:
         edits = scene_io.collect(scene, galaxy)
         out = {}
