@@ -17,6 +17,7 @@ unmodified game and every test run behave exactly as before.
 | Level editor (`LevelEditor`) | a tap of Tab | Edit the galaxy you are in (docs/dev/level-editor/UX.md). A short tap of Tab, with nothing else pressed, freezes the game into Edit mode where the pause menu could open; another tap plays again. Holding Tab still tilts the remote. Remappable as `LevelEditor` in `controls.txt`. |
 | Fine fur (`FineFur`) | none (a look; it switches at once) | Fur hairs half as wide, for high render resolutions: see "Fine fur" below. |
 | Instant pointer (`InstantPointer`) | none (it switches at once) | The Star Pointer follows the mouse without delay: see "Instant pointer" below. |
+| Skip the Wii strap screen (`SkipStrap`) | none (from the next start) | The game starts without the Wii Remote strap reminder: see "Skip the Wii strap screen" below. |
 
 ## Turning mods on
 
@@ -182,6 +183,14 @@ positions. With a controller stick driving the pointer, or the mouse outside
 the image, the pointer is drawn as without the mod. For measuring its cost in a
 background smoke run, where the mouse never enters the window,
 `PETARI_INSTANT_POINTER_AT=x,y` (-1 to 1) gives it a fixed position.
+
+## Skip the Wii strap screen
+
+At every start the game shows the reminder to put on the Wii Remote strap. It
+stays at least 7.5 seconds (450 frames) before a button lets you past, and
+moves on by itself after 20 seconds. Behind it the game loads its system
+archive and the save. With `SkipStrap=on` the game goes straight to that
+loading and then to the title screen. The setting takes effect at the next start.
 
 ## Odyssey camera
 
