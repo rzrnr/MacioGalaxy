@@ -275,6 +275,20 @@ def _setup_views(context):
                 area.spaces[0].clip_end = max(area.spaces[0].clip_end, 20000.0)
 
 
+def target_name(context):
+    """The name of the collection new things go into, for drawing: only reads (draw callbacks must not
+    create collections or write properties), the same choice as _target_collection."""
+    layer_coll = context.view_layer.active_layer_collection.collection
+    if layer_coll.get("smg_layer") not in (None, "path"):
+        return layer_coll.name
+    obj = context.active_object
+    if obj is not None:
+        for coll in obj.users_collection:
+            if coll.get("smg_layer") not in (None, "path"):
+                return coll.name
+    return scene_io.layer_collection_name(context.scene["smg_galaxy"], "common")
+
+
 def _target_collection(context):
     """The layer collection new things go into: the active one, else the active object's, else main common."""
     layer_coll = context.view_layer.active_layer_collection.collection
@@ -637,6 +651,7 @@ class MGE_OT_testplay(bpy.types.Operator):
             except RuntimeError as error:
                 message = str(error)
         self._finish(context)
+        game_io.testbed_status_cached(max_age=0)  # the panels show it as running (or not) at once
         if ok and self.testplay.mode == "reload":
             text = f"Änderungen übernommen, Mission neu gestartet ({game_io.seconds_text(seconds)})"
             if os.environ.get("MGE_TESTBED_BACKGROUND") != "1":
@@ -659,7 +674,7 @@ class MGE_OT_testbed_show(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return game_io.testbed_status_cached() is not None
+        return game_io.testbed_status_known() is not None
 
     def execute(self, context):
         game_io.show_testbed()
@@ -673,7 +688,7 @@ class MGE_OT_testbed_stop(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return game_io.testbed_status_cached() is not None
+        return game_io.testbed_status_known() is not None
 
     def execute(self, context):
         game_io.stop_testbed()
@@ -687,7 +702,7 @@ class MGE_OT_testbed_stop(bpy.types.Operator):
 
 def _watch_testbed(last=[None]):
     """Every 2 s: whether a testbed runs; the panels and the HUD are drawn again when that changes."""
-    status = game_io.testbed_status_cached(max_age=0)
+    status = game_io.testbed_status_cached(max_age=0)  # the one place that asks the testbed
     key = status and (status.get("stage"), status.get("scenario"))
     if key != last[0]:
         if last[0] and not key and game_io.running is None:

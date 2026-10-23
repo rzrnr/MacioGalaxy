@@ -216,9 +216,15 @@ _cached = [0.0, None]
 
 
 def testbed_status_cached(max_age=2.0):
-    """testbed_status at most every max_age seconds (for panels, which draw often)."""
+    """testbed_status at most every max_age seconds."""
     if time.time() - _cached[0] > max_age:
         _cached[:] = [time.time(), testbed_status()]
+    return _cached[1]
+
+
+def testbed_status_known():
+    """The last status the 2 s timer (or an operator) fetched, without asking: for drawing, which must not
+    wait on a socket."""
     return _cached[1]
 
 
@@ -244,7 +250,7 @@ def stop_testbed(control: Path = CONTROL, timeout=8.0):
     status = testbed_status(control)
     child = _child[0]
     pid = int(status.get("pid", 0)) if status else (child.pid if child is not None and child.poll() is None else 0)
-    _cached[0] = 0.0
+    _cached[:] = [0.0, None]
     if running is not None:
         running.stopped = True  # a Testspielen under way ends quietly instead of starting it again
     answered = testbed_command("quit", control=control) is not None

@@ -65,8 +65,7 @@ def draw():
     if not scene.get("smg_galaxy") or context.workspace is None or context.workspace.name != "Galaxie":
         return
     width = scene.mge_line_width
-    root = bpy.data.collections.get(f"SMG {scene['smg_galaxy']}")
-    if width <= 0 or root is None:
+    if width <= 0:
         return
     shader = gpu.shader.from_builtin("POLYLINE_UNIFORM_COLOR")
     shader.uniform_float("viewportSize", (context.region.width, context.region.height))
@@ -74,11 +73,13 @@ def draw():
     gpu.state.blend_set("ALPHA")
     gpu.state.depth_test_set("LESS_EQUAL")
     gpu.state.depth_mask_set(False)
-    for obj in root.all_objects:
+    # The view layer's visible objects (what Blender draws), not the galaxy collection's all_objects:
+    # that list is a cache Blender rebuilds and frees, which a draw callback must not walk.
+    for obj in context.visible_objects:
         kind = obj.get("smg_kind")
         if not (kind in scene_io.WIRE and obj.type == "MESH" or kind == "path" and obj.type == "CURVE"):
             continue
-        if not obj.visible_get() or obj.mode != "OBJECT":
+        if obj.mode != "OBJECT":
             continue
         batch = _batch(obj, shader)
         if batch is None:
