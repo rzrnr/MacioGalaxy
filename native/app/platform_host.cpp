@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <map>
 #include <set>
@@ -27,6 +28,7 @@
 #include <petari/platform/vi.hpp>
 #include <petari/host_allocation.hpp>
 #include <petari/mod_galaxies.hpp>
+#include <petari/pause_log.h>
 
 #include "host.hpp"
 #include "smoke.hpp"
@@ -266,6 +268,23 @@ extern "C" const char* petari_host_mod_messages(const char* language) {
         }
     }
     return text.c_str();
+}
+
+// A refused pause press (pause_log.h). The file stays small: past 256 KiB it starts over.
+extern "C" void petari_host_pause_log(const char* line) {
+    PetariNative::HostAllocationScope host;
+    std::fprintf(stderr, "[pause] %s\n", line);
+    const std::filesystem::path& root = PetariNative::App::Host::gUserRoot;
+    if (root.empty()) return;
+    const std::filesystem::path file = root / "pause-log.txt";
+    std::error_code ec;
+    const bool restart = std::filesystem::file_size(file, ec) > 256 * 1024 && !ec;
+    std::ofstream out(file, restart ? std::ios::trunc : std::ios::app);
+    if (!out) return;
+    const std::time_t now = std::time(nullptr);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+    out << stamp << "  " << line << "\n";
 }
 
 namespace PetariNative::App::Host {
