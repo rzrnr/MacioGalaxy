@@ -32,7 +32,8 @@ and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens 
   layers, ✓ = used by the scenario), **Spielen** (target mod and a switch to turn it on or off in
   `mods.txt`, **Speichern** = ⌘S in this workspace, **Automatisch testen (Bilder)** = the headless run
   with pictures, optionally from the Vorschau-Start, **Selbst spielen**), **Anzeigen** (the kinds drawn, with their colours as the legend;
-  the sky and cameras start off), **Objektliste** (search, kind, zone; layer and ID per row).
+  the sky and cameras start off; **Linienstärke**: areas, cameras, gravity and paths are drawn again
+  over Blender's one-pixel wires, this many pixels wide, in their legend colours, `outlines.py`), **Objektliste** (search, kind, zone; layer and ID per row).
 - **Tab Objekt**: the selected object's picture, internal name, description, ID, a zone menu and a layer
   menu (both for every selected object; another zone keeps the objects where they stand in the galaxy
   and makes them new rows there, paths with a free ID), **Lage im Spiel** (position, rotation, scale in

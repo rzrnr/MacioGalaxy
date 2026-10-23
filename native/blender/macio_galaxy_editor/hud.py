@@ -128,6 +128,10 @@ def draw():
     # The legend of the shown kinds' colours.
     shown = [(label, kind) for key, label, kind in LEGEND if getattr(scene, f"mge_show_{key}", False)]
     lx, ly = x, _bottom_inset(area) + 14 * scale
+    if shown:  # a backdrop, so the outlines behind do not run through the words
+        blf.size(0, 11 * scale)
+        span = sum(26 * scale + blf.dimensions(0, label)[0] for label, _ in shown)
+        _rect(lx - 8 * scale, ly - 5 * scale, span + 6 * scale, 24 * scale, PANEL)
     for label, kind in shown:
         colour = scene_io.COLORS.get(kind, (1.0, 0.95, 0.3, 1)) if kind else (1.0, 0.95, 0.3, 1)
         _rect(lx, ly + 2 * scale, 10 * scale, 10 * scale, colour)
