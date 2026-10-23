@@ -47,11 +47,13 @@ Clock::time_point gTitleTime;
 bool gTitleShown = false;  // the title carries the frames per second
 
 const Sample& sample(int age) {  // 0: the newest
-    return gSamples[(gNext - 1 - age + kHistory) % kHistory];
+    const int back = std::clamp(age, 0, kHistory - 1);
+    return gSamples[(gNext - 1 - back + kHistory) % kHistory];  // audit-ok: gNext < kHistory and back < kHistory, so 0 <= index < kHistory
 }
 
 double interval(int age) {  // 0: the newest
-    return gIntervals[(gIntervalNext - 1 - age + kPresents) % kPresents];
+    const int back = std::clamp(age, 0, kPresents - 1);
+    return gIntervals[(gIntervalNext - 1 - back + kPresents) % kPresents];  // audit-ok: gIntervalNext < kPresents and back < kPresents
 }
 
 ImU32 color(float r, float g, float b, float a) {
