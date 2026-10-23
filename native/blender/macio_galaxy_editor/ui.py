@@ -1,9 +1,9 @@
 """The editor's interface: two sidebar tabs in the 3D view (N), beside the toolbar (tools.py), the
 object palette (shelf.py) and the viewport's HUD (hud.py).
 
-- Galaxie: a welcome checklist and the galaxy to open; once open: Spielen (save, quick test, start the
-  game, the mod on or off), the scenarios (with the layers each uses), the zones (an eye and a solo
-  button each) and the selected zone's layers, the switches for what is drawn (their colour swatches
+- Galaxie: a welcome checklist and the galaxy to open; once open: Spielen (save, quick test, test play
+  in the testbed, start the whole game, the mod on or off), the scenarios (with the layers each uses),
+  the zones (an eye and a solo button each) and the selected zone's layers, the switches for what is drawn (their colour swatches
   are the legend of the viewport's wire shapes), and the object list (search, kind, zone).
 - Objekt: the selected object: picture, description, layer, place in the game's coordinates, and its
   fields in groups (arguments with what they mean and a menu of their values, switches, links with
@@ -965,7 +965,7 @@ class MGE_PT_props_play(_ObjectPanel, bpy.types.Panel):
         row = self.layout.row(align=True)
         row.operator(core.MGE_OT_save.bl_idname, text="Speichern", icon="FILE_TICK")
         row.operator(core.MGE_OT_preview.bl_idname, text="Testen", icon="RENDER_STILL")
-        row.operator(core.MGE_OT_play.bl_idname, text="Spielen", icon="PLAY")
+        row.operator(core.MGE_OT_testplay.bl_idname, text="Testspielen", icon="PLAY")
 
 
 # --- the tabs --------------------------------------------------------------------------------
@@ -1004,7 +1004,7 @@ class MGE_PT_galaxy(bpy.types.Panel):
             hints = box.column(align=True)
             hints.enabled = False
             _wrapped(hints, context, "2  Objekte aus der Palette unten auf einen Planeten ziehen", 2)
-            _wrapped(hints, context, "3  Spielen: automatisch testen oder selbst spielen", 2)
+            _wrapped(hints, context, "3  Spielen: automatisch testen oder testspielen", 2)
             return
         layout.label(text=core.galaxy_label(scene, scene["smg_galaxy"]), icon="WORLD_DATA")
         row = layout.row(align=True)
@@ -1041,12 +1041,14 @@ class MGE_PT_play(bpy.types.Panel):
         test.prop(scene, "mge_warp", text="Test beginnt am Vorschau-Start")
         big = layout.row()
         big.scale_y = 1.5
-        big.operator(core.MGE_OT_play.bl_idname, text="Selbst spielen", icon="PLAY")
+        big.operator(core.MGE_OT_testplay.bl_idname, text="Testspielen", icon="PLAY")
+        layout.operator(core.MGE_OT_play.bl_idname, text="Im ganzen Spiel spielen", icon="WORLD")
         hints = layout.column(align=True)
         hints.enabled = False
         _wrapped(hints, context, "Automatisch testen: das Spiel läuft unsichtbar, Mario läuft los, du bekommst Bilder. "
-                                 "Selbst spielen: einen Spielstand laden, dann geht es direkt hierher. "
-                                 "Deine Disc bleibt unverändert; der Mod liegt daneben.", 6)
+                                 "Testspielen: nur diese Galaxie im Testbed, ohne Titel und Spielstand; nach jedem "
+                                 "Speichern lädt es neu. Im ganzen Spiel: einen Spielstand laden, dann geht es hierher. "
+                                 "Deine Disc bleibt unverändert; der Mod liegt daneben.", 8)
         if scene.mge_status:
             layout.label(text=scene.mge_status, icon="INFO")
 

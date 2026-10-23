@@ -57,6 +57,13 @@ struct MountInfo {
 // without a disc, and proceed once a mount succeeds. Remounting while a disc
 // is mounted is refused because DVDDirEntry names point into the mounted FST.
 bool mount(const MountOptions& options, std::string* error);
+// Level testbed (petari/testbed.hpp): the mounted disc again, with this overlay,
+// after mod files were rewritten (new sizes and positions, added files). Fails
+// and changes nothing while a command is queued or executing; call it between
+// scenes and retry. The previous table stays allocated: DVDDirEntry names and
+// lookups running without the lock may still point into it. Entry numbers of
+// disc files change only when the overlay adds files.
+bool refreshOverlay(const std::vector<OverlayFile>& overlay, std::string* error);
 bool isMounted();
 MountInfo mountInfo();
 

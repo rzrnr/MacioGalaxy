@@ -57,6 +57,7 @@ Nur für diesen Fork, nicht fürs offizielle Repo gedacht:
 | Zuschau-Fenster | `PETARI_SMOKE_WATCH=1` zeigt Testläufe in einem Fenster ohne Fokus und ohne Eingabe | noch nicht vorgeschlagen |
 | App-Icon | Die gebaute App bekommt ein eigenes Icon: ein goldener Stern vor der Feuerradgalaxie M101 (Bildnachweis unten). Quelle ist das Icon-Composer-Paket `guglis/icon/SuperMarioGalaxy.icon`, das beim Bauen kompiliert wird | noch nicht vorgeschlagen |
 | Galaxie-Editor in Blender | Blender-Add-on (`native/blender`): eine Galaxie öffnen (Disc und Mods, Suche nach dem Namen im Spiel), mit den Modellen und Texturen des Spiels; Objekte, Map-Teile, Gravity, Areas und Paths mit Blenders Werkzeugen bearbeiten, die geänderten Zonen als Mod speichern und unsichtbar oder im Spiel anspielen. In Blender verlinkt nach `~/Library/Application Support/Blender/5.2/scripts/addons` | noch nicht vorgeschlagen |
+| Galaxy Testbed | Eigene App neben dem Spiel (`Galaxy Testbed.app`): spielt nur eine Galaxie mit der echten Spiellogik, ohne Hinweis, Titel, Dateiauswahl und Spielstand; im Blender-Editor „Testspielen“, nach jedem Speichern lädt es die Zonen im laufenden Programm neu. Good Egg 1 in 8,7 s spielbar statt 28 s, Neuladen 7,8 s. Details in `native/blender/README.md` | noch nicht vorgeschlagen |
 
 `git log --oneline origin/main..guglis-edits` zeigt die Commits.
 

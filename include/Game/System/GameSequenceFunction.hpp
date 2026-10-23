@@ -46,6 +46,9 @@ namespace GameSequenceFunction {
     void startPreLoadSaveDataSequence();
     void startTotalMailSizeSaveSequence();
     void startGameDataLoadSequence(int, bool);
+#ifdef PETARI_NATIVE
+    void startTestbedGameData(const char* pGalaxyName);
+#endif
     void startCreateUserFileSequence(int);
     void startDeleteUserFileSequence(int);
     void startCopyUserFileSequence(int, int);

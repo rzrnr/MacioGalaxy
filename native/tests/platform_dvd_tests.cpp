@@ -681,6 +681,35 @@ void testOverlay() {
     PDVD::shutdown();
 }
 
+// Level testbed: a mod file rewritten while mounted (larger), and a file added, read after a refresh.
+void testRefreshOverlay() {
+    TempDir tmp, mods;
+    const Node disc = sampleDisc();
+    makeExtractedDisc(tmp.path, disc);
+    const std::string first = pattern(96, 5), grown = pattern(70000, 4), added = pattern(123, 3);
+    writeBytes(mods.path / "zone.arc", std::vector<std::uint8_t>(first.begin(), first.end()));
+    PDVD::MountOptions options{tmp.path};
+    options.overlay = {{"opening.bnr", mods.path / "zone.arc", "ModA"}};
+    mountOrFail(options);
+    DVDInit();
+    DVDFileInfo f;
+    check(DVDOpen("/opening.bnr", &f) && readSync(f, 96, 0) == first, "before the refresh: the mod file as mounted");
+
+    writeBytes(mods.path / "zone.arc", std::vector<std::uint8_t>(grown.begin(), grown.end()));
+    writeBytes(mods.path / "new.arc", std::vector<std::uint8_t>(added.begin(), added.end()));
+    options.overlay.push_back({"StageData/NewGalaxy/NewGalaxy.arc", mods.path / "new.arc", "ModA"});
+    std::string error;
+    check(PDVD::refreshOverlay(options.overlay, &error), "refresh succeeds while the drive is idle");
+    check(PDVD::mountInfo().overlayReplaced == 1 && PDVD::mountInfo().overlayAdded == 1, "refresh reports the new overlay");
+    check(DVDOpen("/opening.bnr", &f) && f.length == grown.size(), "after the refresh: the new size");
+    check(readSync(f, static_cast<s32>(grown.size()), 0) == grown, "after the refresh: the new bytes");
+    check(DVDOpen("/StageData/NewGalaxy/NewGalaxy.arc", &f) && readSync(f, 123, 0) == added, "a file added since the mount");
+    check(DVDOpen("/AudioRes/Wave.aw", &f) && readSync(f, 64, 0) == disc.children[0].children[1].data.substr(0, 64),
+          "disc files still read the disc");
+    PDVD::shutdown();
+    check(!PDVD::refreshOverlay(options.overlay, &error) && !error.empty(), "no refresh without a mounted disc");
+}
+
 void testFatalError() {
     TempDir tmp;
     const Node disc = sampleDisc();
@@ -739,6 +768,7 @@ int main() {
     testNoDiscThenMount();
     testMountValidationAndScan();
     testOverlay();
+    testRefreshOverlay();
     testFatalError();
     testMisuseAborts();
     std::printf("platform DVD tests passed (%d checks)\n", checks);

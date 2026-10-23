@@ -8,10 +8,14 @@
   the player's saves), headless, with pictures; refused while the player's game runs, since two games
   on one GPU have crashed the running one.
 - Play: starts the installed game with --stage, straight into the galaxy after a file is loaded.
+- Testplay: the level testbed ("Galaxy Testbed.app", native/app/testbed_main.cpp), the game's logic for
+  one galaxy without title, file select or saves. Started once; while it runs, a save tells it over its
+  socket to reload the edited zones and restart the mission in-process.
 """
 import os
 import re
 import shutil
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -22,6 +26,10 @@ APP = Path("/Applications/Super Mario Galaxy.app")
 PLAYER_BINARY = APP / "Contents/MacOS/Petari"
 CACHE = Path.home() / "Library/Caches/MacioGalaxyEditor"
 WHITEHOLE_PREVIEW = Path(__file__).resolve().parents[4] / "Whitehole/preview"
+REPO = Path(__file__).resolve().parents[3]
+TESTBED_APPS = [Path("/Applications/Galaxy Testbed.app"), REPO / "build/macos-gx/native/app/Galaxy Testbed.app"]
+TESTBED = CACHE / "testbed"
+CONTROL = TESTBED / "control.sock"
 
 
 def game_running() -> bool:
@@ -149,3 +157,110 @@ def play(galaxy: str, scenario: int):
     if game_running():
         raise RuntimeError("Das Spiel läuft schon. Erst schließen, dann hier starten.")
     subprocess.Popen(["open", "-a", str(APP), "--args", "--stage", galaxy, "--scenario", str(scenario)])
+
+
+def testbed_binary():
+    """The testbed's executable: MGE_TESTBED, else the installed app, else the repository's build."""
+    if os.environ.get("MGE_TESTBED"):
+        return Path(os.environ["MGE_TESTBED"])
+    for app in TESTBED_APPS:
+        binary = app / "Contents/MacOS/Galaxy Testbed"
+        if binary.exists():
+            return binary
+    return None
+
+
+def testbed_command(command: str, timeout: float = 2.0, control: Path = CONTROL):
+    """One command to the running testbed; its reply line, or None when none answers."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(timeout)
+            connection.connect(str(control))
+            connection.sendall((command + "\n").encode())
+            reply = b""
+            while not reply.endswith(b"\n"):
+                chunk = connection.recv(512)
+                if not chunk:
+                    break
+                reply += chunk
+            return reply.decode(errors="replace").strip()
+    except OSError:
+        return None
+
+
+def testbed_status(control: Path = CONTROL):
+    """The running testbed's status as a dict (stage, scenario, control, reloads, launch, reload, pid), or None."""
+    reply = testbed_command("status", control=control)
+    if not reply or not reply.startswith("ok "):
+        return None
+    return dict(item.split("=", 1) for item in reply[3:].split() if "=" in item)
+
+
+def _spawn_text(spawn):
+    return ",".join(f"{v:.0f}" for v in spawn) if spawn is not None else "none"
+
+
+class Testplay:
+    """Testspielen: the running testbed reloads (same galaxy and mission), else a new one starts. poll() until
+    Mario can be played; the times are the testbed's own (launch to control, reload request to control)."""
+
+    def __init__(self, game: GameData, galaxy: str, scenario: int, spawn=None, control: Path = CONTROL,
+                 user: Path = TESTBED / "user", background=False, fresh=False):
+        self.control, self.started = control, time.time()
+        self.process = None
+        status = testbed_status(control)
+        if status and not fresh and (status.get("stage"), status.get("scenario")) == (galaxy, str(scenario)):
+            reply = testbed_command(f"reload {_spawn_text(spawn)}", control=control)
+            if reply and reply.startswith("ok"):
+                self.mode, self.reloads = "reload", int(status.get("reloads", 0))
+                return
+        if status:
+            # Another galaxy or mission (or a reload refused): a fresh start is the fast way there.
+            testbed_command("quit", control=control)
+            self._wait_gone(int(status.get("pid", 0)))
+        if game_running():
+            raise RuntimeError("Das Spiel läuft: das Testbed daneben kann es abstürzen lassen (gleiche GPU). "
+                               "Erst das Spiel schließen.")
+        binary = testbed_binary()
+        if binary is None:
+            raise RuntimeError("Kein „Galaxy Testbed.app“: im Repository mit "
+                               "cmake --build build/macos-gx --target petari_testbed bauen.")
+        TESTBED.mkdir(parents=True, exist_ok=True)
+        args = [str(binary), "--stage", galaxy, "--scenario", str(scenario), "--disc", str(game.disc.parent),
+                "--player-user", str(game.user), "--user", str(user), "--control", str(control)]
+        if spawn is not None:
+            args += ["--spawn", _spawn_text(spawn)]
+        if background:
+            args.append("--background")
+        self.log = TESTBED / "testbed.log"
+        env = {k: v for k, v in os.environ.items() if k != "PETARI_MOD_FOLDERS"}
+        with self.log.open("wb") as out:
+            self.process = subprocess.Popen(args, env=env, stdout=out, stderr=subprocess.STDOUT, cwd=str(TESTBED))
+        self.mode, self.reloads = "launch", 0
+
+    @staticmethod
+    def _wait_gone(pid, timeout=10.0):
+        end = time.time() + timeout
+        while pid and time.time() < end:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                return
+            time.sleep(0.1)
+
+    def poll(self, timeout=180):
+        """None while loading; then (ok, seconds as the testbed measured them, message)."""
+        if self.process is not None and self.process.poll() is not None:
+            return False, None, f"Testbed beendet (Status {self.process.returncode}), siehe {self.log}"
+        status = testbed_status(self.control)
+        if status:
+            if status.get("error"):
+                return False, None, f"Neuladen fehlgeschlagen: {status['error']}"
+            if self.mode == "launch" and status.get("control") == "1" and float(status.get("launch", -1)) >= 0:
+                return True, float(status["launch"]), "gestartet"
+            if self.mode == "reload" and int(status.get("reloads", 0)) > self.reloads and status.get("control") == "1":
+                return True, float(status["reload"]), "neu geladen"
+        if time.time() - self.started > timeout:
+            return False, None, "Zeitüberschreitung beim Laden"
+        return None
+

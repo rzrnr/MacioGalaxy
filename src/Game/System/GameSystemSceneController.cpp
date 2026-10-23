@@ -33,6 +33,7 @@ extern "C" void petari_gx_pipeline_stage_wait(void);
 extern "C" void petari_os_begin_host_blocking(void);
 extern "C" void petari_os_end_host_blocking(void);
 #include <petari/frame_telemetry.hpp>
+#include <petari/testbed.hpp>
 #endif
 
 namespace {
@@ -521,6 +522,12 @@ const Nerve* GameSystemSceneController::getNextNerveOnResetProcessing() const {
 }
 
 bool GameSystemSceneController::tryDestroyFileCacheHeap(bool param1) {
+#ifdef PETARI_NATIVE
+    // Level testbed reload (petari/testbed.hpp): the same stage, but its archives read again.
+    if (PetariNative::Testbed::dropFileCache.exchange(false)) {
+        param1 = true;
+    }
+#endif
     if (!param1 && SingletonHolder< HeapMemoryWatcher >::get()->mFileCacheHeap != nullptr && isSameAtNextSceneAndStage()) {
         return false;
     }

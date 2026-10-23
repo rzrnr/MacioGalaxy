@@ -210,6 +210,12 @@ namespace GameSequenceFunction {
         ::getSaveDataHandleSequence()->startLoad(userFileIndex, isPlayerMario);
     }
 
+#ifdef PETARI_NATIVE
+    void startTestbedGameData(const char* pGalaxyName) {
+        ::getSaveDataHandleSequence()->startTestbedFile(pGalaxyName);
+    }
+
+#endif
     void startCreateUserFileSequence(int userFileIndex) {
         ::getSaveDataHandleSequence()->startCreateUserFile(userFileIndex);
     }

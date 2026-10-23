@@ -88,9 +88,11 @@ RawPrompt gUiPrompts[kMaxPrompts];
 int gUiPromptCount = 0;
 
 bool isObserving() {
+    // The smoke run, or PETARI_OBSERVE=1 (the level testbed's actors command, for tests).
     static const bool observing = [] {
         const char* value = std::getenv("PETARI_SMOKE");
-        return value != nullptr && value[0] != '\0';
+        const char* observe = std::getenv("PETARI_OBSERVE");
+        return (value != nullptr && value[0] != '\0') || (observe != nullptr && observe[0] == '1');
     }();
     return observing;
 }

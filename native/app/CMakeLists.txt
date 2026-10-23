@@ -11,6 +11,8 @@
 #   petari              the executable; root links the game libraries, the
 #                        renderer (petari_vi_bridge and its presentation hooks)
 #                        and the GX sync bridge into it.
+#   petari_testbed      "Galaxy Testbed.app", the level testbed (testbed_main.cpp);
+#                        root links the same libraries into it.
 # Standalone (seam tests only, no Aurora library):
 #   cmake -S native/app -B build/app && cmake --build build/app && ctest --test-dir build/app
 cmake_minimum_required(VERSION 3.25)
@@ -63,6 +65,17 @@ if(NOT _petari_app_standalone)
         MACOSX_BUNDLE_INFO_STRING "Petari: native Super Mario Galaxy for macOS")
     # Guglis Edits (guglis/README.md): the Super Mario Galaxy app icon.
     include("${CMAKE_SOURCE_DIR}/guglis/icon/app_icon.cmake" OPTIONAL)
+    # The level testbed (testbed_main.cpp, petari/testbed.hpp, native/blender/README.md): the
+    # game's libraries with their own entry point; one galaxy, no front end. Root links the
+    # game libraries into it as into petari.
+    add_executable(petari_testbed MACOSX_BUNDLE testbed_main.cpp pipeline_cache_dir.cpp)
+    target_link_libraries(petari_testbed PRIVATE petari_app_host petari_app_platform aurora::core aurora::main SQLite::SQLite3)
+    set_target_properties(petari_testbed PROPERTIES OUTPUT_NAME "Galaxy Testbed"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "dev.petari.GalaxyTestbed"
+        MACOSX_BUNDLE_BUNDLE_NAME "Galaxy Testbed"
+        MACOSX_BUNDLE_BUNDLE_VERSION "0.1.0"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
+        MACOSX_BUNDLE_INFO_STRING "Galaxy Testbed: one Super Mario Galaxy level for testing")
     set(PETARI_PIPELINE_STAGE_SEEDS "${CMAKE_SOURCE_DIR}/build/pipeline-seeds" CACHE PATH
         "Offline-generated per-stage Aurora configuration manifests")
     # Clones start from the tracked pack (native/data/pipeline-seeds.v*.xz). Locally generated seeds (no
@@ -91,6 +104,7 @@ if(NOT _petari_app_standalone)
             set(_bundled_seed "${CMAKE_CURRENT_BINARY_DIR}/pipeline-seeds/${_seed_name}")
             configure_file("${_seed}" "${_bundled_seed}" COPYONLY)
             target_sources(petari PRIVATE "${_bundled_seed}")
+            target_sources(petari_testbed PRIVATE "${_bundled_seed}")
             set_source_files_properties("${_bundled_seed}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources/pipeline-seeds)
         endforeach()
     endif()

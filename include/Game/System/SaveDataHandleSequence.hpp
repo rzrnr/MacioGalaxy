@@ -32,6 +32,11 @@ public:
     void startSaveAll();
     void startSaveTotalMailSize();
     void startLoad(int, bool);
+#ifdef PETARI_NATIVE
+    // The level testbed (petari/testbed.hpp): file 1 as a new Mario file, set up in
+    // memory only (NativeUnlockedSave::prepareTestbedFile); nothing is saved.
+    void startTestbedFile(const char* pGalaxyName);
+#endif
     void storeMiiOrIconId(int, const void*, const u32*);
     void storeCopyUserFile(int, int);
     bool tryNANDErrorSequence(s32);

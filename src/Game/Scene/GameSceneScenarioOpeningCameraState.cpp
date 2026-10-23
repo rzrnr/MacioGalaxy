@@ -14,6 +14,10 @@
 #include "Game/Util/SoundUtil.hpp"
 #include "Game/Util/StarPointerUtil.hpp"
 
+#ifdef PETARI_NATIVE
+#include <petari/testbed.hpp>
+#endif
+
 namespace {
     NEW_NERVE(GameSceneScenarioOpeningCameraStateWait, GameSceneScenarioOpeningCameraState, Wait);
     NEW_NERVE(GameSceneScenarioOpeningCameraStatePlay, GameSceneScenarioOpeningCameraState, Play);
@@ -97,6 +101,13 @@ bool GameSceneScenarioOpeningCameraState::trySkipTrigger() const {
     if (MR::isFirstStep(this)) {
         return false;
     }
+
+#ifdef PETARI_NATIVE
+    // Level testbed: the skip the player could take, taken at once.
+    if (PetariNative::Testbed::active && PetariNative::Testbed::skipOpeningCamera && MR::isAlreadyVisitedCurrentStageAndScenario()) {
+        return true;
+    }
+#endif
 
     return !MR::isAlreadyVisitedCurrentStageAndScenario() ? false : MR::testSystemPadTriggerDecide();
 }
