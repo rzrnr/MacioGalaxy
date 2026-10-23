@@ -20,41 +20,44 @@ a pull updates it (restart Blender). In the 3D view: sidebar (N), the tabs **Gal
 
 ## Use
 
-The editor's own tabs in the 3D view's sidebar (N): **Galaxie**, **Objekte**, **Eigenschaften**,
-**Spiel**.
+The editor works in its own workspace **Galaxie** (a tab beside Layout, Modeling, ...). Opening a
+galaxy switches to it (made the first time from a copy of Layout: the Properties editor and the
+timeline closed, the Outliner as the zone/layer tree, a space-blue viewport; `workspace.py`). A galaxy
+opens in a scene of its own, "Mario Galaxy", when the current scene holds other things.
 
-- **Galaxie**: pick a galaxy in the search field, by its name in the game ("Good Egg Galaxy
-  (EggStarGalaxy)"; the observatory is "Observatory Grounds (AstroGalaxy)") or its internal name, and
-  open it (the folder button). One galaxy at a time. **Szenarien** lists the scenarios by their names
-  in the game; choosing one shows the zones and layers it uses. **Zonen und Ebenen**: every zone with
-  an eye, and the selected zone's layers with an eye each (✓: used by the scenario); "Alles zeigen" or
-  back to the scenario's. **Anzeigen** switches what is drawn: objects, map parts, areas, cameras,
-  gravity, start points, paths, zone placements, other (sounds, positions, demos).
-  **Modelle des Spiels** (on) draws objects with their models, off as coloured stand-ins.
-- **Objekte**: **In der Galaxie** lists every placed object (its name in the game, its zone and
-  layer), filtered by kind and zone and searchable; a click selects it, **Zeigen** frames it. **Neues
-  Objekt** is the game's catalog with preview pictures, by kind or by the object database's category
-  (Enemies, Planets, ...): choose one and **Am 3D-Cursor einfügen** places it in the active layer (the
-  Outliner's active layer collection, else the selected object's). **Path hinzufügen** adds a two-point
-  path. **Vorschaubilder erzeugen** renders the pictures once in a second, headless Blender
-  (`thumbnails.py`; about two minutes for all, waiting while the game runs).
-- **Eigenschaften**: the selected object's picture, name in the game, description, layer (a menu
-  moves it to another layer), **Lage im Spiel** (position, rotation in degrees, scale in game units in
-  its zone, editable), **Argumente** with their meaning from the object database (unused ones folded
-  away; gravity also shows Range, Distant, ...), **Schalter**, **Verknüpfungen** (path, camera,
-  message, group ids) and **Weitere Felder**.
-- Move, rotate, scale, duplicate (Shift+D) and delete as usual in the viewport. To move an object to
-  another layer, use the layer menu or move it to that layer's collection.
-- **Spiel**: **Als Mod speichern** writes the changed zones to `<user>/mods/<Mod>/files/StageData`
-  (`Mod`: by default the mod the galaxy came from, else `BlenderEdits`), switches the mod on in
-  `mods.txt` and raises its priority above any enabled mod with the same files. **Vorschau
-  (unsichtbar)** saves, plays the galaxy headless in a throwaway save (with the cursor button: Mario
-  starts at the 3D cursor) and opens the pictures in Preview; it refuses while the game runs (two
-  games on one GPU have crashed the running one). **Im Spiel starten** saves and starts the game: after
-  you load a file it goes straight to the galaxy.
-- The scene: a collection `SMG <Galaxy>`, one per zone, one per layer and `<Zone> Paths`. The main zone
-  places the other zones; each placement is a `Zone <Name>` object whose children are the zone's
-  contents: move it and the zone moves.
+- **The sidebar (N), tab Galaxie**: a welcome checklist (disc found, object palette ready) and the
+  galaxy to open, searched by its name in the game ("Good Egg Galaxy (EggStarGalaxy)"; the observatory is
+  "Observatory Grounds (AstroGalaxy)") or its internal name. Once open: **Spielen** (target mod and a
+  switch to turn it on or off in `mods.txt`, **Speichern** = ⌘S in this workspace, **Schnelltest
+  (Bilder)** = the headless run with pictures, **Im Spiel starten**), **Szenarien** (each with the main
+  zone's layers it uses), **Zonen und Ebenen** (an eye and a solo button per zone; the selected zone's
+  layers, ✓ = used by the scenario), **Anzeigen** (the kinds drawn, with their colours as the legend;
+  the sky and cameras start off), **Objektliste** (search, kind, zone; layer and ID per row).
+- **Tab Objekt**: the selected object's picture, name in the game, description, ID, a layer menu (for
+  every selected object), **Lage im Spiel** (position, rotation, scale in game units, editable), and its
+  fields: **Argumente** with their meaning and a menu of the values the object database lists (unused
+  ones folded away), **Schalter**, **Verknüpfungen** (MessageId shows the message's text, CommonPath_ID
+  has a path chooser), **Weitere Felder**.
+- **The object palette**: a strip at the bottom of the 3D view (an asset shelf, `shelf.py`) with every
+  placeable object, level part and gravity as a picture. A click chooses it for the Setzen tool and
+  switches to it; dragging it onto a planet places it there. The full catalog (areas, cameras, ...) is
+  the asset library "Mario Galaxy" in the Asset Browser and the Setzen tool's search (German names
+  like "Münze", "Gumba" work too).
+- **The toolbar** (left, `tools.py`, with their own icons): **Setzen** (a click on a surface places the
+  chosen object standing on it, at the chosen height, in the clicked object's zone and layer; a click
+  on a small placed object selects it, Ctrl/⌘+click places anyway; nothing is placed into empty space),
+  **Pfad zeichnen** (points on surfaces, straight unless "Kurven"; Enter or right click ends; the path
+  has its ID at once), **Schwerkraft** (a click on a planet: the gravity at the middle of its bounds with a
+  fitting Range), **Vorschau-Start** (where Mario starts in the quick test).
+- **The HUD** (`hud.py`): the galaxy and scenario, where new things go, what the active tool does, a
+  dot while there are unsaved changes, and the colour legend; without a galaxy a card says what to do.
+- **Q** opens a pie menu with the tools, quick test, saving, "show everything" and "back to the start"
+  (in this workspace; elsewhere Blender's Quick Favorites). **Zum Start** frames Mario's start.
+- Move, rotate, scale, duplicate (Shift+D) and delete as usual. Opening another galaxy with unsaved
+  changes asks first.
+- **Objekt-Palette aufbauen** / **Vorschaubilder erzeugen** (menu Galaxie in the top bar) rebuild the
+  palette and the pictures (models are rendered in a second, headless Blender at low priority, waiting
+  while the game runs; areas, cameras and gravity are drawn as wire pictures without Blender).
 
 ## Models
 

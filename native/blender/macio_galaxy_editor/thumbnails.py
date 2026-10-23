@@ -134,3 +134,65 @@ def _render_all(listing: Path, user: Path):
 if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:]
     _render_all(Path(arguments[0]), Path(arguments[1]))
+
+
+# --- shapes (areas, cameras, gravity): drawn without Blender -------------------------------
+
+
+def shape_thumbnails(catalog, force=False):
+    """Pictures of the objects that are shapes, not models: their wire shape at an angle, in the kind's
+    colour (as in the viewport), drawn with numpy (Blender's Python has no Pillow). Returns how many."""
+    import math
+
+    import numpy as np
+
+    from . import shapes
+    from .models import write_png
+    colours = {"areaobjinfo": (80, 230, 90), "cameracubeinfo": (190, 80, 255), "planetobjinfo": (30, 215, 240)}
+    THUMBS.mkdir(parents=True, exist_ok=True)
+    big = SIZE * 3
+    ys, xs = np.mgrid[-3:4, -3:4]
+    brush = (xs ** 2 + ys ** 2) <= 9
+    written = 0
+    yaw, pitch = math.radians(35), math.radians(25)
+    for name in catalog.names():
+        entry = catalog.entries[name]
+        kind = entry["kind"]
+        if kind not in colours:
+            continue
+        out = thumb_path(name)
+        if out.exists() and not force:
+            continue
+        if kind == "planetobjinfo":
+            values = dict(catalog.defaults(name))
+            if not values.get("Range") or values["Range"] <= 0 or values["Range"] > 5000:
+                values["Range"] = 800.0
+            verts, edges, _ = shapes.gravity_shape(name, values, (1.0, 1.0, 1.0))
+        else:
+            verts, edges, _ = shapes.area_shape(shapes.area_shape_name(name, entry.get("area_shape")))
+        if not verts or not edges:
+            continue
+        v = np.array(verts, dtype=np.float64)
+        x1 = v[:, 0] * math.cos(yaw) - v[:, 2] * math.sin(yaw)
+        z1 = v[:, 0] * math.sin(yaw) + v[:, 2] * math.cos(yaw)
+        y1 = v[:, 1] * math.cos(pitch) - z1 * math.sin(pitch)
+        px, py = x1, -y1
+        span = max(px.max() - px.min(), py.max() - py.min()) or 1.0
+        scale = big * 0.78 / span
+        px = (px - (px.max() + px.min()) / 2) * scale + big / 2
+        py = (py - (py.max() + py.min()) / 2) * scale + big / 2
+        mask = np.zeros((big, big), bool)
+        for a, b in edges:
+            steps = int(max(abs(px[b] - px[a]), abs(py[b] - py[a]))) + 1
+            t = np.linspace(0.0, 1.0, steps)
+            lx = np.clip(np.round(px[a] + (px[b] - px[a]) * t).astype(int), 3, big - 4)
+            ly = np.clip(np.round(py[a] + (py[b] - py[a]) * t).astype(int), 3, big - 4)
+            for dy, dx in zip(*np.nonzero(brush)):
+                mask[ly + dy - 3, lx + dx - 3] = True
+        alpha = mask.reshape(SIZE, 3, SIZE, 3).mean(axis=(1, 3))  # 3x3 supersampling
+        image = np.zeros((SIZE, SIZE, 4), np.uint8)
+        image[..., :3] = colours[kind]
+        image[..., 3] = (alpha * 255).astype(np.uint8)
+        write_png(out, image)
+        written += 1
+    return written

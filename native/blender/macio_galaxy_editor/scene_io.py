@@ -1,7 +1,7 @@
 """A galaxy in the Blender scene, and back.
 
 Scene layout: a collection "SMG <Galaxy>" with one collection per zone ("<Zone>") holding a collection
-per layer ("<Zone> common", "<Zone> layera", ...) and "<Zone> Paths". The main zone places the other
+per layer ("Gemeinsam · <Zone>", "Ebene A · <Zone>", ...) and "Pfade · <Zone>". The main zone places the other
 zones: each of its stageobjinfo rows is an empty ("Zone <Name>"); the zone's contents are children of
 the one active in the scenario, so moving it moves the zone in the galaxy.
 
@@ -142,9 +142,18 @@ def remove_galaxy(scene, galaxy_name):
     walk(root)
 
 
+def layer_collection_name(zone, layer):
+    """"Gemeinsam · <Zone>", "Ebene A · <Zone>": the layer first, as the Outliner cuts long names."""
+    return ("Gemeinsam" if layer == "common" else f"Ebene {layer[-1].upper()}") + f" · {zone}"
+
+
+def paths_collection_name(zone):
+    return f"Pfade · {zone}"
+
+
 def layer_collection(root, zone, layer):
     zone_coll = _collection(zone, root)
-    coll = _collection(f"{zone} {layer}", zone_coll)
+    coll = _collection(layer_collection_name(zone, layer), zone_coll)
     coll["smg_zone"], coll["smg_layer"] = zone, layer
     return coll
 
@@ -168,6 +177,9 @@ def new_object(name, kind, zone, values, matrix, collection, catalog, parent=Non
         obj.show_in_front = False
     if kind == "planetobjinfo":
         obj["smg_shape"] = gravity_signature(obj)
+    entry = catalog.entries.get(values.get("name", "")) if catalog else None
+    if entry and entry.get("category") == "Backgrounds":
+        obj["smg_group"] = "sky"  # the galaxy's sky, a sphere around everything: its own switch
     return obj
 
 
@@ -219,7 +231,7 @@ def import_galaxy(context, galaxy, scenario_no, catalog, library=None):
             new_object(record.values.get("name", record.kind), record.kind, zone_name, record.values, _matrix(record.values),
                        coll, catalog, parent=parent, row=record.row, table=record.table, library=library)
             count += 1
-        paths_coll = _collection(f"{zone_name} Paths", _collection(zone_name, root))
+        paths_coll = _collection(paths_collection_name(zone_name), _collection(zone_name, root))
         paths_coll["smg_zone"], paths_coll["smg_layer"] = zone_name, "path"
         for path in zone.paths():
             make_path(path, zone_name, paths_coll, parent)
@@ -263,7 +275,8 @@ def make_path(path: Path_, zone, collection, parent=None):
 
 GROUPS = {"objects": {"objinfo", "childobjinfo"}, "mapparts": {"mappartsinfo"}, "areas": {"areaobjinfo"},
           "cameras": {"cameracubeinfo"}, "gravity": {"planetobjinfo"}, "starts": {"startinfo"}, "paths": {"path"},
-          "zones": {"stageobjinfo"}, "other": {"soundinfo", "generalposinfo", "debugmoveinfo", "demoobjinfo"}}
+          "zones": {"stageobjinfo"}, "other": {"soundinfo", "generalposinfo", "debugmoveinfo", "demoobjinfo"},
+          "sky": set()}  # sky: objects of the database's category Backgrounds (smg_group), whatever their table
 GROUP_OF = {kind: group for group, kinds in GROUPS.items() for kind in kinds}
 
 
@@ -282,7 +295,7 @@ def apply_visibility(root, zones: dict, layers: dict, groups: set):
             visible = zones.get(zone, True)
         else:
             visible = zones.get(zone, True) and _layer_of(obj) in layers.get(zone, ())
-        visible = visible and GROUP_OF.get(kind, "other") in groups
+        visible = visible and obj.get("smg_group", GROUP_OF.get(kind, "other")) in groups
         if obj.hide_get() == visible:
             obj.hide_set(not visible)
 

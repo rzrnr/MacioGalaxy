@@ -47,7 +47,7 @@ start = next(o for o in root.all_objects if o.get("smg_kind") == "startinfo" and
              and o.get("smg_zone") == galaxy_name)
 front = start.matrix_world.to_3x3() @ to_blender((0, 0, 1)).normalized()
 bpy.context.view_layer.active_layer_collection = bpy.context.view_layer.layer_collection.children[root.name] \
-    .children[galaxy_name].children[f"{galaxy_name} common"]
+    .children[galaxy_name].children[f"Gemeinsam · {galaxy_name}"]
 
 
 class Op:

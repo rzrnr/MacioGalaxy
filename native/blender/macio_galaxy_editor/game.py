@@ -67,6 +67,15 @@ def write_mod(game: GameData, mod_name: str, zones: dict, description: str = "")
     return written
 
 
+def set_mod_enabled(game: GameData, mod_name: str, on: bool):
+    """Folder.<Mod>=on|off in mods.txt (other lines kept)."""
+    mods_txt = game.user / "mods.txt"
+    lines = mods_txt.read_text().splitlines() if mods_txt.exists() else []
+    key = f"Folder.{mod_name}"
+    lines = [line for line in lines if not re.match(rf"\s*{re.escape(key)}\s*=", line)] + [f"{key}={'on' if on else 'off'}"]
+    mods_txt.write_text("\n".join(lines) + "\n")
+
+
 def _template() -> Path:
     """A marked stage-test user folder: ours, else made from the Whitehole preview's."""
     template = CACHE / "preview/user-template"
