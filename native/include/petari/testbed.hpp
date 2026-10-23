@@ -11,8 +11,8 @@
 
 namespace PetariNative::Testbed {
 // No strap screen, title or file select: once the save is mounted, a fresh file
-// held only in memory (story through, opening demos seen, no stars in the tested
-// galaxy) goes straight to the galaxy. Whatever would leave it for the title or
+// held only in memory (story through, opening demos seen, no Power Stars at all)
+// goes straight to the galaxy. Whatever would leave it for the title or
 // the observatory (game over, a star, leaving the galaxy, a reset) starts it again
 // on a fresh file instead (GameSequenceProgress::requestGalaxyMove).
 inline bool active = false;

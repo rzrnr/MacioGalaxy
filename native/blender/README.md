@@ -100,9 +100,9 @@ How to use it:
 
 - **Start**: straight from the save mount to the galaxy and mission (`--stage`, `--scenario`), through
   the game's after-loading galaxy move (`GameSequenceProgress::endScene`, `petari/testbed.hpp`). The
-  file is a new one held in memory only: as the all-missions unlocked save (story through, galaxies
-  open, opening demos seen, missions visited) but with the tested galaxy's stars still to be won
-  (`NativeUnlockedSave::prepareTestbedFile`). The mission's opening camera flight is skipped as the
+  file is a new one held in memory only: the story through, galaxies open, opening demos seen and
+  missions visited, but no Power Star anywhere, so the counter starts at 0 and every star is still to
+  be won (`NativeUnlockedSave::prepareTestbedFile`); nothing of the player's save is read. The mission's opening camera flight is skipped as the
   player could with A (`--opening` keeps it); Mario's own entrance stays (Good Egg 1: the flight in,
   then the game's "Welcome to the Galaxy!").
 - **Never to the title**: a game over (no "save?" prompt), a star, leaving the galaxy from the pause

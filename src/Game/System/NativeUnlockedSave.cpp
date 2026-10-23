@@ -385,14 +385,19 @@ namespace {
 
 namespace NativeUnlockedSave {
     void prepareTestbedFile(GameDataHolder* pHolder, const char* pGalaxyName) {
+        // The story through, every mission visited and every demo seen (no intro, no opening flight),
+        // but no Power Star anywhere: the counter starts at 0 and no star in the tested galaxy is one
+        // already got (a see-through star). Nothing of the player's own save is read.
         unlockGameData(pHolder, true);
-
-        GalaxyStatusAccessor accessor = MR::makeGalaxyStatusAccessor(pGalaxyName);
-        for (s32 starId = 1; starId <= accessor.getPowerStarNum(); starId++) {
-            pHolder->setPowerStar(pGalaxyName, starId, false);
+        for (ScenarioDataIter iter = MR::makeBeginScenarioDataIter(); !iter.isEnd(); iter.goNext()) {
+            GalaxyStatusAccessor accessor = iter.makeAccessor();
+            for (s32 starId = 1; starId <= accessor.getPowerStarNum(); starId++) {
+                pHolder->setPowerStar(accessor.getName(), starId, false);
+            }
         }
 
-        std::fprintf(stderr, "PETARI TESTBED: file 1 set up in memory (all missions but %s's stars, not saved)\n", pGalaxyName);
+        std::fprintf(stderr, "PETARI TESTBED: file 1 set up in memory for %s (story through, no stars: %d; not saved)\n",
+                     pGalaxyName, static_cast< int >(pHolder->calcCurrentPowerStarNum()));
     }
 
     bool isRequested() {
