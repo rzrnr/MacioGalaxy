@@ -31,7 +31,7 @@ and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens 
   zone's layers it uses), **Zonen und Ebenen** (an eye and a solo button per zone; the selected zone's
   layers, ✓ = used by the scenario), **Spielen** (target mod and a switch to turn it on or off in
   `mods.txt`, **Speichern** = ⌘S in this workspace, **Automatisch testen (Bilder)** = the headless run
-  with pictures, optionally from the Vorschau-Start, **Testspielen** = the level testbed (below),
+  with pictures, optionally from the Teststart, **Testspielen** = the level testbed (below),
   **Im ganzen Spiel spielen** = the installed game with `--stage`), **Anzeigen** (the kinds drawn, with their colours as the legend;
   the sky and cameras start off; **Linienstärke**: areas, cameras, gravity and paths are drawn again
   over Blender's one-pixel wires, this many pixels wide, in their legend colours, `outlines.py`), **Objektliste** (search, kind, zone; layer and ID per row).
@@ -42,7 +42,7 @@ and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens 
   and typing one angle keeps the other two), **Punkte** for a path (a point number, marked in the
   viewport, and its point_arg0..7), and its fields: **Argumente** with their meaning and a menu of the values the object database lists (unused
   ones folded away), **Schalter**, **Verknüpfungen** (MessageId shows the message's text, CommonPath_ID
-  has a path chooser), **Weitere Felder**; at the top Speichern, Testen and Testspielen. With several
+  has a path chooser), **Weitere Felder**; at the top Testspielen, Speichern and Bilder (the automatic test). With several
   objects selected, ↓ beside a field copies its value to all selected that have it (arguments only to
   objects of the same name), and "gemischt" marks a field whose values differ; the value menus and the
   path chooser set all of them.
@@ -58,7 +58,8 @@ and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens 
   a layer the scenario does not use is warned about), **Pfad zeichnen** (points on surfaces, straight
   unless "Kurven"; Enter or right click ends; the path has its ID at once; then a menu offers a coin line
   or purple coin line along it, RailCoin with CommonPath_ID and a coin count for its length), **Schwerkraft** (a click on a planet: the gravity at the middle of its bounds with a
-  fitting Range), **Vorschau-Start** (where Mario starts in the automatic test).
+  fitting Range), **Teststart** (where Mario starts in Testspielen and the automatic test, with "Am
+  Teststart beginnen" on; the galaxy's own start stays).
 - **The HUD** (`hud.py`): the galaxy and scenario, where new things go, what the active tool does, the
   selection's keys, "● ungespeichert" while there are unsaved changes (also after deleting), and the
   colour legend above the palette; without a galaxy a card says what to do.
@@ -75,35 +76,60 @@ and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens 
 
 ## Testspielen: the level testbed
 
-**Testspielen** saves and plays the galaxy in **Galaxy Testbed** (`native/app/testbed_main.cpp`, built
-as `build/macos-gx/native/app/Galaxy Testbed.app`; `/Applications/Galaxy Testbed.app` is used first if
-it is there, `MGE_TESTBED` names another). It is the game's own code for one galaxy: scene, objects,
-collision, gravity, camera, Mario and the controls (`controls.txt`) in a window, without the Wii strap
-screen, title, file select, observatory or saves.
+**Testspielen** (F5 in the 3D view, the big button on top of the Spielen panel, the Q pie, the menu
+Spiel) saves and plays the galaxy in **Galaxy Testbed** (`native/app/testbed_main.cpp`, built as
+`build/macos-gx/native/app/Galaxy Testbed.app`; `/Applications/Galaxy Testbed.app` is used first if it is
+there, `MGE_TESTBED` names another). It is the game's own code for one galaxy: scene, objects,
+collision, gravity, camera, Mario and the controls (`controls.txt`) in a window of its own, without the
+Wii strap screen, title, file select or observatory.
+
+How to use it:
+
+1. Testspielen: the window "Galaxy Testbed – <galaxy>, Mission <n>" opens; about 10 s later Mario can
+   be played (the Spielen panel and the status bar count the seconds).
+2. Edit in Blender, then ⌘S (or F5; also without a change, to start the mission again): the running
+   testbed loads the changes and starts the mission again in about 8 s, and comes to the front. The
+   panel shows "Testspiel läuft" with **Fenster** (to the front) and **Beenden**; ⌘Q in its window
+   closes it too. While it starts, the button waits ("Testspiel startet …"), so it never runs twice.
+3. Another mission (the Szenarien list) or a reload that cannot be done in place starts a fresh
+   testbed instead. "Im ganzen Spiel spielen" closes a running testbed first.
 
 - **Start**: straight from the save mount to the galaxy and mission (`--stage`, `--scenario`), through
   the game's after-loading galaxy move (`GameSequenceProgress::endScene`, `petari/testbed.hpp`). The
   file is a new one held in memory only: as the all-missions unlocked save (story through, galaxies
   open, opening demos seen, missions visited) but with the tested galaxy's stars still to be won
   (`NativeUnlockedSave::prepareTestbedFile`). The mission's opening camera flight is skipped as the
-  player could with A (`--opening` keeps it); Mario's own entrance stays (Good Egg 1: the flight in).
-- **Folders**: its own `~/Library/Caches/MacioGalaxyEditor/testbed/user` (a save the game writes, crash
-  reports), its save wiped at every start; from the player's folder it only reads the settings
+  player could with A (`--opening` keeps it); Mario's own entrance stays (Good Egg 1: the flight in,
+  then the game's "Welcome to the Galaxy!").
+- **Never to the title**: a game over (no "save?" prompt), a star, leaving the galaxy from the pause
+  menu or a reset start the tested mission again on a fresh file (`GameSequenceProgress::requestGalaxyMove`).
+- **Folders**: its own `~/Library/Caches/MacioGalaxyEditor/testbed/user` (crash reports; anything the
+  game writes there is wiped at the next start); from the player's folder it only reads the settings
   (controls, camera, cheats, sound, graphics, `mods.txt`) and links `mods/`. The shader cache is the
   game's (`~/Library/Caches/Petari`) unless the game holds it. Refused while the player's game runs.
-- **Reload**: while it runs, Testspielen (and the Q pie's) only saves and sends `reload` over the
-  testbed's socket (`~/Library/Caches/MacioGalaxyEditor/testbed/control.sock`). At the next moment
-  the game would allow a pause, the testbed reads the player's `mods.txt` again, rebuilds the disc
-  overlay with the rewritten zone archives (`DVD::refreshOverlay`: new sizes and positions, added
-  files), and restarts the mission through the Level Select's warp; that one scene change drops the
-  file cache the game keeps for a same-stage restart, so the zones are read again. Another galaxy or
-  mission, or a refused reload, starts a fresh testbed instead.
-- **Vorschau-Start**: with "Test beginnt am Vorschau-Start" on, Mario is put at the 3D cursor once
-  the mission is playable, after every start and reload (`--spawn x,y,z` or `name:<GeneralPos>`).
+  Zone archives are written whole (a temporary file renamed into place), so the testbed never reads
+  half a file.
+- **Reload**: Testspielen or ⌘S sends `reload` over the testbed's socket
+  (`~/Library/Caches/MacioGalaxyEditor/testbed/control.sock`). At the next frame of normal play (in the
+  tested galaxy or another one after the F1 Level Select; it waits while the pause menu, a demo or a
+  death is on) the testbed restarts the mission through the Level Select's warp. That scene change
+  drops the file cache the game keeps for a same-stage restart and, with the old scene gone, rebuilds
+  the disc's mod overlay (`DVD::refreshOverlay`, the player's `mods.txt` read again): rewritten zone
+  archives with their new sizes. A change that adds, removes or renames files (a new mod, a new galaxy)
+  would change entry numbers the game keeps from start-up: the testbed refuses it, and Blender starts a
+  fresh one. A save while a reload is under way is picked up by another restart. A mission that cannot
+  be reached gives up after 3 restarts (an error in `status`, and Blender starts afresh).
+- **Teststart**: with "Mario startet am 3D-Cursor (Teststart)" on (a ring "Mario-Start (Test)" marks
+  the cursor in the viewport), Mario is put at the 3D cursor once the mission is playable: after every
+  start, reload, game over or star (`--spawn x,y,z` or `name:<GeneralPos>`); not after a miss (the
+  game's own checkpoint).
 - **Socket commands** (one line each): `reload [x,y,z|name:POS|none]`, `spawn ...` (from the next
-  restart), `status` (stage, mission, playable, reloads, seconds to control after launch and after
-  the last reload, pid), `actors` (with `PETARI_OBSERVE=1`: the observed actors, for tests), `quit`.
-  `PETARI_TESTBED_TRACE=1` logs what holds Mario while a mission starts.
+  restart), `status` (stage, mission, playable now, reloads, seconds to control after launch and after
+  the last reload, pid, the last reload error), `quit`; for tests: `where` (Mario's position and
+  state), `press <button> [frames]` (through the player's bindings), `lives <n>`, `warp <stage>
+  <mission>` (as the Level Select), `actors` (with `PETARI_OBSERVE=1`). `PETARI_TESTBED_TRACE=1` logs
+  what holds Mario while a mission starts; `PETARI_SURFACE_DUMP_LABELS=testbed` takes pictures from the
+  moment of control.
 
 Measured on Good Egg 1 (M3 Pro, the same warm shader cache, hidden window), launch to the first frame
 Mario can be moved:
@@ -118,8 +144,15 @@ wipe and Mario's flight in (about 5.5 s in Good Egg 1, the mission's own start).
 spends 11 s before the galaxy (title and file select with instant presses) and 15 s from the loaded
 galaxy to control (opening camera flight, flight in).
 
+Tested hidden (`--background`) on Good Egg 1 and 3, Honeyhive, Battlerock, Freezeflame, Boo's
+Boneyard (2D), Gateway and two mod galaxies (GuglisPlanet, ExampleGalaxy): launch, reload, input
+(walking, jumping, spinning through the player's bindings), the Teststart, a reload while paused, from
+another galaxy, during the launch and twice in a row, a game over, 30 reloads in a row, a second
+testbed refused, quitting.
+
 Not yet: overlays for gravity fields, areas and collision, a free camera, respawn at the cursor;
-custom geometry from Blender (a mesh as display model with generated collision) loaded directly.
+custom geometry from Blender (a mesh as display model with generated collision) loaded directly;
+shortening Mario's entrance flight (about 5.5 s of every Good Egg start).
 
 ## Models
 
@@ -176,5 +209,6 @@ adds gravity and a path, and reads the saved archive back; last, Testspielen aga
 testbed (reload with the spawn, another galaxy restarts it). `play_test` places five coins and a box in
 front of Mario's start and plays the galaxy headless (not while the game runs). `testbed_test` starts
 the testbed hidden on an edit, adds a Goomba, saves, and checks that the reload in the same process
-brings it into the game, then a reload with a spawn point (not while the game runs). Every galaxy of the disc
+brings it into the game, then a reload with a spawn point (not while the game runs). With
+`MGE_TESTBED_BACKGROUND=1` Testspielen starts the testbed hidden (for testing the editor's own UI). Every galaxy of the disc
 and the mods opens and saves back unchanged (all 236 zones of 50 galaxies).

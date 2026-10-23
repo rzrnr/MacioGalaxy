@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
@@ -199,10 +200,10 @@ struct Drive {
     // Published once per mount; immutable while mounted, so path lookups run
     // without the lock.
     std::atomic<Fst*> fst{nullptr};
-    // refreshOverlay: FSTs replaced while mounted (never freed, as lookups may
-    // still use them), and a count that tells the drive thread its open files
-    // belong to an older table.
-    std::vector<Fst*> retired;
+    // refreshOverlay: the FST replaced last (kept: lookups and DVDDirEntry names
+    // may still point into it; freed at the next refresh, a scene later), and a
+    // count that tells the drive thread its open files belong to an older table.
+    Fst* retired = nullptr;
     u32 generation = 0;
     MountInfo info;
     u32 currentDirectory = 0;
@@ -315,7 +316,8 @@ bool readDisc(const Fst& fst, OpenFiles& files, u8* dst, u64 offset, u64 length)
             const Fst::Extent& e = *(next - 1);
             if (offset < e.start + e.length) {
                 const u64 n = std::min(length, e.start + e.length - offset);
-                const int fd = files.get(e.entry, fst.hostPath(e.entry));
+                const int held = fst.hostFd(e.entry);  // a mod file: as it was when the table was made
+                const int fd = held >= 0 ? held : files.get(e.entry, fst.hostPath(e.entry));
                 if (fd < 0) {
                     std::fprintf(stderr, "DVD: cannot open %s: %s\n", fst.hostPath(e.entry).c_str(), std::strerror(errno));
                     return false;
@@ -598,7 +600,18 @@ bool mount(const MountOptions& options, std::string* error) {
     return true;
 }
 
-bool refreshOverlay(const std::vector<OverlayFile>& overlay, std::string* error) {
+namespace {
+// Same entries in the same order (names and kinds): entry numbers the game keeps stay valid.
+bool sameLayout(const Fst& a, const Fst& b) {
+    if (a.entryCount() != b.entryCount()) return false;
+    for (std::uint32_t i = 1; i < a.entryCount(); ++i) {
+        if (a.entry(i).isDir != b.entry(i).isDir || std::strcmp(a.name(i), b.name(i)) != 0) return false;
+    }
+    return true;
+}
+}  // namespace
+
+bool refreshOverlay(const std::vector<OverlayFile>& overlay, std::string* error, int waitMilliseconds) {
     PetariNative::HostAllocationScope hostAllocations;
     Drive& d = drive();
     fs::path base;
@@ -618,14 +631,34 @@ bool refreshOverlay(const std::vector<OverlayFile>& overlay, std::string* error)
     if (!buildFst(base, source == FstSource::DirectoryScan, overlay, *fst, info, error)) {
         return false;
     }
+    // An idle drive (a read under way finishes on the drive thread by itself); built once, swapped
+    // as soon as nothing is queued or executing.
+    for (int waited = 0;; ++waited) {
+        {
+            InterruptGuard guard;
+            if (d.executing == nullptr && !anyQueued(d)) break;
+        }
+        if (waited >= waitMilliseconds) {
+            if (error) *error = "the drive is busy";
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     InterruptGuard guard;
     if (d.executing != nullptr || anyQueued(d)) {
         if (error) *error = "the drive is busy";
         return false;
     }
+    // Entry numbers must stay: the game keeps some from start-up (audio archives, streams).
+    if (!sameLayout(*fst, *d.fst.load())) {
+        if (error) *error = "the mods add or remove files (entry numbers would change)";
+        return false;
+    }
     info.hasDiskId = d.info.hasDiskId;
+    d.fatal = false;  // a read of a file being rewritten failed: the new table reads it whole
     d.info = std::move(info);
-    d.retired.push_back(d.fst.exchange(fst.release()));
+    delete d.retired;
+    d.retired = d.fst.exchange(fst.release());
     ++d.generation;
     d.changed.notify_all();
     return true;
@@ -681,6 +714,8 @@ void shutdown() {
         }
     }
     delete d.fst.exchange(nullptr);
+    delete d.retired;
+    d.retired = nullptr;
     d.info = MountInfo{};
     gDiskId = DVDDiskID{};
     d.initialized = false;

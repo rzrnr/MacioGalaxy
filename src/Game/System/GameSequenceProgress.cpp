@@ -33,6 +33,7 @@
 #include <petari/milestone.hpp>
 #include <petari/test_fixture.hpp>
 #include <petari/testbed.hpp>
+#include <cstdio>
 #endif
 
 namespace {
@@ -191,6 +192,21 @@ void GameSequenceProgress::requestGalaxyMove(const GalaxyMoveArgument& rMoveArg)
     mFindingLuigiEventScheduler->update(rMoveArg);
 
     GalaxyMoveArgument moveArg(rMoveArg);
+#ifdef PETARI_NATIVE
+    // Level testbed: leaving the galaxy (3), a star (4) or the title (7: game over, a reset)
+    // starts the tested mission again on a fresh file, as at launch.
+    if (PetariNative::Testbed::active && (moveArg.mMoveType == 3 || moveArg.mMoveType == 4 || moveArg.mMoveType == 7)) {
+        std::fprintf(stderr, "PETARI TESTBED: galaxy move %d: back to the start of %s mission %d on a fresh file\n",
+                     static_cast< int >(moveArg.mMoveType), PetariNative::TestFixture::stage.c_str(),
+                     PetariNative::TestFixture::stageScenario);
+        GameSequenceFunction::startTestbedGameData(PetariNative::TestFixture::stage.c_str());
+        // As a file load: the fresh file is also the scene's start snapshot, and no star result is left.
+        GameSequenceFunction::storeSceneStartGameDataHolder();
+        GameSequenceFunction::resetStageResultSequenceParam();
+        PetariNative::Testbed::freshStart.store(true);
+        moveArg = GalaxyMoveArgument(6, nullptr, 1, nullptr);
+    }
+#endif
     mStorySequenceExecutor->moveGalaxy(&moveArg, isNerve(GET_NERVE_ANON(GameSequenceProgressResetProcessing)) || mIsCancelScenarioSelect);
 
     mGalaxyCometScheduler->syncWithFlags();

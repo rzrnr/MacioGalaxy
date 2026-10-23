@@ -43,16 +43,14 @@ def configure(window):
                 bpy.ops.screen.area_close()
     for area in screen.areas:
         if area.type == "VIEW_3D":
-            try:
-                area.spaces[0].show_region_asset_shelf = True
-            except AttributeError:
-                pass  # read-only until the shelf is available (it shows by itself: DEFAULT_VISIBLE)
             area.spaces[0].overlay.show_text = False  # the HUD (hud.py) says where you are
     bpy.app.timers.register(lambda: _palette(window), first_interval=0.5)
 
 
 def _palette(window):
-    """The sidebar on the Galaxie tab once it has been drawn (before, the tab cannot be set)."""
+    """The sidebar on the Galaxie tab and the object palette shown, once the 3D view has been drawn
+    (before, the tab cannot be set, and showing a region of an area not yet set up crashed Blender in
+    ED_area_init: the first workspace made while Blender was in the background)."""
     for area in window.screen.areas:
         if area.type == "VIEW_3D":
             for region in area.regions:
@@ -61,6 +59,11 @@ def _palette(window):
                         region.active_panel_category = "Galaxie"
                     except AttributeError:
                         return 0.3  # not drawn yet: try again
+            try:
+                with bpy.context.temp_override(window=window, screen=window.screen, area=area):
+                    area.spaces[0].show_region_asset_shelf = True
+            except AttributeError:
+                pass  # read-only until the shelf is available (it shows by itself: DEFAULT_VISIBLE)
     return None
 
 
@@ -102,7 +105,8 @@ def _finish(window):
     workspace.name = NAME
     with bpy.context.temp_override(window=window):
         editor()._galaxy_scene(bpy.context)  # an empty galaxy scene, not the startup cube
-    configure(window)
+    with bpy.context.temp_override(window=window, screen=window.screen):
+        configure(window)
     return None
 
 
@@ -125,10 +129,12 @@ class MGE_MT_game(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("mge.preview", text="Vorschau (unsichtbar)", icon="RENDER_STILL")
-        layout.prop(context.scene, "mge_warp", text="Vorschau am Mario-Start")
+        layout.operator("mge.testplay", text="Testspielen (F5)", icon="PLAY")
+        layout.operator("mge.testbed_show", text="Testspiel-Fenster zeigen", icon="WINDOW")
+        layout.operator("mge.testbed_stop", text="Testspiel beenden", icon="CANCEL")
+        layout.prop(context.scene, "mge_warp")
         layout.separator()
-        layout.operator("mge.testplay", text="Testspielen (Testbed)", icon="PLAY")
+        layout.operator("mge.preview", text="Automatisch testen", icon="RENDER_STILL")
         layout.operator("mge.play", text="Im ganzen Spiel spielen", icon="WORLD")
 
 

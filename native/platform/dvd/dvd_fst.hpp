@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -71,6 +72,11 @@ public:
     char* name(std::uint32_t index) { return mStrings.data() + mEntries[index].nameOffset; }
     const char* name(std::uint32_t index) const { return mStrings.data() + mEntries[index].nameOffset; }
     const std::filesystem::path& hostPath(std::uint32_t index) const { return mHostPaths[index]; }
+    // A mod file's descriptor, opened when the overlay was applied (its size is that file's), or -1:
+    // reads go through it, so a file replaced later (a level editor saving) is read as it was sized.
+    int hostFd(std::uint32_t index) const {
+        return index < mHostFds.size() && mHostFds[index] ? *mHostFds[index] : -1;
+    }
 
     // Same resolution rules as the SDK's DVDConvertPathToEntrynum: ASCII
     // case-insensitive names, "/" restarts at the root, "." and ".." are
@@ -101,6 +107,7 @@ private:
     std::vector<char> mStrings;
     std::vector<std::filesystem::path> mHostPaths;
     std::vector<std::string> mOverlayMods;  // empty, or one per entry after applyOverlay
+    std::vector<std::shared_ptr<const int>> mHostFds;  // empty, or one per entry after applyOverlay (null: none)
     std::vector<Extent> mExtents;
     std::uint32_t mFileCount = 0;
     std::uint64_t mDiscEnd = 0;

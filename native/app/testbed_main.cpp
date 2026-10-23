@@ -19,6 +19,7 @@
 #include <objc/runtime.h>
 
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -36,6 +37,7 @@
 #include <petari/camera_settings.hpp>
 #include <petari/cheats.hpp>
 #include <petari/display_mode.hpp>
+#include <petari/efb_dump_mark.hpp>
 #include <petari/graphics.hpp>
 #include <petari/host_allocation.hpp>
 #include <petari/launch_stage.hpp>
@@ -89,7 +91,8 @@ void usage() {
                "                  default ~/Library/Application Support/Petari\n"
                "  --user DIR      the testbed's own folder (save, crash reports); its save is wiped at every\n"
                "                  start; default ~/Library/Caches/Petari/Testbed\n"
-               "  --control SOCK  local socket for commands (reload, spawn, status, actors, quit); default <user>/control.sock\n"
+               "  --control SOCK  local socket for commands (reload, spawn, status, quit; for tests: where, press,\n"
+               "                  actors, lives, warp); default <user>/control.sock\n"
                "  --opening       play the mission's opening camera flight (skipped by default)\n"
                "  --background    hidden, unfocused window with physical input ignored (automated runs)\n"
                "Mods: the player's mods.txt, or PETARI_MOD_FOLDERS=A,B for this run.\n",
@@ -134,7 +137,12 @@ std::mutex gMutex;
 Spawn gSpawn;            // gMutex
 std::string gLastError;  // gMutex: the last failed reload
 std::string gActors;     // gMutex: the observed actors of the last frame ("Kind x,y,z; ...")
+std::string gWhere;      // gMutex: Mario's position and state, twice a second
 std::atomic<bool> gReloadRequested{false};
+// The press command (tests): a button (Smoke::Button order) held for some frames, through the
+// player's bindings as the smoke run presses them. Taken by the game thread.
+std::atomic<int> gPressButton{-1};
+std::atomic<int> gPressFrames{0};
 std::atomic<bool> gControl{false};
 std::atomic<int> gReloads{0};          // finished: control again after a reload
 std::atomic<double> gLaunchSeconds{-1.0};
@@ -144,20 +152,30 @@ fs::path gUser;
 fs::path gPlayer;
 std::string gStage;
 int gScenario = 1;
+SDL_Window* gWindow = nullptr;  // null in --background runs
 
 // --- Game thread only (the seam's phase probe) ---
 struct GameState {
-    bool reloadPending = false;   // waiting for normal play to restart the mission
-    int refreshTries = 0;
+    bool restartWanted = false;   // a reload asked for: restart once normal play allows it
+    bool reloadAfterLaunch = false;  // asked for before the launch had control
     bool awaitingControl = true;  // since launch or the last restart
-    bool leftStage = false;       // the restart has left the old scene
+    bool leftStage = false;       // the restart's warp was taken and the old scene left
+    unsigned long elsewhere = 0;  // frames of play in another galaxy while awaiting control
+    int restarts = 0;             // since the last control: a mission that cannot be entered stops at 3
+    bool counted = false;         // the restart under way is a reload (not a fresh start after a game over)
     bool spawned = false;
 };
 GameState gGame;
 
-// The mod files again (sizes and positions change when the editor rewrites a zone), with
-// the player's mods.txt as it is now (a first save turns the editor's mod on).
-bool refreshDisc(std::string* error) {
+// A failed refresh, from the scene thread: no lock there (the game threads take turns on one CPU,
+// and a lock held across a turn would stop the other); the frame probe picks it up.
+char gRefreshError[200];
+std::atomic<bool> gRefreshFailed{false};
+
+// The mod files again (sizes and positions change when the editor rewrites a zone), with the
+// player's mods.txt as it is now (a first save turns the editor's mod on). Testbed::refreshDisc:
+// called by the restart's scene change, once the old scene is gone, before the new one loads.
+void refreshDisc() {
     PetariNative::HostAllocationScope host;
     std::error_code ec;
     if (fs::is_regular_file(gPlayer / "mods.txt", ec)) {
@@ -165,31 +183,40 @@ bool refreshDisc(std::string* error) {
     }
     const auto resolved = PetariNative::Platform::ModFolder::resolveForUser(gUser);
     for (const std::string& line : resolved.log) std::fprintf(stderr, "[mods] %s\n", line.c_str());
-    return PetariNative::Platform::DVD::refreshOverlay(resolved.files, error);
-}
-
-void tryRestart(const Smoke::Observation& o) {
-    if (!o.pausePermitted) return;  // in a demo, talk, death or the pause menu: once it is over
     std::string error;
-    if (!refreshDisc(&error)) {
-        if (error == "the drive is busy" && ++gGame.refreshTries < 600) return;  // next frame
-        std::fprintf(stderr, "PETARI TESTBED: reload failed: %s\n", error.c_str());
-        std::lock_guard<std::mutex> lock(gMutex);
-        gLastError = error;
-        gGame.reloadPending = false;
+    if (!PetariNative::Platform::DVD::refreshOverlay(resolved.files, &error, 100)) {
+        std::fprintf(stderr, "PETARI TESTBED: reload: the disc keeps its old files: %s\n", error.c_str());
+        std::snprintf(gRefreshError, sizeof(gRefreshError), "%s", error.c_str());
+        gRefreshFailed.store(true);
         return;
     }
-    gGame.reloadPending = false;
-    gGame.refreshTries = 0;
+    std::fprintf(stderr, "PETARI TESTBED: reload: disc refreshed\n");
+}
+
+// The mission again through the Level Select's warp (the game takes it at its next frame
+// that allows a pause). That scene change drops the file cache, so the zones are read anew, and
+// rebuilds the disc's overlay (refreshDisc) once the old scene is gone.
+void restart(const Smoke::Observation& o) {
+    gGame.restartWanted = false;
+    gGame.counted = true;
+    if (++gGame.restarts > 3) {
+        std::fprintf(stderr, "PETARI TESTBED: reload: %s mission %d was not reached after 3 restarts; giving up\n",
+                     gStage.c_str(), gScenario);
+        std::lock_guard<std::mutex> lock(gMutex);
+        gLastError = "the mission could not be entered (3 tries)";
+        return;
+    }
     gGame.awaitingControl = true;
     gGame.leftStage = false;
+    gGame.elsewhere = 0;
     gGame.spawned = false;
     gControl.store(false);
     PetariNative::Testbed::dropFileCache.store(true);
     std::snprintf(PetariNative::PlayerLaunch::warpStage, sizeof(PetariNative::PlayerLaunch::warpStage), "%s", gStage.c_str());
     PetariNative::PlayerLaunch::warpScenario = gScenario;
     PetariNative::PlayerLaunch::warpPending.store(true);
-    std::fprintf(stderr, "PETARI TESTBED: reload: disc refreshed, restarting %s mission %d\n", gStage.c_str(), gScenario);
+    std::fprintf(stderr, "PETARI TESTBED: reload: restarting %s mission %d (from %s)\n", gStage.c_str(), gScenario,
+                 o.stage.c_str());
 }
 
 App::FrameStats::Phase testbedFrame() {
@@ -198,16 +225,38 @@ App::FrameStats::Phase testbedFrame() {
     petari_gx_pipeline_set_gameplay(gameplay);
 
     const Smoke::Observation o = Smoke::observeGame(true);
-    const bool inStage = o.scene == "Game" && o.sceneReady && o.stage == gStage;
-    const bool control = inStage && o.playerValid && o.pausePermitted && !o.demoActive && !o.playerOffControl && !o.playerDead;
+    const bool inGame = o.scene == "Game" && o.sceneReady;
+    const bool inStage = inGame && o.stage == gStage;
+    const bool play = inGame && o.playerValid && o.pausePermitted && !o.demoActive && !o.playerOffControl && !o.playerDead;
+    const bool control = inStage && play;
+    const bool warpPending = PetariNative::PlayerLaunch::warpPending.load();
 
     if (gReloadRequested.exchange(false)) {
-        gGame.reloadPending = true;
-        gGame.refreshTries = 0;
+        if (gLaunchSeconds.load() < 0.0) {
+            gGame.reloadAfterLaunch = true;  // the launch reads the files as they are now
+        } else {
+            gGame.restartWanted = true;
+            gGame.restarts = 0;  // a new save: its own three tries
+        }
     }
-    if (gGame.reloadPending && inStage) tryRestart(o);
+    if (gRefreshFailed.exchange(false)) {
+        std::lock_guard<std::mutex> lock(gMutex);
+        gLastError = gRefreshError;
+    }
+    if (PetariNative::Testbed::freshStart.exchange(false) && !gGame.awaitingControl) {
+        // Game over, a star, leaving the galaxy: the mission starts again; the Teststart once more.
+        gGame.awaitingControl = true;
+        gGame.leftStage = false;
+        gGame.spawned = false;
+    }
+    // Anywhere normal play goes on (the tested galaxy, or another one after the F1 Level Select).
+    if (gGame.restartWanted && play && !warpPending) restart(o);
 
-    if (gGame.awaitingControl && !inStage) gGame.leftStage = true;
+    if (gGame.awaitingControl && !PetariNative::PlayerLaunch::warpPending.load() && !inStage) gGame.leftStage = true;
+    // Taken elsewhere while waiting (another warp came first): ask again.
+    if (gGame.awaitingControl && gGame.leftStage && play && !inStage && ++gGame.elsewhere > 30) {
+        gGame.restartWanted = true;
+    }
     // PETARI_TESTBED_TRACE=1: what holds Mario while the mission starts, twice a second.
     static const bool trace = std::getenv("PETARI_TESTBED_TRACE") != nullptr;
     static unsigned long traceFrames = 0;
@@ -218,12 +267,22 @@ App::FrameStats::Phase testbedFrame() {
     }
     if (gGame.awaitingControl && control && gGame.leftStage) {
         gGame.awaitingControl = false;
-        gControl.store(true);
+        gGame.restarts = 0;
+        PetariNative::EfbDump::mark("testbed");  // PETARI_SURFACE_DUMP_LABELS=testbed: pictures from here
         if (gLaunchSeconds.load() < 0.0) {
             gLaunchSeconds.store(secondsSince(gLaunch));
             std::fprintf(stderr, "PETARI TESTBED: control %.2f s after launch (%s mission %d), Mario at (%.0f, %.0f, %.0f)\n",
                          gLaunchSeconds.load(), gStage.c_str(), gScenario, o.playerX, o.playerY, o.playerZ);
+            if (gGame.reloadAfterLaunch) {
+                // Asked for while launching: the launch may have read the files before that save.
+                gGame.reloadAfterLaunch = false;
+                gGame.restartWanted = true;
+            }
+        } else if (!gGame.counted) {
+            std::fprintf(stderr, "PETARI TESTBED: back at the start of %s mission %d, Mario at (%.0f, %.0f, %.0f)\n",
+                         gStage.c_str(), gScenario, o.playerX, o.playerY, o.playerZ);
         } else {
+            gGame.counted = false;
             Clock::time_point start;
             {
                 std::lock_guard<std::mutex> lock(gMutex);
@@ -231,6 +290,8 @@ App::FrameStats::Phase testbedFrame() {
             }
             gReloadSeconds.store(secondsSince(start));
             gReloads.fetch_add(1);
+            // The designer pressed Testspielen in Blender: the edited mission comes to the front.
+            if (gWindow != nullptr) SDL_RaiseWindow(gWindow);
             std::fprintf(stderr, "PETARI TESTBED: reload %d: control %.2f s after the request, Mario at (%.0f, %.0f, %.0f)\n",
                          gReloads.load(), gReloadSeconds.load(), o.playerX, o.playerY, o.playerZ);
         }
@@ -254,7 +315,20 @@ App::FrameStats::Phase testbedFrame() {
                          moved ? "" : " failed: no player", o.playerX, o.playerY, o.playerZ);
         }
     }
-    if (gControl.load() && !inStage) gControl.store(false);
+    // Playable now (after a miss or a game over too, once Mario is back).
+    gControl.store(!gGame.awaitingControl && control);
+    // A press from the control socket: down now, up after its frames.
+    static int held = -1, heldFrames = 0;
+    if (const int button = gPressButton.exchange(-1); button >= 0) {
+        if (held >= 0) App::Events::pressButton(held, false);
+        App::Events::assertFocus();
+        App::Events::pressButton(button, true);
+        held = button;
+        heldFrames = gPressFrames.load();
+    } else if (held >= 0 && --heldFrames <= 0) {
+        App::Events::pressButton(held, false);
+        held = -1;
+    }
     // Kept for the actors command, at most twice a second.
     static unsigned long actorFrames = 0;
     if (++actorFrames % 30 == 0) {
@@ -265,8 +339,12 @@ App::FrameStats::Phase testbedFrame() {
                           actor.y, actor.z);
             actors += text;
         }
+        char where[160];
+        std::snprintf(where, sizeof(where), "%.0f,%.0f,%.0f player=%d control=%d ground=%d dead=%d", o.playerX, o.playerY,
+                      o.playerZ, o.playerValid, control, o.playerOnGround, o.playerDead);
         std::lock_guard<std::mutex> lock(gMutex);
         gActors = std::move(actors);
+        gWhere = where;
     }
     return phase;
 }
@@ -300,11 +378,48 @@ std::string handleCommand(const std::string& line) {
     if (command == "status") {
         std::lock_guard<std::mutex> lock(gMutex);
         char text[512];
+        // error= last: its text runs to the end of the line.
         std::snprintf(text, sizeof(text), "ok stage=%s scenario=%d control=%d reloads=%d launch=%.2f reload=%.2f pid=%d%s%s",
                       gStage.c_str(), gScenario, gControl.load() ? 1 : 0, gReloads.load(), gLaunchSeconds.load(),
                       gReloadSeconds.load(), static_cast<int>(getpid()), gLastError.empty() ? "" : " error=",
                       gLastError.c_str());
         return text;
+    }
+    if (command == "press") {  // press <button> [frames]: through the player's bindings, for tests
+        static const char* const kNames[] = {"a", "b", "up", "down", "plus", "minus", "left", "right", "spin",
+                                             "camera-left", "camera-right", "z"};
+        char name[32] = {};
+        int frames = 6;
+        if (std::sscanf(argument.c_str(), "%31s %d", name, &frames) < 1 || frames < 1 || frames > 3600) {
+            return "error: press <a|b|up|down|left|right|plus|minus|spin|z|camera-left|camera-right> [frames]";
+        }
+        for (int i = 0; i < static_cast<int>(sizeof(kNames) / sizeof(kNames[0])); ++i) {
+            if (std::strcmp(name, kNames[i]) == 0) {
+                gPressFrames.store(frames);
+                gPressButton.store(i);
+                return "ok press " + std::string(name) + " " + std::to_string(frames) + " frames";
+            }
+        }
+        return "error: no button " + std::string(name);
+    }
+    if (command == "lives") {  // lives <n>: the 1-Up count, as the Cheats page sets it (tests)
+        const int lives = std::atoi(argument.c_str());
+        if (argument.empty() || lives < 0 || lives > 99) return "error: lives expects 0..99";
+        PetariNative::Cheats::requestedLives.store(lives);
+        return "ok lives " + std::to_string(lives);
+    }
+    if (command == "warp") {  // warp <stage> <mission>: as the F1 Level Select's Go (tests)
+        char stage[64] = {};
+        int mission = 1;
+        if (std::sscanf(argument.c_str(), "%63s %d", stage, &mission) < 1) return "error: warp <stage> [mission]";
+        std::snprintf(PetariNative::PlayerLaunch::warpStage, sizeof(PetariNative::PlayerLaunch::warpStage), "%s", stage);
+        PetariNative::PlayerLaunch::warpScenario = mission;
+        PetariNative::PlayerLaunch::warpPending.store(true);
+        return "ok warp " + std::string(stage) + " " + std::to_string(mission);
+    }
+    if (command == "where") {  // Mario's position (tests)
+        std::lock_guard<std::mutex> lock(gMutex);
+        return "ok " + gWhere;
     }
     if (command == "actors") {  // the game's observed actors (petari/actor_observe.hpp; PETARI_OBSERVE=1), for tests
         std::lock_guard<std::mutex> lock(gMutex);
@@ -316,7 +431,7 @@ std::string handleCommand(const std::string& line) {
         SDL_PushEvent(&event);
         return "ok quitting";
     }
-    return "error: unknown command (reload [spawn], spawn X,Y,Z|name:POS|none, status, actors, quit)";
+    return "error: unknown command (reload [spawn], spawn X,Y,Z|name:POS|none, status, where, press, actors, lives, warp, quit)";
 }
 
 void serveControl(int listener) {
@@ -327,12 +442,21 @@ void serveControl(int listener) {
             if (errno == EINTR) continue;
             return;
         }
+        // A client that hangs up early (a probe, a timeout) must not end the testbed with SIGPIPE.
+        const int on = 1;
+        ::setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+        const timeval wait{2, 0};  // a client that never ends its line must not hold the others up
+        ::setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof(wait));
         std::string line;
         char c = 0;
         while (line.size() < 512 && ::read(client, &c, 1) == 1 && c != '\n') line += c;
         while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.empty()) {
+            ::close(client);
+            continue;
+        }
         const std::string reply = handleCommand(line) + "\n";
-        if (line != "status" && line != "actors") std::fprintf(stderr, "PETARI TESTBED: control \"%s\": %s", line.c_str(), reply.c_str());
+        if (line != "status" && line != "actors" && line != "where") std::fprintf(stderr, "PETARI TESTBED: control \"%s\": %s", line.c_str(), reply.c_str());
         (void)!::write(client, reply.data(), reply.size());
         ::close(client);
     }
@@ -500,6 +624,7 @@ int main(int argc, char** argv) {
     gUser = paths.user;
     gPlayer = player;
     PetariNative::Testbed::active = true;
+    PetariNative::Testbed::refreshDisc = refreshDisc;
     PetariNative::TestFixture::stage = gStage;
     PetariNative::TestFixture::stageScenario = gScenario;
     std::fprintf(stderr, "PETARI TESTBED: %s mission %d, spawn %s; user %s (player settings from %s)\n", gStage.c_str(),
@@ -583,8 +708,11 @@ int main(int argc, char** argv) {
     }
     auto* window = static_cast<SDL_Window*>(info.window);
     if (!background) {
+        gWindow = window;
         App::Display::attach(window);
-        const std::string title = "Galaxy Testbed: " + gStage + " " + std::to_string(gScenario);
+        const App::LaunchStage::Galaxy* galaxy = App::LaunchStage::find(gStage);
+        const std::string title = "Galaxy Testbed – " + std::string(galaxy != nullptr ? galaxy->name : gStage.c_str()) +
+                                  ", Mission " + std::to_string(gScenario);
         SDL_SetWindowTitle(window, title.c_str());
     } else {
         SDL_SetWindowFocusable(window, false);

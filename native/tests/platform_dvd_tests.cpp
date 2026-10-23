@@ -681,7 +681,8 @@ void testOverlay() {
     PDVD::shutdown();
 }
 
-// Level testbed: a mod file rewritten while mounted (larger), and a file added, read after a refresh.
+// Level testbed: a mod file rewritten while mounted (larger), read after a refresh; a refresh that
+// would add a file is refused.
 void testRefreshOverlay() {
     TempDir tmp, mods;
     const Node disc = sampleDisc();
@@ -696,14 +697,32 @@ void testRefreshOverlay() {
     check(DVDOpen("/opening.bnr", &f) && readSync(f, 96, 0) == first, "before the refresh: the mod file as mounted");
 
     writeBytes(mods.path / "zone.arc", std::vector<std::uint8_t>(grown.begin(), grown.end()));
-    writeBytes(mods.path / "new.arc", std::vector<std::uint8_t>(added.begin(), added.end()));
-    options.overlay.push_back({"StageData/NewGalaxy/NewGalaxy.arc", mods.path / "new.arc", "ModA"});
     std::string error;
     check(PDVD::refreshOverlay(options.overlay, &error), "refresh succeeds while the drive is idle");
-    check(PDVD::mountInfo().overlayReplaced == 1 && PDVD::mountInfo().overlayAdded == 1, "refresh reports the new overlay");
+    check(PDVD::mountInfo().overlayReplaced == 1 && PDVD::mountInfo().overlayAdded == 0, "refresh reports the new overlay");
     check(DVDOpen("/opening.bnr", &f) && f.length == grown.size(), "after the refresh: the new size");
     check(readSync(f, static_cast<s32>(grown.size()), 0) == grown, "after the refresh: the new bytes");
-    check(DVDOpen("/StageData/NewGalaxy/NewGalaxy.arc", &f) && readSync(f, 123, 0) == added, "a file added since the mount");
+    // Replaced after the refresh (renamed over, as the editor saves): this table still reads the file it
+    // sized, whole, until the next refresh.
+    const std::string replaced = pattern(500, 2);
+    writeBytes(mods.path / "zone.tmp", std::vector<std::uint8_t>(replaced.begin(), replaced.end()));
+    fs::rename(mods.path / "zone.tmp", mods.path / "zone.arc");
+    check(DVDOpen("/opening.bnr", &f) && f.length == grown.size() &&
+          readSync(f, static_cast<s32>(grown.size()), 0) == grown, "a file replaced after the refresh reads as sized");
+    check(PDVD::refreshOverlay(options.overlay, &error), "a second refresh (the first table is freed)");
+    check(DVDOpen("/opening.bnr", &f) && f.length == replaced.size() && readSync(f, 500, 0) == replaced,
+          "the second refresh reads the replacement");
+    writeBytes(mods.path / "zone.arc", std::vector<std::uint8_t>(grown.begin(), grown.end()));
+    check(PDVD::refreshOverlay(options.overlay, &error), "a third refresh");
+    check(DVDOpen("/opening.bnr", &f) && readSync(f, 64, 0) == grown.substr(0, 64), "after the second refresh");
+
+    writeBytes(mods.path / "new.arc", std::vector<std::uint8_t>(added.begin(), added.end()));
+    auto withNew = options.overlay;
+    withNew.push_back({"StageData/NewGalaxy/NewGalaxy.arc", mods.path / "new.arc", "ModA"});
+    check(!PDVD::refreshOverlay(withNew, &error) && error.find("entry numbers") != std::string::npos,
+          "a refresh that would add a file is refused");
+    check(DVDConvertPathToEntrynum("/StageData/NewGalaxy/NewGalaxy.arc") == -1 && DVDOpen("/opening.bnr", &f) &&
+          f.length == grown.size(), "the refused refresh changed nothing");
     check(DVDOpen("/AudioRes/Wave.aw", &f) && readSync(f, 64, 0) == disc.children[0].children[1].data.substr(0, 64),
           "disc files still read the disc");
     PDVD::shutdown();
