@@ -86,7 +86,7 @@ twin.data = moving.data
 moving.users_collection[0].objects.link(twin)
 scene.cursor.location = to_blender((1234.0, 567.0, -890.0))
 bpy.context.view_layer.active_layer_collection = bpy.context.view_layer.layer_collection.children[root.name].children[main] \
-    .children[f"{main} common"]
+    .children[f"Gemeinsam · {main}"]
 editor.MGE_OT_add.execute(type("Op", (), {"item": "Coin", "report": Reporter.report, "kind": "OBJECT"})(), bpy.context)
 editor.MGE_OT_add.execute(type("Op", (), {"item": "GlobalPointGravity", "report": Reporter.report, "kind": "GRAVITY"})(),
                           bpy.context)

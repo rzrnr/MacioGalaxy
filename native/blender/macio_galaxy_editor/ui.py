@@ -1,13 +1,13 @@
-"""The editor's own interface: four sidebar tabs in the 3D view (N), laid out like Whitehole's.
+"""The editor's interface: two sidebar tabs in the 3D view (N), beside the toolbar (tools.py), the
+object palette (shelf.py) and the viewport's HUD (hud.py).
 
-- Galaxie: open a galaxy, its scenarios (each shows the layers it uses), the zones with an eye each and
-  the selected zone's layers, and switches for what is drawn (objects, map parts, areas, cameras,
-  gravity, start points, paths, zone placements, other).
-- Objekte: every placed object in a list (search, filter by kind and zone; a click selects it), and
-  the catalog of the game's objects with preview pictures, to place one at the 3D cursor.
-- Eigenschaften: the selected object: picture, description, place in the game's coordinates, and its
-  fields in groups (arguments with what they mean, gravity, switches, links, the rest).
-- Spiel: save as a mod, play headless or in the game.
+- Galaxie: a welcome checklist and the galaxy to open; once open: Spielen (save, quick test, start the
+  game, the mod on or off), the scenarios (with the layers each uses), the zones (an eye and a solo
+  button each) and the selected zone's layers, the switches for what is drawn (their colour swatches
+  are the legend of the viewport's wire shapes), and the object list (search, kind, zone).
+- Objekt: the selected object: picture, description, layer, place in the game's coordinates, and its
+  fields in groups (arguments with what they mean and a menu of their values, switches, links with
+  the message's text and a path chooser, the rest).
 """
 import sys
 
@@ -22,11 +22,14 @@ from .galaxy import LAYERS
 from .models import archive_name
 from .thumbnails import Thumbnails
 
-TAB = {"galaxy": "Galaxie", "objects": "Objekte", "props": "Eigenschaften", "game": "Spiel"}
-GROUP_LABELS = [("objects", "Objekte", "OBJECT_DATA"), ("mapparts", "Map-Teile", "MESH_CUBE"),
-                ("areas", "Areas", "CUBE"), ("cameras", "Kameras", "CAMERA_DATA"), ("gravity", "Gravity", "FORCE_FORCE"),
-                ("starts", "Startpunkte", "ARMATURE_DATA"), ("paths", "Paths", "CURVE_BEZCURVE"),
-                ("zones", "Zonen", "EMPTY_AXIS"), ("other", "Sonstiges", "SOUND")]
+TAB = {"galaxy": "Galaxie", "props": "Objekt"}
+GROUP_LABELS = [("objects", "Objekte", "OBJECT_DATA"), ("mapparts", "Levelteile", "MESH_CUBE"),
+                ("areas", "Bereiche", "CUBE"), ("cameras", "Kamerabereiche", "CAMERA_DATA"),
+                ("gravity", "Schwerkraft", "FORCE_FORCE"), ("starts", "Startpunkte", "ARMATURE_DATA"),
+                ("paths", "Pfade", "CURVE_BEZCURVE"), ("zones", "Zonen", "EMPTY_AXIS"), ("sky", "Himmel", "WORLD"),
+                ("other", "Sonstiges", "SOUND")]
+GROUP_COLOUR = {"objects": "objinfo", "mapparts": "mappartsinfo", "areas": "areaobjinfo", "cameras": "cameracubeinfo",
+                "gravity": "planetobjinfo", "starts": "startinfo", "zones": "stageobjinfo"}
 KIND_ICON = {"objinfo": "OBJECT_DATA", "childobjinfo": "OBJECT_DATA", "mappartsinfo": "MESH_CUBE", "areaobjinfo": "CUBE",
              "cameracubeinfo": "CAMERA_DATA", "planetobjinfo": "FORCE_FORCE", "startinfo": "ARMATURE_DATA",
              "path": "CURVE_BEZCURVE", "stageobjinfo": "EMPTY_AXIS", "soundinfo": "SOUND", "generalposinfo": "EMPTY_DATA",
@@ -116,14 +119,43 @@ class MGE_UL_zones(bpy.types.UIList):
         row.prop(item, "visible", text="", emboss=False, icon="HIDE_OFF" if item.visible else "HIDE_ON")
         label = f"{item.name}  ({item.label})" if item.label else item.name
         row.label(text=label, icon="WORLD" if item.label else ("DOT" if item.in_scenario else "BLANK1"))
+        row.operator(MGE_OT_zone_solo.bl_idname, text="", icon="SOLO_ON" if _solo(context, item) else "SOLO_OFF",
+                     emboss=False).zone = item.name
+
+
+def _solo(context, item):
+    return item.visible and all(not z.visible for z in context.scene.mge_zones if z.name != item.name)
+
+
+class MGE_OT_zone_solo(bpy.types.Operator):
+    bl_idname = "mge.zone_solo"
+    bl_label = "Nur diese Zone"
+    bl_description = "Nur diese Zone zeigen (noch einmal: wieder alle Zonen des Szenarios)"
+    zone: StringProperty()
+
+    def execute(self, context):
+        scene = context.scene
+        item = next((z for z in scene.mge_zones if z.name == self.zone), None)
+        if item is None:
+            return {"CANCELLED"}
+        if _solo(context, item):
+            apply_scenario(scene, editor().open_galaxy(scene))
+            return {"FINISHED"}
+        for zone in scene.mge_zones:
+            zone["visible"] = zone.name == self.zone
+        apply_visibility(scene)
+        return {"FINISHED"}
 
 
 class MGE_UL_layers(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_property, index=0, flt_flag=0):
         row = layout.row(align=True)
         row.prop(item, "visible", text="", emboss=False, icon="HIDE_OFF" if item.visible else "HIDE_ON")
-        name = "Gemeinsam (common)" if item.name == "common" else f"Ebene {item.name[-1].upper()} ({item.name})"
-        row.label(text=name, icon="CHECKMARK" if item.in_scenario else "BLANK1")
+        row.label(text=layer_label(item.name), icon="CHECKMARK" if item.in_scenario else "BLANK1")
+
+
+def layer_label(layer):
+    return "Gemeinsam" if layer == "common" else f"Ebene {layer[-1].upper()}"
 
 
 class MGE_OT_zones_all(bpy.types.Operator):
@@ -176,14 +208,11 @@ class MGE_UL_objects(bpy.types.UIList):
         else:
             row.label(text="", icon=KIND_ICON.get(kind, "DOT"))
         shown = entry["label"] if entry and entry["label"] != name else ""
-        split = row.split(factor=0.66, align=True)
+        split = row.split(factor=0.62, align=True)
         split.label(text=f"{shown} · {name}" if shown else name)
-        zone = item.get("smg_zone", "")
-        for ending in ("Galaxy", "Zone"):
-            zone = zone[:-len(ending)] if zone.endswith(ending) and len(zone) > len(ending) else zone
-        layer = scene_io._layer_of(item)
-        where = "Path" if kind == "path" else ("" if layer == "common" else f" · {layer[-1].upper()}")
-        split.label(text=f"{zone}{where}")
+        layer = "Pfad" if kind == "path" else layer_label(scene_io._layer_of(item))
+        ident = item.get(scene_io.PREFIX + "l_id")
+        split.label(text=f"{layer} · ID {ident}" if isinstance(ident, int) and ident >= 0 else layer)
 
     def filter_items(self, context, data, propname):
         scene = context.scene
@@ -192,7 +221,7 @@ class MGE_UL_objects(bpy.types.UIList):
         members = set(root.all_objects) if root else set()
         kinds = scene_io.GROUPS.get(scene.mge_browse_group)
         zone = scene.mge_browse_zone
-        text = self.filter_name.lower()
+        text = (scene.mge_object_search or self.filter_name).lower()
         cat = editor().catalog(scene)
         flags = []
         for obj in objects:
@@ -294,6 +323,13 @@ def fill_catalog(context):
     wm["mge_catalog_user"] = context.scene.mge_user
 
 
+def _catalog_chosen(self, context):
+    """The catalog's choice is also what the Setzen tool places."""
+    wm = context.window_manager
+    if 0 <= wm.mge_catalog_index < len(wm.mge_catalog) and hasattr(wm, "mge_tool_object"):
+        wm.mge_tool_object = wm.mge_catalog[wm.mge_catalog_index].name
+
+
 class MGE_UL_catalog(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_property, index=0, flt_flag=0):
         picture = thumbs().icon(item.archive)
@@ -335,6 +371,34 @@ class MGE_OT_place(bpy.types.Operator):
         op = editor().MGE_OT_add
         stub = type("Add", (), {"item": name, "kind": "ALL", "report": self.report})()
         return op.execute(stub, context)
+
+
+class MGE_OT_build_assets(bpy.types.Operator):
+    bl_idname = "mge.build_assets"
+    bl_label = "Objekt-Palette aufbauen"
+    bl_description = ("Den Katalog als Asset-Bibliothek \"Mario Galaxy\" anlegen (im Hintergrund): die Objekte des Spiels "
+                      "im Asset Browser, zum Hineinziehen in die Szene")
+    _timer = None
+
+    def execute(self, context):
+        from . import assets
+        assets.register_library(context)
+        self.process = assets.start_build(editor().catalog(context.scene), editor().game_data(context.scene).user)
+        context.scene.mge_status = "Objekt-Palette wird aufgebaut …"
+        self._timer = context.window_manager.event_timer_add(1.0, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type != "TIMER" or self.process.poll() is None:
+            return {"PASS_THROUGH"}
+        context.window_manager.event_timer_remove(self._timer)
+        if bpy.ops.asset.library_refresh.poll():
+            bpy.ops.asset.library_refresh()
+        context.scene.mge_status = "Objekt-Palette fertig: Asset Browser, Bibliothek \"Mario Galaxy\""
+        for area in context.screen.areas:
+            area.tag_redraw()
+        return {"FINISHED"}
 
 
 class MGE_OT_thumbnails(bpy.types.Operator):
@@ -407,31 +471,129 @@ def _layers_of_zone(self, context):
 class MGE_OT_set_layer(bpy.types.Operator):
     bl_idname = "mge.set_layer"
     bl_label = "Ebene"
-    bl_description = "Das Objekt in eine andere Ebene seiner Zone legen"
+    bl_description = "Die gewählten Objekte in eine andere Ebene ihrer Zone legen (Ebene = was in welchem Szenario erscheint)"
     bl_options = {"REGISTER", "UNDO"}
     layer: EnumProperty(items=_layers_of_zone)
 
     def execute(self, context):
-        obj = context.active_object
         root = galaxy_root(context.scene)
-        target = scene_io.layer_collection(root, obj["smg_zone"], self.layer)
-        for coll in list(obj.users_collection):
-            coll.objects.unlink(obj)
-        target.objects.link(obj)
-        zone = next((z for z in context.scene.mge_zones if z.name == obj["smg_zone"]), None)
-        if zone is not None and self.layer not in {layer.name for layer in zone.layers}:
-            entry = zone.layers.add()
-            entry.name = self.layer
+        moved = 0
+        for obj in context.selected_objects or [context.active_object]:
+            if not obj.get("smg_kind") or obj.get("smg_kind") in ("path", "stageobjinfo"):
+                continue
+            target = scene_io.layer_collection(root, obj["smg_zone"], self.layer)
+            for coll in list(obj.users_collection):
+                coll.objects.unlink(obj)
+            target.objects.link(obj)
+            zone = next((z for z in context.scene.mge_zones if z.name == obj["smg_zone"]), None)
+            if zone is not None and self.layer not in {layer.name for layer in zone.layers}:
+                entry = zone.layers.add()
+                entry.name = self.layer
+                entry.in_scenario = False
+                entry["visible"] = True
+            moved += 1
+        apply_visibility(context.scene)
+        zone = next((z for z in context.scene.mge_zones if z.name == context.active_object.get("smg_zone")), None)
+        layer = next((x for x in zone.layers if x.name == self.layer), None) if zone else None
+        hint = "" if layer is None or layer.in_scenario else f"; {layer_label(self.layer)} kommt im gewählten Szenario nicht vor"
+        self.report({"INFO"}, f"{moved} Objekt(e) nach {layer_label(self.layer)}{hint}")
         return {"FINISHED"}
 
 
+class MGE_OT_set_field(bpy.types.Operator):
+    bl_idname = "mge.set_field"
+    bl_label = "Wert setzen"
+    bl_options = {"REGISTER", "UNDO"}
+    field: StringProperty()
+    value: StringProperty()
+
+    def execute(self, context):
+        obj = context.active_object
+        key = scene_io.PREFIX + self.field
+        old = obj.get(key)
+        try:
+            obj[key] = type(old)(self.value) if old is not None else int(self.value)
+        except ValueError:
+            obj[key] = self.value
+        mark_dirty(context.scene)
+        return {"FINISHED"}
+
+
+class MGE_OT_pick_value(bpy.types.Operator):
+    bl_idname = "mge.pick_value"
+    bl_label = "Wert wählen"
+    bl_description = "Die bekannten Werte dieses Felds"
+    field: StringProperty()
+
+    def invoke(self, context, event):
+        obj = context.active_object
+        name = obj.get(scene_io.PREFIX + "name", "")
+        values = editor().catalog(context.scene).parameter_values(name, self.field)
+        field = self.field
+
+        def draw(menu, _context):
+            for value, notes in values:
+                op = menu.layout.operator(MGE_OT_set_field.bl_idname, text=f"{value}: {notes}")
+                op.field, op.value = field, str(value)
+        context.window_manager.popup_menu(draw, title=self.field)
+        return {"FINISHED"}
+
+
+class MGE_OT_pick_path(bpy.types.Operator):
+    bl_idname = "mge.pick_path"
+    bl_label = "Pfad wählen"
+    bl_description = "Einen Pfad der Zone wählen (setzt CommonPath_ID auf seine ID)"
+
+    def invoke(self, context, event):
+        obj = context.active_object
+        zone = obj.get("smg_zone")
+        root = galaxy_root(context.scene)
+        paths = sorted((o for o in root.all_objects if o.get("smg_kind") == "path" and o.get("smg_zone") == zone),
+                       key=lambda o: o.get(scene_io.PREFIX + "l_id", 0))
+
+        def draw(menu, _context):
+            op = menu.layout.operator(MGE_OT_set_field.bl_idname, text="Kein Pfad (-1)")
+            op.field, op.value = "CommonPath_ID", "-1"
+            for path in paths:
+                ident = path.get(scene_io.PREFIX + "l_id")
+                op = menu.layout.operator(MGE_OT_set_field.bl_idname, text=f"ID {ident}: {path.get(scene_io.PREFIX + 'name', '')}",
+                                          icon="CURVE_BEZCURVE")
+                op.field, op.value = "CommonPath_ID", str(ident)
+        context.window_manager.popup_menu(draw, title=f"Pfade in {zone}")
+        return {"FINISHED"}
+
+
+def mark_dirty(scene):
+    if scene.get("smg_galaxy"):
+        scene["mge_dirty"] = True
+
+
 def _field_row(layout, obj, field, cat, name, context=None):
+    """A field: its name from the database (the raw field name in the tooltip row), a menu of its known
+    values, the message's text for MessageId, a path chooser for CommonPath_ID."""
     key = scene_io.PREFIX + field
     info = cat.parameter(name, field)
     col = layout.column(align=True)
-    col.prop(obj, f'["{key}"]', text=f"{info[0]}  ({field})" if info else field)
-    if info and (info[1] or info[2]) and context is not None:
-        _wrapped(col, context, " · ".join(x for x in (info[1], info[2]) if x), 3)
+    row = col.row(align=True)
+    row.prop(obj, f'["{key}"]', text=info[0] if info else field)
+    if cat.parameter_values(name, field):
+        row.operator(MGE_OT_pick_value.bl_idname, text="", icon="DOWNARROW_HLT").field = field
+    if field == "CommonPath_ID":
+        row.operator(MGE_OT_pick_path.bl_idname, text="", icon="CURVE_BEZCURVE")
+    if context is None:
+        return
+    hints = []
+    if info:
+        hints.append(field)
+        if info[1]:
+            hints.append(info[1])
+    if field == "MessageId" and isinstance(obj.get(key), int) and obj.get(key) >= 0:
+        text = editor().message_text(context.scene, obj.get("smg_zone", ""), name, obj.get(key))
+        hints.append(f"Text: {text}" if text else "kein Text zu dieser Nummer")
+    if hints:
+        sub = col.column(align=True)
+        sub.enabled = False
+        _wrapped(sub, context, " · ".join(hints), 3)
 
 
 def _wrapped(layout, context, text, lines=5):
@@ -477,24 +639,28 @@ class MGE_PT_props(_ObjectPanel, bpy.types.Panel):
         cat = editor().catalog(context.scene)
         entry = cat.entries.get(name)
         row = layout.row()
-        picture = thumbs().icon(archive_name(name, scene_io.fields_of(obj))) if kind in scene_io.MODEL_KINDS else 0
+        picture = thumbs().icon(archive_name(name, scene_io.fields_of(obj)))
         if picture:
             row.template_icon(icon_value=picture, scale=4.0)
         col = row.column(align=True)
         col.label(text=entry["label"] if entry else name, icon=KIND_ICON.get(kind, "DOT"))
         col.label(text=f"{KIND_LABEL.get(kind, kind)} · {name}")
-        col.label(text=f"Zone {obj.get('smg_zone')}")
-        if kind != "path":
-            col.operator_menu_enum(MGE_OT_set_layer.bl_idname, "layer",
-                                   text=f"Ebene: {scene_io._layer_of(obj)}", icon="RENDERLAYERS")
+        ident = obj.get(scene_io.PREFIX + "l_id")
+        col.label(text=f"Zone {obj.get('smg_zone')}" + (f" · ID {ident}" if isinstance(ident, int) and ident >= 0 else ""))
+        if kind not in ("path", "stageobjinfo"):
+            col.operator_menu_enum(MGE_OT_set_layer.bl_idname, "layer", text=layer_label(scene_io._layer_of(obj)),
+                                   icon="RENDERLAYERS")
         if entry and entry.get("notes"):
-            _wrapped(layout, context, entry["notes"])
-        layout.prop(obj, f'["{scene_io.PREFIX}name"]', text="Name")
-        if kind == "path":
-            layout.label(text=f"{len(obj.data.splines[0].bezier_points) if obj.data.splines else 0} Punkte; "
-                              "bearbeiten mit Tab", icon="INFO")
-            if obj.data.splines:
-                layout.prop(obj.data.splines[0], "use_cyclic_u", text="Geschlossen")
+            sub = layout.column()
+            sub.enabled = False
+            _wrapped(sub, context, entry["notes"])
+        layout.use_property_split = True
+        layout.prop(obj, f'["{scene_io.PREFIX}name"]', text="Name im Spiel")
+        if kind == "path" and obj.data.splines:
+            spline = obj.data.splines[0]
+            layout.label(text=f"{len(spline.bezier_points)} Punkte · bearbeiten mit Tab (Griffe = Kontrollpunkte)",
+                         icon="INFO")
+            layout.prop(spline, "use_cyclic_u", text="Geschlossen")
 
 
 class MGE_PT_props_place(_ObjectPanel, bpy.types.Panel):
@@ -506,11 +672,15 @@ class MGE_PT_props_place(_ObjectPanel, bpy.types.Panel):
         return _ObjectPanel.poll(context) and context.active_object.get("smg_kind") != "path"
 
     def draw(self, context):
-        obj, col = context.active_object, self.layout.column(align=True)
-        for prop, label in (("mge_game_pos", "Position"), ("mge_game_rot", "Drehung °"), ("mge_game_scale", "Größe")):
-            col.label(text=label)
-            col.row(align=True).prop(obj, prop, text="")
-        self.layout.label(text="Spieleinheiten, Y oben, in der Zone", icon="INFO")
+        obj, layout = context.active_object, self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        layout.prop(obj, "mge_game_pos", text="Position")
+        layout.prop(obj, "mge_game_rot", text="Drehung °")
+        layout.prop(obj, "mge_game_scale", text="Größe")
+        hint = layout.column()
+        hint.enabled = False
+        _wrapped(hint, context, "Spieleinheiten in der Zone, Y zeigt nach oben", 2)
 
 
 class MGE_PT_props_args(_ObjectPanel, bpy.types.Panel):
@@ -586,6 +756,10 @@ class MGE_PT_props_more(_ObjectPanel, bpy.types.Panel):
 # --- the tabs --------------------------------------------------------------------------------
 
 
+def _check(layout, ok, text):
+    layout.label(text=text, icon="CHECKMARK" if ok else "ERROR")
+
+
 class MGE_PT_galaxy(bpy.types.Panel):
     bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", TAB["galaxy"]
     bl_label = "Galaxie"
@@ -593,14 +767,71 @@ class MGE_PT_galaxy(bpy.types.Panel):
     def draw(self, context):
         scene, layout = context.scene, self.layout
         core = editor()
-        row = layout.row(align=True)
-        row.prop(scene, "mge_galaxy", text="", icon="WORLD")
-        row.operator(core.MGE_OT_open.bl_idname, text="", icon="FILE_FOLDER")
+        if context.workspace is None or context.workspace.name != "Galaxie":
+            layout.operator("mge.workspace", text="Galaxie-Arbeitsbereich öffnen", icon="WORKSPACE")
         if not scene.get("smg_galaxy"):
-            layout.label(text="Galaxie wählen und öffnen", icon="INFO")
+            box = layout.box()
+            box.label(text="Willkommen im Galaxie-Editor", icon="WORLD")
+            game = core.game_data(scene)
+            _check(box, game.disc.exists(), "Spiel-Disc gefunden" if game.disc.exists() else f"Keine Disc in {game.disc}")
+            from . import assets
+            row = box.row()
+            _check(row, assets.BLEND.exists(), "Objekt-Palette bereit" if assets.BLEND.exists() else "Objekt-Palette fehlt")
+            if not assets.BLEND.exists():
+                row.operator("mge.build_assets", text="Aufbauen")
+            box.separator()
+            box.label(text="1  Galaxie wählen (Name im Spiel oder intern):")
+            box.prop(scene, "mge_galaxy", text="", icon="VIEWZOOM")
+            big = box.row()
+            big.scale_y = 1.6
+            big.operator(core.MGE_OT_open.bl_idname, text="Galaxie öffnen", icon="FILE_FOLDER")
+            hints = box.column(align=True)
+            hints.enabled = False
+            hints.label(text="2  Objekte aus der Palette unten auf einen Planeten ziehen")
+            hints.label(text="3  Spielen → Schnelltest oder im Spiel starten")
             return
         layout.label(text=core.galaxy_label(scene, scene["smg_galaxy"]), icon="WORLD_DATA")
-        layout.prop(scene, "mge_models", text="Modelle des Spiels", icon="SHADING_TEXTURE")
+        row = layout.row(align=True)
+        row.prop(scene, "mge_galaxy", text="", icon="VIEWZOOM")
+        row.operator(core.MGE_OT_open.bl_idname, text="Öffnen")
+        row = layout.row(align=True)
+        row.prop(scene, "mge_models", text="Modelle", icon="SHADING_TEXTURE", toggle=True)
+        row.operator("mge.view_start", text="Zum Start", icon="HOME")
+        if scene.get("mge_dirty"):
+            layout.label(text="Ungespeicherte Änderungen (⌘S speichert den Mod)", icon="RECORD_ON")
+
+
+class MGE_PT_play(bpy.types.Panel):
+    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", TAB["galaxy"]
+    bl_label = "Spielen"
+    bl_parent_id = "MGE_PT_galaxy"
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.scene.get("smg_galaxy"))
+
+    def draw(self, context):
+        scene, layout = context.scene, self.layout
+        core = editor()
+        row = layout.row(align=True)
+        row.prop(scene, "mge_mod", text="Mod", icon="PACKAGE")
+        on = core.mod_enabled(scene)
+        if on is not None:
+            row.operator("mge.mod_toggle", text="an" if on else "aus", icon="CHECKBOX_HLT" if on else "CHECKBOX_DEHLT",
+                         depress=on)
+        big = layout.row()
+        big.scale_y = 1.4
+        big.operator(core.MGE_OT_save.bl_idname, text="Speichern  (⌘S)", icon="FILE_TICK")
+        row = layout.row(align=True)
+        row.operator(core.MGE_OT_preview.bl_idname, text="Schnelltest (Bilder)", icon="RENDER_STILL")
+        row.prop(scene, "mge_warp", text="", icon="PIVOT_CURSOR")
+        layout.operator(core.MGE_OT_play.bl_idname, text="Im Spiel starten", icon="PLAY")
+        hints = layout.column(align=True)
+        hints.enabled = False
+        _wrapped(hints, context, "Im Spiel: einen Spielstand laden, dann geht es direkt hierher. "
+                                 "Deine Disc bleibt unverändert; der Mod liegt daneben.", 4)
+        if scene.mge_status:
+            layout.label(text=scene.mge_status, icon="INFO")
 
 
 class MGE_PT_scenarios(bpy.types.Panel):
@@ -649,12 +880,18 @@ class MGE_PT_show(bpy.types.Panel):
     def draw(self, context):
         grid = self.layout.grid_flow(columns=2, even_columns=True, align=True)
         for key, label, icon in GROUP_LABELS:
-            grid.prop(context.scene, f"mge_show_{key}", text=label, icon=icon, toggle=True)
+            swatch = swatch_icon(key)
+            if swatch:
+                grid.prop(context.scene, f"mge_show_{key}", text=label, icon_value=swatch, toggle=True)
+            else:
+                grid.prop(context.scene, f"mge_show_{key}", text=label, icon=icon, toggle=True)
 
 
 class MGE_PT_objects(bpy.types.Panel):
-    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", TAB["objects"]
-    bl_label = "In der Galaxie"
+    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", TAB["galaxy"]
+    bl_label = "Objektliste"
+    bl_parent_id = "MGE_PT_galaxy"
+    bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
@@ -662,45 +899,12 @@ class MGE_PT_objects(bpy.types.Panel):
 
     def draw(self, context):
         scene, layout = context.scene, self.layout
+        layout.prop(scene, "mge_object_search", text="", icon="VIEWZOOM")
         row = layout.row(align=True)
         row.prop(scene, "mge_browse_group", text="")
         row.prop(scene, "mge_browse_zone", text="")
         layout.template_list("MGE_UL_objects", "", bpy.data, "objects", scene, "mge_object_index", rows=10)
         layout.operator(MGE_OT_frame.bl_idname, icon="ZOOM_SELECTED")
-
-
-class MGE_PT_catalog(bpy.types.Panel):
-    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", TAB["objects"]
-    bl_label = "Neues Objekt"
-
-    @classmethod
-    def poll(cls, context):
-        return bool(context.scene.get("smg_galaxy"))
-
-    def draw(self, context):
-        wm, layout = context.window_manager, self.layout
-        if not len(wm.mge_catalog):
-            layout.operator("mge.fill_catalog", icon="FILE_REFRESH")
-            return
-        layout.prop(wm, "mge_catalog_filter", text="")
-        layout.template_list("MGE_UL_catalog", "", wm, "mge_catalog", wm, "mge_catalog_index", rows=8)
-        if 0 <= wm.mge_catalog_index < len(wm.mge_catalog):
-            item = wm.mge_catalog[wm.mge_catalog_index]
-            row = layout.row()
-            picture = thumbs().icon(item.archive)
-            if picture:
-                row.template_icon(icon_value=picture, scale=5.0)
-            col = row.column(align=True)
-            col.label(text=item.label)
-            col.label(text=f"{KIND_LABEL.get(item.kind, item.kind)} · {item.name}")
-            if item.category:
-                col.label(text=item.category)
-            _wrapped(layout, context, item.notes, 4)
-            layout.operator(MGE_OT_place.bl_idname, icon="ADD")
-        layout.operator(editor().MGE_OT_add_path.bl_idname, icon="CURVE_BEZCURVE")
-        row = layout.row()
-        row.operator(MGE_OT_thumbnails.bl_idname, icon="IMAGE_DATA")
-        layout.label(text="Ziel: aktive Ebene im Outliner, sonst die des gewählten Objekts", icon="INFO")
 
 
 class MGE_OT_fill_catalog(bpy.types.Operator):
@@ -712,31 +916,33 @@ class MGE_OT_fill_catalog(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class MGE_PT_game(bpy.types.Panel):
-    bl_space_type, bl_region_type, bl_category = "VIEW_3D", "UI", TAB["game"]
-    bl_label = "Spiel"
-
-    def draw(self, context):
-        scene, layout = context.scene, self.layout
-        core = editor()
-        layout.prop(scene, "mge_mod", text="Mod")
-        layout.operator(core.MGE_OT_save.bl_idname, icon="FILE_TICK")
-        row = layout.row(align=True)
-        row.operator(core.MGE_OT_preview.bl_idname, icon="RENDER_STILL")
-        row.prop(scene, "mge_warp", text="", icon="PIVOT_CURSOR")
-        layout.operator(core.MGE_OT_play.bl_idname, icon="PLAY")
-        if scene.mge_status:
-            layout.label(text=scene.mge_status, icon="INFO")
-        layout.separator()
-        layout.prop(scene, "mge_user", text="Spielordner")
+def swatch_icon(group):
+    """A small colour swatch per drawn kind (the viewport's colours), as preview icons."""
+    kind = GROUP_COLOUR.get(group)
+    if kind is None:
+        return 0
+    previews = thumbs().previews
+    key = f"swatch:{group}"
+    if key not in previews:
+        icon = previews.new(key)
+        size = 32
+        icon.icon_size = (size, size)
+        r, g, b, _ = scene_io.COLORS.get(kind, (0.7, 0.7, 0.7, 1))
+        pixels = []
+        for y in range(size):
+            for x in range(size):
+                inside = 6 <= x < size - 6 and 6 <= y < size - 6
+                pixels += [r, g, b, 1.0] if inside else [0.0, 0.0, 0.0, 0.0]
+        icon.icon_pixels_float = pixels
+    return previews[key].icon_id
 
 
 CLASSES = (MGE_Layer, MGE_Zone, MGE_CatalogItem, MGE_UL_zones, MGE_UL_layers, MGE_UL_objects, MGE_UL_catalog,
-           MGE_OT_zones_all, MGE_OT_frame, MGE_OT_place, MGE_OT_thumbnails, MGE_OT_set_layer, MGE_OT_fill_catalog,
-           MGE_PT_galaxy, MGE_PT_scenarios, MGE_PT_zones, MGE_PT_show,
-           MGE_PT_objects, MGE_PT_catalog,
+           MGE_OT_zones_all, MGE_OT_zone_solo, MGE_OT_frame, MGE_OT_place, MGE_OT_build_assets, MGE_OT_thumbnails,
+           MGE_OT_set_layer, MGE_OT_set_field, MGE_OT_pick_value, MGE_OT_pick_path, MGE_OT_fill_catalog,
+           MGE_PT_galaxy, MGE_PT_play, MGE_PT_scenarios, MGE_PT_zones, MGE_PT_show, MGE_PT_objects,
            MGE_PT_props, MGE_PT_props_place, MGE_PT_props_args, MGE_PT_props_switches, MGE_PT_props_links,
-           MGE_PT_props_more, MGE_PT_game)
+           MGE_PT_props_more)
 _owner = object()
 
 
@@ -747,23 +953,26 @@ def register():
     scene.mge_zones = CollectionProperty(type=MGE_Zone)
     scene.mge_zone_index = IntProperty()
     for key, label, _ in GROUP_LABELS:
-        setattr(scene, f"mge_show_{key}", BoolProperty(name=label, default=key not in ("other", "zones"),
+        setattr(scene, f"mge_show_{key}", BoolProperty(name=label, default=key not in ("other", "zones", "cameras", "sky"),
                                                        update=lambda self, context: apply_visibility(context.scene)))
     scene.mge_object_index = IntProperty(update=_object_index_changed)
     scene.mge_browse_group = EnumProperty(name="Art", items=[("ALL", "Alle Arten", "")] +
                                           [(key, label, "") for key, label, _ in GROUP_LABELS])
     scene.mge_browse_zone = EnumProperty(name="Zone", items=_browse_zones)
     scene.mge_show_all_args = BoolProperty(default=False)
+    scene.mge_object_search = StringProperty(name="Suchen", description="Name im Spiel oder interner Name",
+                                             options={"TEXTEDIT_UPDATE"})
     wm = bpy.types.WindowManager
     wm.mge_catalog = CollectionProperty(type=MGE_CatalogItem)
-    wm.mge_catalog_index = IntProperty()
+    wm.mge_catalog_index = IntProperty(update=_catalog_chosen)
     wm.mge_catalog_filter = EnumProperty(name="Art", items=_categories)
     obj = bpy.types.Object
     obj.mge_game_pos = FloatVectorProperty(size=3, get=_get_transform("pos"), set=_set_transform("pos"), precision=1,
-                                           step=1000)
-    obj.mge_game_rot = FloatVectorProperty(size=3, get=_get_transform("rot"), set=_set_transform("rot"), precision=2)
+                                           step=1000, subtype="XYZ")
+    obj.mge_game_rot = FloatVectorProperty(size=3, get=_get_transform("rot"), set=_set_transform("rot"), precision=2,
+                                           subtype="XYZ")
     obj.mge_game_scale = FloatVectorProperty(size=3, get=_get_transform("scale"), set=_set_transform("scale"),
-                                             precision=3)
+                                             precision=3, subtype="XYZ")
     bpy.msgbus.subscribe_rna(key=(bpy.types.LayerObjects, "active"), owner=_owner, args=(), notify=_active_changed)
 
 
@@ -777,7 +986,7 @@ def unregister():
     for name in ("mge_catalog", "mge_catalog_index", "mge_catalog_filter"):
         delattr(bpy.types.WindowManager, name)
     for name in ["mge_zones", "mge_zone_index", "mge_object_index", "mge_browse_group", "mge_browse_zone",
-                 "mge_show_all_args"] + [f"mge_show_{key}" for key, _, _ in GROUP_LABELS]:
+                 "mge_show_all_args", "mge_object_search"] + [f"mge_show_{key}" for key, _, _ in GROUP_LABELS]:
         delattr(bpy.types.Scene, name)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

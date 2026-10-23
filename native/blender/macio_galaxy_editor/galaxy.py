@@ -168,6 +168,9 @@ def _bmg_text(bmg: bytes, info: int, data: int, index: int) -> str:
     entry_size = struct.unpack_from(">H", bmg, info + 10)[0]
     at = data + struct.unpack_from(">I", bmg, info + 16 + index * entry_size)[0]
     chars = []
+    for _ in range(16):  # some messages start with empty characters before their first control code
+        if at + 1 < len(bmg) and struct.unpack_from(">H", bmg, at)[0] == 0:
+            at += 2
     while at + 1 < len(bmg):
         code = struct.unpack_from(">H", bmg, at)[0]
         if code == 0:

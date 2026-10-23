@@ -15,6 +15,7 @@ bl_info = {
 }
 
 import subprocess  # noqa: E402
+import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import bpy  # noqa: E402
@@ -23,13 +24,19 @@ from bpy.props import BoolProperty, EnumProperty, StringProperty  # noqa: E402
 
 from . import game as game_io  # noqa: E402
 from . import scene_io  # noqa: E402
+from . import assets  # noqa: E402
+from . import hud  # noqa: E402
+from . import shelf  # noqa: E402
+from . import tools  # noqa: E402
 from . import ui  # noqa: E402
+from . import workspace  # noqa: E402
 from .catalog import KIND_LABEL, Catalog  # noqa: E402
 from .models import ModelLibrary  # noqa: E402
 from .convert import to_game  # noqa: E402
 from .galaxy import USER, GameData, Path_, PathPoint, read_tree  # noqa: E402
 
 _cache = {}
+GALAXY_SCENE = "Mario Galaxy"
 
 
 def game_data(scene) -> GameData:
@@ -109,8 +116,12 @@ def _scenarios(self, context):
     key = ("scenario_items", scene.mge_user, galaxy.name)
     if key not in _cache:
         names = game_data(scene).messages(f"ScenarioName_{galaxy.name}")
-        _cache[key] = [(str(s.no), f"{s.no}: {names.get(f'ScenarioName_{galaxy.name}{s.no}') or s.name}", s.name)
-                       for s in galaxy.scenarios]
+
+        def label(s):
+            layers = " ".join(layer[-1].upper() for layer in s.layers(galaxy.name)[1:])
+            shown = names.get(f"ScenarioName_{galaxy.name}{s.no}") or s.name
+            return f"{s.no}: {shown}" + (f"   · Ebenen {layers}" if layers else "")
+        _cache[key] = [(str(s.no), label(s), f"Szenario {s.no}: {s.name}") for s in galaxy.scenarios]
     return _cache[key]
 
 
@@ -134,11 +145,20 @@ def _scenario_changed(self, context):
 class MGE_OT_open(bpy.types.Operator):
     bl_idname = "mge.open_galaxy"
     bl_label = "Galaxie öffnen"
-    bl_description = "Die gewählte Galaxie (Disc und eingeschaltete Mods) in die Szene holen; eine offene wird ersetzt"
+    bl_description = ("Die gewählte Galaxie (Disc und eingeschaltete Mods) öffnen, in einer eigenen Szene \"Mario Galaxy\"; "
+                      "eine offene wird ersetzt")
     bl_options = {"REGISTER", "UNDO"}
 
+    def invoke(self, context, event):
+        if context.scene.get("mge_dirty"):
+            return context.window_manager.invoke_confirm(self, event, title="Ungespeicherte Änderungen",
+                                                         message="Die offene Galaxie hat ungespeicherte Änderungen. "
+                                                                 "Trotzdem eine andere öffnen?",
+                                                         confirm_text="Öffnen", icon="WARNING")
+        return self.execute(context)
+
     def execute(self, context):
-        scene = context.scene
+        scene = _galaxy_scene(context)
         name = _galaxy_from_field(scene.mge_galaxy)
         forget(scene)
         game = game_data(scene)
@@ -155,19 +175,95 @@ class MGE_OT_open(bpy.types.Operator):
             origin = scene.get("smg_main_origin")
             scene.mge_mod = origin if origin and origin != "disc" else "BlenderEdits"
         _setup_views(context)
-        self.report({"INFO"}, f"{name}: {count} Objekte und Paths in {len(galaxy.zone_names)} Zonen")
+        scene["mge_dirty"] = False
+        scene["mge_armed"] = False
+        bpy.app.timers.register(lambda: _arm(scene.name), first_interval=1.5)
+        if context.window is not None and (context.workspace is None or context.workspace.name != workspace.NAME):
+            bpy.ops.mge.workspace()
+        self.report({"INFO"}, f"{name}: {count} Objekte und Pfade in {len(galaxy.zone_names)} Zonen")
         return {"FINISHED"}
 
 
+def _galaxy_scene(context):
+    """The scene galaxies open in: "Mario Galaxy", made when the current scene has other things in it
+    (the user's own objects stay where they are), and shown in the window."""
+    scene = context.scene
+    foreign = [o for o in scene.objects if not o.get("smg_kind")]
+    if not foreign or context.window is None or bpy.app.background:
+        return scene
+    target = bpy.data.scenes.get(GALAXY_SCENE)
+    if target is None:
+        target = bpy.data.scenes.new(GALAXY_SCENE)
+        for prop in ("mge_user", "mge_galaxy", "mge_mod", "mge_models"):
+            setattr(target, prop, getattr(scene, prop))
+    context.window.scene = target
+    return target
+
+
+def _arm(scene_name):
+    """From now on, edits count as unsaved (the import's own updates have passed)."""
+    scene = bpy.data.scenes.get(scene_name)
+    if scene is not None:
+        scene["mge_armed"] = True
+    return None
+
+
+def message_text(scene, zone, name, number):
+    """The game's text for an NPC's MessageId (<Zone>_<Name><nnn>), or ""."""
+    key = ("messages", scene.mge_user, zone)
+    if key not in _cache:
+        _cache[key] = game_data(scene).messages(f"{zone}_")
+    return _cache[key].get(f"{zone}_{name}{number:03d}", "")
+
+
+def mod_enabled(scene):
+    """Whether the target mod is switched on in mods.txt (None while it does not exist yet)."""
+    mod = (scene.mge_mod or "").strip()
+    match = next((m for m in game_data(scene).mods if m.name == mod), None)
+    return None if match is None else match.enabled
+
+
+class MGE_OT_mod_toggle(bpy.types.Operator):
+    bl_idname = "mge.mod_toggle"
+    bl_label = "Mod an/aus"
+    bl_description = "Den Ziel-Mod in mods.txt ein- oder ausschalten (aus: das Spiel lädt wieder das Original)"
+
+    def execute(self, context):
+        scene = context.scene
+        on = not mod_enabled(scene)
+        game_io.set_mod_enabled(game_data(scene), scene.mge_mod.strip(), on)
+        forget(scene)
+        self.report({"INFO"}, f"Mod {scene.mge_mod} {'an' if on else 'aus: das Spiel lädt das Original'}")
+        return {"FINISHED"}
+
+
+class MGE_OT_view_start(bpy.types.Operator):
+    bl_idname = "mge.view_start"
+    bl_label = "Zum Start"
+    bl_description = "Die Ansicht auf Marios Startpunkt richten (wenn man sich im Raum verloren hat)"
+
+    def execute(self, context):
+        root = bpy.data.collections.get(f"SMG {context.scene.get('smg_galaxy')}")
+        start = next((o for o in root.all_objects if o.get("smg_kind") == "startinfo"), None) if root else None
+        for area in context.window.screen.areas:
+            if area.type == "VIEW_3D":
+                view = area.spaces[0].region_3d
+                if start is not None:
+                    view.view_location = start.matrix_world.translation
+                    view.view_distance = 25.0
+                    from mathutils import Euler
+                    view.view_rotation = Euler((1.1, 0.0, 0.5)).to_quaternion()
+                area.tag_redraw()
+                return {"FINISHED"}
+        return {"CANCELLED"}
+
+
 def _setup_views(context):
+    """Every 3D view sees as far as a galaxy reaches (the look is the Galaxie workspace's: workspace.py)."""
     for window in context.window_manager.windows:
         for area in window.screen.areas:
             if area.type == "VIEW_3D":
-                for space in area.spaces:
-                    if space.type == "VIEW_3D":
-                        space.shading.color_type = "TEXTURE"
-                        space.shading.wireframe_color_type = "OBJECT"
-                        space.clip_end = max(space.clip_end, 20000.0)
+                area.spaces[0].clip_end = max(area.spaces[0].clip_end, 20000.0)
 
 
 def _target_collection(context):
@@ -271,7 +367,7 @@ class MGE_OT_add_path(bpy.types.Operator):
             points.append(PathPoint(p))
         values = {"name": "Path", "type": "Bezier", "closed": "OPEN", "l_id": -1, "usage": "General", "Path_ID": -1,
                   **{f"path_arg{i}": -1 for i in range(8)}}
-        coll = bpy.data.collections.get(f"{zone} Paths") or _target_collection(context)
+        coll = bpy.data.collections.get(scene_io.paths_collection_name(zone)) or _target_collection(context)
         for point in points:
             point.values.update({f"point_arg{k}": -1 for k in range(8)})
         obj = scene_io.make_path(Path_(zone, -1, values, points), zone, coll, parent)
@@ -296,6 +392,7 @@ def export_mod(operator, context):
     except (ValueError, KeyError, RuntimeError) as error:
         operator.report({"ERROR"}, str(error))
         return None
+    scene["mge_dirty"] = False
     if out:
         game_io.write_mod(game_data(scene), mod, out)
         forget(scene)
@@ -325,11 +422,25 @@ class MGE_OT_save(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class MGE_OT_save_shortcut(bpy.types.Operator):
+    bl_idname = "mge.save_shortcut"
+    bl_label = "Mod speichern (⌘S)"
+    bl_description = "Im Arbeitsbereich Galaxie speichert ⌘S den Mod; sonst wie gewohnt die .blend-Datei"
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.scene.get("smg_galaxy")) and context.workspace is not None and \
+            context.workspace.name == workspace.NAME
+
+    def execute(self, context):
+        return bpy.ops.mge.save_mod()
+
+
 class MGE_OT_preview(bpy.types.Operator):
     bl_idname = "mge.preview"
-    bl_label = "Vorschau (unsichtbar)"
-    bl_description = ("Speichern, dann die Galaxie headless spielen (Wegwerf-Spielstand) und Bilder zeigen; "
-                      "mit Warp startet Mario am 3D-Cursor")
+    bl_label = "Schnelltest (Bilder)"
+    bl_description = ("Speichern, dann die Galaxie unsichtbar im Spiel laden (eigener Wegwerf-Spielstand), Mario laufen "
+                      "lassen und Bilder zeigen; mit dem Startpunkt-Knopf beginnt Mario am Vorschau-Startpunkt")
     _timer = None
 
     @classmethod
@@ -348,7 +459,7 @@ class MGE_OT_preview(bpy.types.Operator):
             return {"CANCELLED"}
         self._timer = context.window_manager.event_timer_add(1.0, window=context.window)
         context.window_manager.modal_handler_add(self)
-        scene.mge_status = "Vorschau läuft …"
+        scene.mge_status = "Schnelltest läuft …"
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
@@ -359,13 +470,28 @@ class MGE_OT_preview(bpy.types.Operator):
             return {"PASS_THROUGH"}
         context.window_manager.event_timer_remove(self._timer)
         passed, summary, pictures = result
-        context.scene.mge_status = ("Vorschau: läuft" if passed else "Vorschau: Problem") + f" ({self.preview.run.name})"
+        last = summary[-1] if summary else ""
+        context.scene.mge_status = "Test bestanden ✓" if passed else f"Problem: {last[-80:]}"
         for line in summary:
             print(line)
-        if pictures:
+        if pictures and not _show_in_image_editor(context, pictures):
             subprocess.Popen(["open", "-a", "Preview", *map(str, pictures)])
         self.report({"INFO" if passed else "WARNING"}, (summary[-1] if summary else "keine Ausgabe")[:200])
         return {"FINISHED"}
+
+
+def _show_in_image_editor(context, pictures):
+    """The run's pictures into the window's image editor (MacioGalaxy Studio has one); False without one."""
+    editors = [a for a in context.window.screen.areas if a.type == "IMAGE_EDITOR"]
+    if not editors:
+        return False
+    images = [bpy.data.images.load(str(p), check_existing=True) for p in pictures]
+    for image in images:
+        image.reload()
+    editors[0].spaces[0].image = images[-1]
+    context.scene["mge_preview_pictures"] = [image.name for image in images]
+    editors[0].tag_redraw()
+    return True
 
 
 class MGE_OT_play(bpy.types.Operator):
@@ -393,13 +519,35 @@ class MGE_OT_play(bpy.types.Operator):
 
 @persistent
 def _gravity_handler(scene, depsgraph):
+    """Redraws gravity ranges, and adopts objects dropped from the asset library (after the update)."""
+    dropped = []
     for update in depsgraph.updates:
         obj = getattr(update.id, "original", None)
-        if isinstance(obj, bpy.types.Object) and obj.get("smg_kind") == "planetobjinfo" and obj.type == "MESH":
+        if not isinstance(obj, bpy.types.Object):
+            continue
+        if obj.get("smg_kind") and scene.get("mge_armed") and not scene.get("mge_dirty") and \
+                (update.is_updated_transform or update.is_updated_geometry):
+            scene["mge_dirty"] = True
+        if obj.get("smg_kind") == "planetobjinfo" and obj.type == "MESH":
             scene_io.refresh_gravity(obj)
+        elif obj.get("smg_asset_name") and not obj.get("smg_kind") and scene.get("smg_galaxy"):
+            dropped.append(obj.name)
+    if dropped:
+        bpy.app.timers.register(lambda: _adopt(dropped), first_interval=0.0)
 
 
-CLASSES = (MGE_OT_open, MGE_OT_add, MGE_OT_add_path, MGE_OT_save, MGE_OT_preview, MGE_OT_play)
+def _adopt(names):
+    context = bpy.context
+    for name in names:
+        obj = bpy.data.objects.get(name)
+        if obj is not None and obj.get("smg_asset_name") and not obj.get("smg_kind"):
+            assets.adopt_dropped(context, obj, sys.modules[__name__])
+    return None
+
+
+CLASSES = (MGE_OT_open, MGE_OT_add, MGE_OT_add_path, MGE_OT_save, MGE_OT_save_shortcut, MGE_OT_preview, MGE_OT_play,
+           MGE_OT_mod_toggle, MGE_OT_view_start)
+_keymaps = []
 
 
 def register():
@@ -417,12 +565,29 @@ def register():
                                               description="Die Modelle des Spiels zeigen statt der Platzhalter-Würfel")
     bpy.types.Scene.mge_status = StringProperty(default="")
     ui.register()
+    tools.register()
+    workspace.register()
+    shelf.register()
+    hud.register()
     bpy.app.handlers.depsgraph_update_post.append(_gravity_handler)
+    keyconfig = bpy.context.window_manager.keyconfigs.addon
+    if keyconfig is not None:
+        keymap = keyconfig.keymaps.new(name="Window", space_type="EMPTY")
+        for modifier in ("oskey", "ctrl"):
+            item = keymap.keymap_items.new(MGE_OT_save_shortcut.bl_idname, "S", "PRESS", **{modifier: True})
+            _keymaps.append((keymap, item))
 
 
 def unregister():
+    for keymap, item in _keymaps:
+        keymap.keymap_items.remove(item)
+    _keymaps.clear()
     if _gravity_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_gravity_handler)
+    hud.unregister()
+    shelf.unregister()
+    workspace.unregister()
+    tools.unregister()
     ui.unregister()
     for name in ("mge_user", "mge_galaxy", "mge_scenario", "mge_mod", "mge_warp", "mge_status", "mge_models"):
         delattr(bpy.types.Scene, name)

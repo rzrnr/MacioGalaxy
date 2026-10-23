@@ -21,9 +21,16 @@ LIST_TO_KIND = {"ObjInfo": "objinfo", "MapPartsInfo": "mappartsinfo", "AreaObjIn
 KIND_GROUP = {"objinfo": "placement", "areaobjinfo": "placement", "cameracubeinfo": "placement", "planetobjinfo": "placement",
               "demoobjinfo": "placement", "soundinfo": "placement", "stageobjinfo": "placement", "mappartsinfo": "mapparts",
               "startinfo": "start", "childobjinfo": "childobj", "generalposinfo": "generalpos", "debugmoveinfo": "debug"}
-KIND_LABEL = {"objinfo": "Objekt", "mappartsinfo": "Map-Teil", "areaobjinfo": "Area", "cameracubeinfo": "Kamera-Area",
-              "planetobjinfo": "Gravity", "startinfo": "Startpunkt", "childobjinfo": "Kind-Objekt", "demoobjinfo": "Demo",
-              "soundinfo": "Sound", "generalposinfo": "Position", "debugmoveinfo": "Debug", "stageobjinfo": "Zone"}
+KIND_LABEL = {"objinfo": "Objekt", "mappartsinfo": "Levelteil", "areaobjinfo": "Bereich", "cameracubeinfo": "Kamerabereich",
+              "planetobjinfo": "Schwerkraft", "startinfo": "Startpunkt", "childobjinfo": "Kind-Objekt", "demoobjinfo": "Zwischensequenz",
+              "soundinfo": "Klang", "generalposinfo": "Position", "debugmoveinfo": "Debug", "stageobjinfo": "Zone",
+              "path": "Pfad"}
+# German names people search for (the database's names are English)
+ALIASES = {"münze": "Coin", "gumba": "Kuribo", "sternenteil": "StarPiece", "sternenteile": "StarPiece",
+           "1-up": "KinokoOneUp", "pilz": "KinokoOneUp", "stern": "PowerStar", "startstern": "SuperSpinDriver",
+           "luma": "Tico", "toad": "Kinopio", "lila münze": "PurpleCoin", "kiste": "PunchBox",
+           "bob-omb": "BombHei", "gumbaboss": "Kuribo", "schwerkraft": "GlobalPointGravity", "planet": "GlobalPointGravity",
+           "buu huu": "Teresa"}
 # Whitehole's defaults for a new row where the disc has no example (GravityObj, AreaObj, CameraObj, ...).
 DEFAULTS = {"planetobjinfo": {"Range": -1.0, "Distant": 0.0, "Priority": 0, "Inverse": -1, "Power": "Normal",
                               "Gravity_type": "Normal"},
@@ -106,6 +113,21 @@ class Catalog:
             values.update(entry["example"])
         values["name"] = name
         return values
+
+    def parameter_values(self, name: str, field: str):
+        """[(value, meaning)] the database lists for an object's field ([] when none)."""
+        entry = self.entries.get(name)
+        info = self.classes.get(entry["class"], {}).get(field) if entry else None
+        return [(v["Value"], v["Notes"]) for v in info.get("Values", [])] if info else []
+
+    def search(self, text: str, limit=200):
+        """Names matching text: internal name, the name in the game, or a German alias."""
+        text = text.lower().strip()
+        alias = ALIASES.get(text)
+        found = [n for n in self.names() if text in n.lower() or text in self.entries[n]["label"].lower()]
+        if alias and alias in self.entries:
+            found = [alias] + [n for n in found if n != alias]
+        return found[:limit]
 
     def parameter(self, name: str, field: str):
         """(label, description, values) of an object's field from the database, or None."""
