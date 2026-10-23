@@ -37,6 +37,7 @@
 #include "Game/Util/TriggerChecker.hpp"
 #include "petari/input.hpp"
 #include "petari/mods.hpp"
+#include "petari/cheats.hpp"
 #include "petari/camera_settings.hpp"
 #include "petari/camera_input.h"
 #include "petari/platform/sc.hpp"
@@ -2261,6 +2262,22 @@ void testPhotoMode() {
     In::resetForTesting();
 }
 
+// cheats.txt (native/MODS.md): KeepLives=on|off, on without a file.
+void testCheats() {
+    namespace Cheats = PetariNative::Cheats;
+    Cheats::resetForTesting();
+    std::string error;
+    check(Cheats::load("/nonexistent/petari-cheats.txt", &error) && Cheats::keepLives(), "missing file: Keep 1-Ups on");
+    check(Cheats::parse("# x\nKeepLives=off\nSomethingLater=1\n", &error) && !Cheats::keepLives(),
+          "KeepLives=off parses; unknown lines are ignored");
+    check(!Cheats::parse("KeepLives=maybe\n", &error) && !Cheats::keepLives() && error.find("line 1") != std::string::npos,
+          "a bad value is an error and changes nothing");
+    const std::string text = Cheats::serialize();
+    Cheats::resetForTesting();
+    check(Cheats::parse(text, &error) && !Cheats::keepLives(), "serialize round-trips");
+    Cheats::resetForTesting();
+}
+
 int main() {
     __OSThreadInit();
     testBindings();
@@ -2282,6 +2299,7 @@ int main() {
     testCamera();
     testPhotoMode();
     testMods();
+    testCheats();
 #ifdef PETARI_INPUT_TEST_SDL3
     testSdl3();
 #endif

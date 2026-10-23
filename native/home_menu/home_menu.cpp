@@ -138,6 +138,7 @@ void Menu::update(const FrameInput& input) {
     case Phase::ModFolder:
     case Phase::Progress:
     case Phase::Graphics:
+    case Phase::Cheats:
         break;
     }
 
@@ -186,6 +187,13 @@ void Menu::update(const FrameInput& input) {
         const std::uint32_t side = input.trigger & (Button::Left | Button::Right);
         if (side == Button::Left || side == Button::Right) {
             changeCameraValue(mFocus, side == Button::Left ? -1 : 1);
+            return;
+        }
+    }
+    if (mPhase == Phase::Cheats && mFocus == 0) {
+        const std::uint32_t side = input.trigger & (Button::Left | Button::Right);
+        if (side == Button::Left || side == Button::Right) {
+            changeCheatsValue(mFocus, side == Button::Left ? -1 : 1);
             return;
         }
     }
@@ -291,6 +299,52 @@ void Menu::changeCameraValue(int item, int delta) {
     mCameraChanged = true;
     refreshCameraLabels();
     play(item == 1 ? Sound::Focus : Sound::Select);
+}
+
+void Menu::setCheats(const CheatOptions& options) {
+    mCheats = options;
+    if (mCheats.lives >= 0) {
+        mCheats.lives = std::clamp(mCheats.lives, kMinCheatLives, kMaxCheatLives);
+    }
+    mCheatsPage = true;
+    mCheatsChanged = false;
+    refreshCheatsLabels();
+}
+
+bool Menu::takeCheatsChange(CheatOptions* options) {
+    if (!mCheatsChanged) {
+        return false;
+    }
+    mCheatsChanged = false;
+    *options = mCheats;
+    return true;
+}
+
+void Menu::refreshCheatsLabels() {
+    if (mCheats.lives >= 0) {
+        std::snprintf(mCheatsLabels[0], sizeof(mCheatsLabels[0]), "1-Ups: %d", mCheats.lives);
+    } else {
+        std::snprintf(mCheatsLabels[0], sizeof(mCheatsLabels[0]), "1-Ups: in a galaxy only");
+    }
+    std::snprintf(mCheatsLabels[1], sizeof(mCheatsLabels[1]), "Keep 1-Ups when loading: %s", mCheats.keepLives ? "On" : "Off");
+}
+
+void Menu::changeCheatsValue(int item, int delta) {
+    switch (item) {
+    case 0:
+        if (mCheats.lives < 0) {
+            play(Sound::Cancel);  // no file in play: nothing to change
+            return;
+        }
+        // Wraps 99 -> 1 and 1 -> 99, so any count is a few presses away.
+        mCheats.lives = (mCheats.lives - kMinCheatLives + delta + kMaxCheatLives) % kMaxCheatLives + kMinCheatLives;
+        break;
+    case 1: mCheats.keepLives = !mCheats.keepLives; break;
+    default: return;
+    }
+    mCheatsChanged = true;
+    refreshCheatsLabels();
+    play(item == 0 ? Sound::Focus : Sound::Select);
 }
 
 void Menu::setGraphics(const GraphicsOptions& options) {
@@ -625,6 +679,7 @@ void Menu::startBlackOut() {
     case Phase::ModFolder:
     case Phase::Progress:
     case Phase::Graphics:
+    case Phase::Cheats:
     case Phase::Closing:
         blackOut(Selection::Restart);
         break;
@@ -658,6 +713,7 @@ View Menu::view() const {
     case Phase::ModFolder:
     case Phase::Progress:
     case Phase::Graphics:
+    case Phase::Cheats:
         view.panelOpacity = 1.0f;
         break;
     case Phase::Closing:
@@ -708,6 +764,9 @@ View Menu::view() const {
         if (mFolderPage) {
             view.items[mModCount + 2].label = "Mod folder...";
         }
+        if (mCheatsPage) {
+            view.items[modsCheatsIndex()].label = "Cheats...";
+        }
         view.items[modsBackIndex()].label = "Back";
     } else if (mPhase == Phase::ModFolder) {
         view.title = "Mod folder";
@@ -727,6 +786,12 @@ View Menu::view() const {
             view.items[i].label = mGraphicsLabels[i];
         }
         view.items[kGraphicsValues].label = "Back";
+    } else if (mPhase == Phase::Cheats) {
+        view.title = "Cheats";
+        view.message = "Left/Right: 1-Ups. They go into your save when the game saves.";
+        view.items[0].label = mCheatsLabels[0];
+        view.items[1].label = mCheatsLabels[1];
+        view.items[2].label = "Back";
     } else if (mPhase == Phase::Camera) {
         view.title = "Odyssey camera";
         view.message = "Right stick or middle-drag orbits; wheel or Z/X zooms; C recentres. P: photo mode.";
@@ -791,6 +856,9 @@ int Menu::itemCount() const {
     if (mPhase == Phase::Camera) {
         return 6;
     }
+    if (mPhase == Phase::Cheats) {
+        return 3;
+    }
     if (mPhase == Phase::Graphics) {
         return kGraphicsValues + 1;
     }
@@ -816,10 +884,12 @@ Rect Menu::itemRect(int index) const {
     const bool compact = itemCount() > 5;
     const bool dense = itemCount() > 6;  // seven items: the list with Volume, the Mods page with a Mod folder entry
     const bool densest = itemCount() > 8;  // nine: the Mods page with five mods and a Mod folder entry
-    const float spacing = densest ? 0.15f : dense ? 0.17f : compact ? 0.2f : kItemSpacing;
-    const float top = (densest ? -0.42f : dense ? -0.4f : compact ? -0.32f : kItemTop) + spacing * static_cast<float>(index);
+    const bool crowded = itemCount() > 9;  // ten: the same with a Cheats entry
+    const float spacing = crowded ? 0.135f : densest ? 0.15f : dense ? 0.17f : compact ? 0.2f : kItemSpacing;
+    const float top = (crowded ? -0.44f : densest ? -0.42f : dense ? -0.4f : compact ? -0.32f : kItemTop) +
+                      spacing * static_cast<float>(index);
     return {-kItemHalfWidth / ax, top, kItemHalfWidth / ax,
-            top + (densest ? 0.125f : dense ? 0.14f : compact ? 0.16f : kItemHeight)};
+            top + (crowded ? 0.115f : densest ? 0.125f : dense ? 0.14f : compact ? 0.16f : kItemHeight)};
 }
 
 int Menu::itemAt(float x, float y) const {
@@ -986,6 +1056,15 @@ void Menu::activate(int index) {
             mFocus = kListGraphics;
             mRepeatDir = 0;
         }
+    } else if (mPhase == Phase::Cheats) {
+        if (index == 0 || index == 1) {
+            changeCheatsValue(index, 1);
+        } else {
+            play(Sound::Cancel);
+            mPhase = Phase::Mods;
+            mFocus = modsCheatsIndex();
+            mRepeatDir = 0;
+        }
     } else if (mPhase == Phase::Camera) {
         if (index >= 0 && index < 5) {
             changeCameraValue(index, 1);
@@ -1013,6 +1092,12 @@ void Menu::activate(int index) {
             mFolderPageIndex = 0;
             refreshFolderLabels();
             mPhase = Phase::ModFolder;
+            mFocus = 0;
+            mRepeatDir = 0;
+        } else if (mCheatsPage && index == modsCheatsIndex()) {
+            play(Sound::Select);
+            refreshCheatsLabels();
+            mPhase = Phase::Cheats;
             mFocus = 0;
             mRepeatDir = 0;
         } else if (index >= 0 && index < mModCount) {
@@ -1056,6 +1141,8 @@ void Menu::back() {
         activate(3);
     } else if (mPhase == Phase::Camera) {
         activate(5);
+    } else if (mPhase == Phase::Cheats) {
+        activate(2);
     } else if (mPhase == Phase::Graphics) {
         activate(kGraphicsValues);
     } else {

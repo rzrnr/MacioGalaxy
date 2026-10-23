@@ -1273,6 +1273,71 @@ void testNineItemModsPage() {
     check(menu.mods()[4].on && menu.takeModToggles() == 16u, "the fifth mod toggles");
 }
 
+// Mods -> Cheats (native/MODS.md): the 1-Ups of the file in play and Keep 1-Ups when
+// loading; with five mods and a Mod folder entry the Mods page has ten items.
+void testCheatsPage() {
+    HM::Menu menu = newMenu();
+    HM::ModsEntry entries[5];
+    for (int i = 0; i < 5; i++) {
+        std::snprintf(entries[i].label, sizeof(entries[i].label), "Mod %d", i + 1);
+    }
+    menu.setMods(entries, 5);
+    HM::FolderModEntry folder[1];
+    std::strcpy(folder[0].label, "A folder mod");
+    menu.setFolderMods(folder, 1);
+    HM::CheatOptions options;
+    options.lives = 7;
+    menu.setCheats(options);
+    openToList(menu);
+    menu.update(press(Down));
+    menu.update(press(Down));
+    menu.update(press(A));
+    const HM::View mods = menu.view();
+    bool apart = true;
+    for (int i = 0; i + 1 < mods.itemCount; i++) {
+        apart = apart && mods.items[i].rect.y1 <= mods.items[i + 1].rect.y0;
+    }
+    check(mods.itemCount == 10 && std::strcmp(mods.items[7].label, "Mod folder...") == 0 &&
+              std::strcmp(mods.items[8].label, "Cheats...") == 0 && std::strcmp(mods.items[9].label, "Back") == 0,
+          "Cheats sits between the Mod folder and Back");
+    check(mods.panel.y0 >= -1.0f && mods.panel.y1 <= 1.0f && mods.items[9].rect.y1 < mods.panel.y1 && apart &&
+              mods.messageY < mods.items[0].rect.y0,
+          "ten items fit inside the panel and the image without overlapping");
+    for (int i = 0; i < 8; i++) menu.update(press(Down));
+    menu.update(press(A));
+    check(menu.phase() == HM::Phase::Cheats && menu.focus() == 0, "Cheats opens");
+    HM::View view = menu.view();
+    check(std::strcmp(view.title, "Cheats") == 0 && view.itemCount == 3 && std::strcmp(view.items[0].label, "1-Ups: 7") == 0 &&
+              std::strcmp(view.items[1].label, "Keep 1-Ups when loading: On") == 0 && std::strcmp(view.items[2].label, "Back") == 0,
+          "the Cheats page shows the 1-Ups and Keep 1-Ups");
+    HM::CheatOptions changed;
+    check(!menu.takeCheatsChange(&changed), "no change yet");
+    menu.update(press(HM::Button::Right));
+    check(menu.takeCheatsChange(&changed) && changed.lives == 8 && !menu.takeCheatsChange(&changed),
+          "Right adds a 1-Up, reported once");
+    menu.update(press(A));
+    check(menu.cheats().lives == 9 && std::strcmp(menu.view().items[0].label, "1-Ups: 9") == 0, "A adds a 1-Up too");
+    for (int i = 0; i < 9; i++) menu.update(press(HM::Button::Left));
+    check(menu.cheats().lives == 99, "Left wraps 1 -> 99");
+    menu.update(press(HM::Button::Right));
+    check(menu.cheats().lives == 1, "Right wraps 99 -> 1");
+    menu.update(press(Down));
+    menu.update(press(A));
+    check(menu.takeCheatsChange(&changed) && !changed.keepLives && changed.lives == 1 &&
+              std::strcmp(menu.view().items[1].label, "Keep 1-Ups when loading: Off") == 0,
+          "Keep 1-Ups toggles");
+    menu.update(press(Plus | B));
+    check(menu.phase() == HM::Phase::Mods && menu.focus() == 8, "Escape returns to the Cheats entry");
+
+    // No file in play (title screen): the count is not shown and does not change.
+    HM::CheatOptions none;
+    menu.setCheats(none);
+    menu.update(press(A));
+    menu.update(press(HM::Button::Right));
+    check(std::strcmp(menu.view().items[0].label, "1-Ups: in a galaxy only") == 0 && !menu.takeCheatsChange(&changed),
+          "without a file in play the 1-Ups stay unset");
+}
+
 void testCameraPage() {
     HM::Menu menu = newMenu();
     HM::ModsEntry entries[3];
@@ -1551,6 +1616,7 @@ int main() {
     testProgressPage();
     testLevelSelect();
     testCameraPage();
+    testCheatsPage();
     testGraphicsPage();
     testVolumeSlider();
     testBridgeInput();

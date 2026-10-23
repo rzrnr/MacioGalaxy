@@ -52,6 +52,7 @@ The branch `guglis-edits` is the official `main` plus three kinds of edits, kept
 | Edit | What it does | Upstream |
 | --- | --- | --- |
 | FineFur | Mod (F1 → Mods): finer fur on the Honey Queen and the bees at high resolutions | not yet proposed |
+| Cheats | F1 → Mods → Cheats: set the 1-Ups (1 to 99); with Keep 1-Ups when loading (on), a loaded file keeps its saved count instead of starting with 4 | not proposed |
 | Custom galaxies | Disc-file mods can add whole galaxies: a miniature in an observatory dome, names and dialogue from a `messages.txt`, new objects with their own logic; their progress is kept apart from the save file. Example: `native/tools/make_example_galaxy.py`; a planet modelled in Blender, with an opening flight, a small challenge and its own star counted apart: `native/mods/GuglisPlanet/build.py`. Docs in `native/CUSTOM_GALAXY.md` | not yet proposed |
 | Theme colour | The mods' own things are hazelnut brown: the stars of mods' galaxies, their counter under the star counter, and a Launch Star `SuperSpinDriverHazel` with a hazelnut flight path; the game's own colours stay (`native/mods/theme.py`) | not yet proposed |
 | Observatory sky island | Mod: a floating island east of the Luma garden, modelled in Blender (`native/mods/Sternenschiff`), with a Toad, Star Bits and hazelnut Launch Stars there and back; the observatory edited in Whitehole through MCP | not yet proposed |

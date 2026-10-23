@@ -58,6 +58,7 @@ enum class Phase : std::uint8_t {
     Progress,  // My Progress: the personal clear record, one galaxy at a time (native/PROGRESS.md)
     ModFolder, // disc-file mods found in the mods folder: toggles, paging, Back (native/MODS.md)
     Graphics,  // frame rate, render resolution, upscaler, sharpening, FXAA, stats (native/GRAPHICS.md)
+    Cheats,    // 1-Ups and whether loading keeps them (native/MODS.md)
     Closing,   // fade out before reporting Resume
     BlackOut,  // fade to black before reporting Restart or Quit
     Finished,  // selection() reports the result
@@ -124,7 +125,7 @@ struct Rect {
     bool contains(float x, float y) const { return x >= x0 && x < x1 && y >= y0 && y < y1; }
 };
 
-constexpr int kMaxItems = 9;
+constexpr int kMaxItems = 10;
 constexpr int kMaxControls = 20;
 constexpr int kMaxMods = 5;
 constexpr int kMaxFolderMods = 64;   // detected disc-file mods (native/MODS.md)
@@ -137,6 +138,14 @@ struct CameraOptions {
     bool invertX = false;
     bool invertY = false;
     bool photo = false;  // photo mode (P), independent of the orbit camera
+};
+
+// The Cheats page's options (Mods -> Cheats). 1-Ups as the game allows them.
+constexpr int kMinCheatLives = 1;
+constexpr int kMaxCheatLives = 99;
+struct CheatOptions {
+    int lives = -1;          // 1-Ups of the file in play, 1..99; -1: no file in play
+    bool keepLives = true;   // a loaded file keeps its saved 1-Ups
 };
 
 // The Graphics page's options (petari/graphics.hpp, as plain values).
@@ -243,6 +252,11 @@ public:
     void setCamera(const CameraOptions& options);
     bool takeCameraChange(CameraOptions* options);
     const CameraOptions& camera() const { return mCamera; }
+    // The Cheats page. Calling this adds a "Cheats..." entry to the Mods page,
+    // before Back; changes are reported once (true) and copied to *options.
+    void setCheats(const CheatOptions& options);
+    bool takeCheatsChange(CheatOptions* options);
+    const CheatOptions& cheats() const { return mCheats; }
     // The Volume slider (0..100 in steps of 5). Left/Right step it, a click or
     // drag on it sets it; changes are reported once (true) and copied to
     // *percent. The caller applies and saves them.
@@ -323,7 +337,8 @@ private:
     void changeProgressGalaxy(int delta);
     int folderPages() const { return (mFolderCount + kFolderPageSize - 1) / kFolderPageSize; }
     int folderShown() const { return std::min(kFolderPageSize, mFolderCount - mFolderPageIndex * kFolderPageSize); }
-    int modsBackIndex() const { return mModCount + (mFolderPage ? 3 : 2); }
+    int modsCheatsIndex() const { return mModCount + (mFolderPage ? 3 : 2); }
+    int modsBackIndex() const { return modsCheatsIndex() + (mCheatsPage ? 1 : 0); }
     void refreshFolderLabels();
     int mLevelGalaxy = 0;   // index into LaunchStage::galaxies
     int mLevelMission = 1;
@@ -334,6 +349,12 @@ private:
     CameraOptions mCamera;
     bool mCameraChanged = false;
     char mCameraLabels[5][48] = {};
+    CheatOptions mCheats;
+    bool mCheatsPage = false;
+    bool mCheatsChanged = false;
+    char mCheatsLabels[2][48] = {};
+    void refreshCheatsLabels();
+    void changeCheatsValue(int item, int delta);
     void refreshCameraLabels();
     void changeCameraValue(int item, int delta);
     void changeLevelValue(int item, int delta);
