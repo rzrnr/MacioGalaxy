@@ -9,11 +9,12 @@ object palette (shelf.py) and the viewport's HUD (hud.py).
   fields in groups (arguments with what they mean and a menu of their values, switches, links with
   the message's text and a path chooser, the rest).
 """
+import json
 import sys
 
 import bpy
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatVectorProperty, IntProperty,
-                       PointerProperty, StringProperty)
+                       IntVectorProperty, PointerProperty, StringProperty)
 
 from . import scene_io
 from .catalog import KIND_LABEL
@@ -458,12 +459,18 @@ class MGE_OT_thumbnails(bpy.types.Operator):
 # --- the selected object ---------------------------------------------------------------------
 
 
+def _game_transform(obj):
+    """{pos, rot, scale} in game units; rot as the zone stores it while the object is turned as then."""
+    matrix = scene_io._zone_local(obj)
+    pos, rot, scale = game_from_basis(matrix)
+    return {"pos": pos, "rot": scene_io.stored_dir(obj, matrix) or rot, "scale": scale}
+
+
 def _get_transform(part):
     def get(obj):
         if not obj.get("smg_kind") or obj.get("smg_kind") == "path":
             return (0.0, 0.0, 0.0)
-        pos, rot, scale = game_from_basis(scene_io._zone_local(obj))
-        return {"pos": pos, "rot": rot, "scale": scale}[part]
+        return _game_transform(obj)[part]
     return get
 
 
@@ -471,10 +478,12 @@ def _set_transform(part):
     def set_(obj, value):
         if not obj.get("smg_kind") or obj.get("smg_kind") == "path":
             return
-        pos, rot, scale = game_from_basis(scene_io._zone_local(obj))
-        values = {"pos": pos, "rot": rot, "scale": scale}
+        values = _game_transform(obj)
         values[part] = list(value)
         scene_io.set_zone_local(obj, basis_from_game(values["pos"], values["rot"], values["scale"]))
+        # The typed angles are what the zone gets (one axis changed: the other two stay as they were).
+        scene_io.remember_dir(obj, values["rot"])
+        mark_dirty(bpy.context.scene)
     return set_
 
 
@@ -506,12 +515,7 @@ class MGE_OT_set_layer(bpy.types.Operator):
             for coll in list(obj.users_collection):
                 coll.objects.unlink(obj)
             target.objects.link(obj)
-            zone = next((z for z in context.scene.mge_zones if z.name == obj["smg_zone"]), None)
-            if zone is not None and self.layer not in {layer.name for layer in zone.layers}:
-                entry = zone.layers.add()
-                entry.name = self.layer
-                entry.in_scenario = False
-                entry["visible"] = True
+            _ensure_layer(context.scene, obj["smg_zone"], self.layer)
             moved += 1
         apply_visibility(context.scene)
         zone = next((z for z in context.scene.mge_zones if z.name == context.active_object.get("smg_zone")), None)
@@ -520,6 +524,71 @@ class MGE_OT_set_layer(bpy.types.Operator):
         hint = "" if layer is None or layer.in_scenario else f"; {layer_label(self.layer)} kommt im gewählten Szenario nicht vor"
         self.report({"INFO"}, f"{moved} Objekt(e) nach {layer_label(self.layer)}{hint}")
         return {"FINISHED"}
+
+
+def _zones_to_move_to(self, context):
+    zones = tuple(z.name for z in context.scene.mge_zones)
+    return _kept(("move", zones), lambda: [(z, z, "") for z in zones])
+
+
+class MGE_OT_move_zone(bpy.types.Operator):
+    bl_idname = "mge.move_zone"
+    bl_label = "Zone"
+    bl_description = ("Die gewählten Objekte und Pfade in eine andere Zone legen: sie bleiben, wo sie in der Galaxie "
+                      "stehen, und werden dort neue Zeilen (in derselben Ebene; Pfade bekommen eine freie ID)")
+    bl_options = {"REGISTER", "UNDO"}
+    zone: EnumProperty(items=_zones_to_move_to)
+
+    def execute(self, context):
+        from mathutils import Matrix
+        core = editor()
+        root = galaxy_root(context.scene)
+        parent = core._zone_parent(context, self.zone)
+        moved = skipped = 0
+        for obj in context.selected_objects or [context.active_object]:
+            kind = obj.get("smg_kind")
+            if not kind or kind == "stageobjinfo" or obj.get("smg_zone") == self.zone:
+                continue
+            if obj.parent is not None and obj.parent.get("smg_kind") != "stageobjinfo":
+                skipped += 1  # parented to another object: it moves with that one
+                continue
+            world = obj.matrix_world.copy()
+            before = scene_io._zone_local(obj).decompose()[1]
+            rot = scene_io.stored_dir(obj)
+            if kind == "path":
+                target = scene_io._collection(scene_io.paths_collection_name(self.zone),
+                                              scene_io._collection(self.zone, root))
+                obj[scene_io.PREFIX + "l_id"] = -1  # a free ID in the new zone, when saving
+            else:
+                layer = scene_io._layer_of(obj)
+                target = scene_io.layer_collection(root, self.zone, layer)
+                _ensure_layer(context.scene, self.zone, layer)
+            for coll in list(obj.users_collection):
+                coll.objects.unlink(obj)
+            target.objects.link(obj)
+            obj.parent = parent
+            obj.matrix_parent_inverse = Matrix.Identity(4)
+            obj.matrix_world = world
+            obj["smg_zone"], obj["smg_row"] = self.zone, -1  # a new row of the new zone's table
+            obj.pop("smg_dir", None)
+            if rot is not None and before.rotation_difference(scene_io._zone_local(obj).decompose()[1]).angle < 1e-5:
+                scene_io.remember_dir(obj, rot)  # both zones turned alike: the same angles
+            moved += 1
+        mark_dirty(context.scene)
+        hint = core.ui.scenario_hint(context.scene, self.zone, "common")
+        extra = f"; {skipped} an andere Objekte gehängt, nicht verschoben" if skipped else ""
+        self.report({"WARNING"} if hint or skipped else {"INFO"}, f"{moved} nach {self.zone}{extra}{hint}")
+        return {"FINISHED"}
+
+
+def _ensure_layer(scene, zone_name, layer_name):
+    """The zone's layer in the sidebar's list (a layer the zone did not have yet: shown, not in the scenario)."""
+    zone = next((z for z in scene.mge_zones if z.name == zone_name), None)
+    if zone is not None and layer_name not in {layer.name for layer in zone.layers}:
+        entry = zone.layers.add()
+        entry.name = layer_name
+        entry.in_scenario = False
+        entry["visible"] = True
 
 
 class MGE_OT_set_field(bpy.types.Operator):
@@ -531,14 +600,49 @@ class MGE_OT_set_field(bpy.types.Operator):
 
     def execute(self, context):
         obj = context.active_object
-        key = scene_io.PREFIX + self.field
-        old = obj.get(key)
-        try:
-            obj[key] = type(old)(self.value) if old is not None else int(self.value)
-        except ValueError:
-            obj[key] = self.value
+        for target in [obj] + peers(context, obj, self.field):
+            key = scene_io.PREFIX + self.field
+            old = target.get(key)
+            try:
+                target[key] = type(old)(self.value) if old is not None else int(self.value)
+            except ValueError:
+                target[key] = self.value
         mark_dirty(context.scene)
         return {"FINISHED"}
+
+
+class MGE_OT_copy_field(bpy.types.Operator):
+    bl_idname = "mge.copy_field"
+    bl_label = "Auf alle Gewählten"
+    bl_description = ("Diesen Wert in alle gewählten Objekte übernehmen, die das Feld haben (Argumente nur bei "
+                      "Objekten gleichen Namens: ihre Bedeutung hängt vom Objekt ab)")
+    bl_options = {"REGISTER", "UNDO"}
+    field: StringProperty()
+
+    def execute(self, context):
+        obj = context.active_object
+        key = scene_io.PREFIX + self.field
+        targets = peers(context, obj, self.field)
+        for target in targets:
+            target[key] = obj[key]
+        mark_dirty(context.scene)
+        self.report({"INFO"}, f"{self.field} = {obj[key]} in {len(targets) + 1} Objekten")
+        return {"FINISHED"}
+
+
+ARG_PREFIXES = ("Obj_arg", "path_arg")
+OWN_FIELDS = {"name", "l_id"}  # never copied: what an object is, and its ID
+
+
+def peers(context, obj, field):
+    """The other selected objects a field's change goes to: those with the field (an argument only on
+    objects of the same name)."""
+    if context is None or field in OWN_FIELDS:
+        return []
+    key = scene_io.PREFIX + field
+    name = obj.get(scene_io.PREFIX + "name")
+    return [o for o in context.selected_objects if o is not obj and o.get("smg_kind") and key in o
+            and (not field.startswith(ARG_PREFIXES) or o.get(scene_io.PREFIX + "name") == name)]
 
 
 class MGE_OT_pick_value(bpy.types.Operator):
@@ -597,7 +701,12 @@ def _field_row(layout, obj, field, cat, name, context=None):
     info = cat.parameter(name, field)
     col = layout.column(align=True)
     row = col.row(align=True)
-    row.prop(obj, f'["{key}"]', text=info[0] if info else field)
+    others = peers(context, obj, field)
+    mixed = any(o.get(key) != obj.get(key) for o in others)
+    label = info[0] if info else field
+    row.prop(obj, f'["{key}"]', text=f"{label}  (gemischt)" if mixed else label)
+    if others:
+        row.operator(MGE_OT_copy_field.bl_idname, text="", icon="COPYDOWN", depress=not mixed).field = field
     if cat.parameter_values(name, field):
         row.operator(MGE_OT_pick_value.bl_idname, text="", icon="DOWNARROW_HLT").field = field
     if field == "CommonPath_ID":
@@ -668,7 +777,9 @@ class MGE_PT_props(_ObjectPanel, bpy.types.Panel):
         col.label(text=entry["label"] if entry else name, icon=KIND_ICON.get(kind, "DOT"))
         col.label(text=f"{KIND_LABEL.get(kind, kind)} · {name}")
         ident = obj.get(scene_io.PREFIX + "l_id")
-        col.label(text=f"Zone {obj.get('smg_zone')}" + (f" · ID {ident}" if isinstance(ident, int) and ident >= 0 else ""))
+        col.label(text=f"ID {ident}" if isinstance(ident, int) and ident >= 0 else "ID beim Speichern")
+        if kind != "stageobjinfo":
+            col.operator_menu_enum(MGE_OT_move_zone.bl_idname, "zone", text=f"Zone {obj.get('smg_zone')}", icon="WORLD")
         if kind not in ("path", "stageobjinfo"):
             col.operator_menu_enum(MGE_OT_set_layer.bl_idname, "layer", text=layer_label(scene_io._layer_of(obj)),
                                    icon="RENDERLAYERS")
@@ -676,12 +787,19 @@ class MGE_PT_props(_ObjectPanel, bpy.types.Panel):
             sub = layout.column()
             sub.enabled = False
             _wrapped(sub, context, entry["notes"])
+        others = [o for o in context.selected_objects if o is not obj and o.get("smg_kind")]
+        if others:
+            box = layout.box()
+            _wrapped(box, context, f"{len(others) + 1} gewählt: Zone und Ebene gelten für alle. Bei einem Feld "
+                                   "übernimmt ↓ den Wert in alle, die es haben (Argumente: gleiche Objekte); "
+                                   "„gemischt“: verschiedene Werte.", 6)
         layout.use_property_split = True
         layout.prop(obj, f'["{scene_io.PREFIX}name"]', text="Interner Name")
         if kind == "path" and obj.data.splines:
             spline = obj.data.splines[0]
-            layout.label(text=f"{len(spline.bezier_points)} Punkte · bearbeiten mit Tab (Griffe = Kontrollpunkte)",
-                         icon="INFO")
+            hint = layout.column()
+            hint.enabled = False
+            _wrapped(hint, context, f"{len(spline.bezier_points)} Punkte · bearbeiten mit Tab (Griffe = Kontrollpunkte)", 2)
             layout.prop(spline, "use_cyclic_u", text="Geschlossen")
 
 
@@ -758,6 +876,69 @@ class MGE_PT_props_links(_ObjectPanel, bpy.types.Panel):
         for field in LINK_FIELDS:
             if field in _fields(obj):
                 _field_row(self.layout, obj, field, cat, name, context)
+
+
+def _point(obj, scene):
+    """(points, index) of the path's chosen point (scene.mge_point, from 1), clamped."""
+    spline = obj.data.splines[0] if obj.data.splines else None
+    points = (spline.bezier_points if spline.type == "BEZIER" else spline.points) if spline else []
+    return points, min(max(scene.mge_point, 1), max(len(points), 1)) - 1
+
+
+def _get_point_args(scene):
+    obj = bpy.context.active_object
+    if obj is None or obj.get("smg_kind") != "path" or obj.mode != "OBJECT":
+        return [-1] * 8
+    points, index = _point(obj, scene)
+    entries = scene_io.point_entries(obj)[1]
+    known = entries[index] if index < len(entries) else None
+    return [int(known["args"].get(f"point_arg{k}", -1)) if known else -1 for k in range(8)]
+
+
+def _set_point_args(scene, value):
+    obj = bpy.context.active_object
+    if obj is None or obj.get("smg_kind") != "path" or obj.mode != "OBJECT":
+        return
+    points, index = _point(obj, scene)
+    if not points:
+        return
+    stored, entries = scene_io.point_entries(obj)
+    known = entries[index]
+    if known is None:  # a point the path did not have when read: a record with its place and the args
+        known = {"args": {}, "curve": scene_io.point_curve(points[index])}
+        stored.append(known)
+    known["args"] = {f"point_arg{k}": int(v) for k, v in enumerate(value)}
+    obj["smg_points"] = json.dumps(stored)
+    mark_dirty(scene)
+
+
+class MGE_PT_props_points(_ObjectPanel, bpy.types.Panel):
+    bl_label = "Punkte"
+    bl_parent_id = "MGE_PT_props"
+
+    @classmethod
+    def poll(cls, context):
+        return _ObjectPanel.poll(context) and context.active_object.get("smg_kind") == "path"
+
+    def draw(self, context):
+        obj, layout, scene = context.active_object, self.layout, context.scene
+        if obj.mode != "OBJECT":
+            hint = layout.column()
+            hint.enabled = False
+            _wrapped(hint, context, "Die Werte der Punkte im Objektmodus (Tab) bearbeiten", 2)
+            return
+        points, index = _point(obj, scene)
+        row = layout.row(align=True)
+        row.prop(scene, "mge_point", text=f"Punkt (von {len(points)})")
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        col = layout.column(align=True)
+        for k in range(8):
+            col.prop(scene, "mge_point_args", index=k, text=f"point_arg{k}")
+        hint = layout.column()
+        hint.enabled = False
+        _wrapped(hint, context, "Der gewählte Punkt ist im Viewport markiert. Was die Werte bedeuten, hängt vom "
+                                "Objekt ab, das dem Pfad folgt (oft Tempo oder Wartezeit; -1 = Standard).", 3)
 
 
 class MGE_PT_props_more(_ObjectPanel, bpy.types.Panel):
@@ -975,10 +1156,11 @@ def swatch_icon(group):
 
 CLASSES = (MGE_Layer, MGE_Zone, MGE_CatalogItem, MGE_UL_zones, MGE_UL_layers, MGE_UL_objects, MGE_UL_catalog,
            MGE_OT_zones_all, MGE_OT_zone_solo, MGE_OT_frame, MGE_OT_place, MGE_OT_build_assets, MGE_OT_thumbnails,
-           MGE_OT_set_layer, MGE_OT_set_field, MGE_OT_pick_value, MGE_OT_pick_path, MGE_OT_fill_catalog,
+           MGE_OT_set_layer, MGE_OT_move_zone, MGE_OT_set_field, MGE_OT_copy_field, MGE_OT_pick_value, MGE_OT_pick_path,
+           MGE_OT_fill_catalog,
            MGE_PT_galaxy, MGE_PT_scenarios, MGE_PT_zones, MGE_PT_play, MGE_PT_show, MGE_PT_objects,
            MGE_PT_props, MGE_PT_props_place, MGE_PT_props_args, MGE_PT_props_switches, MGE_PT_props_links,
-           MGE_PT_props_more, MGE_PT_props_play)
+           MGE_PT_props_points, MGE_PT_props_more, MGE_PT_props_play)
 _owner = object()
 
 
@@ -998,6 +1180,8 @@ def register():
     scene.mge_show_all_args = BoolProperty(default=False)
     scene.mge_object_search = StringProperty(name="Suchen", description="Name im Spiel oder interner Name",
                                              options={"TEXTEDIT_UPDATE"})
+    scene.mge_point = IntProperty(name="Punkt", default=1, min=1, description="Der Pfadpunkt, dessen Werte unten stehen")
+    scene.mge_point_args = IntVectorProperty(name="point_arg", size=8, get=_get_point_args, set=_set_point_args)
     wm = bpy.types.WindowManager
     wm.mge_catalog = CollectionProperty(type=MGE_CatalogItem)
     wm.mge_catalog_index = IntProperty(update=_catalog_chosen)
@@ -1022,7 +1206,7 @@ def unregister():
     for name in ("mge_catalog", "mge_catalog_index", "mge_catalog_filter"):
         delattr(bpy.types.WindowManager, name)
     for name in ["mge_zones", "mge_zone_index", "mge_object_index", "mge_browse_group", "mge_browse_zone",
-                 "mge_show_all_args", "mge_object_search"] + [f"mge_show_{key}" for key, _, _ in GROUP_LABELS]:
+                 "mge_show_all_args", "mge_object_search", "mge_point", "mge_point_args"] + [f"mge_show_{key}" for key, _, _ in GROUP_LABELS]:
         delattr(bpy.types.Scene, name)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

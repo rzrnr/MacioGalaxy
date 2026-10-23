@@ -123,6 +123,8 @@ def draw():
         blf.size(0, 11 * scale)
         w = blf.dimensions(0, "● ungespeichert")[0]
         _text(x + width - w - 12 * scale, y + height - 22 * scale, "● ungespeichert", 11, HAZEL, scale)
+    if active is not None and active.get("smg_kind") == "path" and active.mode == "OBJECT":
+        _point_marker(context, active, scale)
     # The legend of the shown kinds' colours.
     shown = [(label, kind) for key, label, kind in LEGEND if getattr(scene, f"mge_show_{key}", False)]
     lx, ly = x, _bottom_inset(area) + 14 * scale
@@ -131,6 +133,32 @@ def draw():
         _rect(lx, ly + 2 * scale, 10 * scale, 10 * scale, colour)
         lx += 16 * scale + _text(lx + 15 * scale, ly + 2 * scale, label, 11, DIM, scale) + 10 * scale
     gpu.state.blend_set("NONE")
+
+
+def _point_marker(context, path, scale):
+    """A ring and the number at the path point the Punkte panel edits (scene.mge_point)."""
+    import math
+
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+    spline = path.data.splines[0] if path.data.splines else None
+    points = (spline.bezier_points if spline.type == "BEZIER" else spline.points) if spline else []
+    if not points:
+        return
+    index = min(max(context.scene.mge_point, 1), len(points)) - 1
+    co = points[index].co if spline.type == "BEZIER" else points[index].co.xyz
+    spot = location_3d_to_region_2d(context.region, context.region_data, path.matrix_world @ co)
+    if spot is None:
+        return
+    shader = gpu.shader.from_builtin("POLYLINE_UNIFORM_COLOR")
+    radius = 11 * scale
+    ring = [(spot.x + radius * math.cos(a / 16 * math.tau), spot.y + radius * math.sin(a / 16 * math.tau), 0.0)
+            for a in range(17)]
+    batch = batch_for_shader(shader, "LINE_STRIP", {"pos": ring})
+    shader.uniform_float("viewportSize", (context.region.width, context.region.height))
+    shader.uniform_float("lineWidth", 2.5 * scale)
+    shader.uniform_float("color", HAZEL)
+    batch.draw(shader)
+    _text(spot.x + 14 * scale, spot.y + 8 * scale, f"Punkt {index + 1}", 12, TEXT, scale)
 
 
 class MGE_MT_pie(bpy.types.Menu):

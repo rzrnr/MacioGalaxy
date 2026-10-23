@@ -13,11 +13,12 @@ Every placed row is an object with custom properties:
   smg.<field> every other field (name, l_id, Obj_arg0.., switches, ...)
 The layer is the layer collection the object is in. Paths are Bézier curves (pnt0 the point, pnt1 the
 incoming and pnt2 the outgoing control point, all absolute in the zone); their fields as smg.<field>,
-the points' point_arg0..7 in smg_point_args.
+each point's record (its game values, point_arg0..7, its curve coordinates) in smg_points.
 """
 import json
 
 import bpy
+from mathutils import Vector
 
 from . import shapes
 from .catalog import KIND_GROUP
@@ -171,6 +172,8 @@ def new_object(name, kind, zone, values, matrix, collection, catalog, parent=Non
     obj.rotation_mode = "QUATERNION"
     obj.matrix_basis = matrix
     obj["smg_basis"] = flat(obj.matrix_basis)  # as stored, for the unchanged test
+    if "dir_x" in values:
+        remember_dir(obj, [values[f"dir_{a}"] for a in "xyz"])
     obj.color = COLORS.get(kind, (0.7, 0.7, 0.7, 1))
     if kind in WIRE:
         obj.display_type = "WIRE"
@@ -300,6 +303,22 @@ def apply_visibility(root, zones: dict, layers: dict, groups: set):
             obj.hide_set(not visible)
 
 
+def remember_dir(obj, rot):
+    """The game's dir values (degrees) for the object's rotation now: shown and written as they are while
+    the rotation stays (its matrix gives back another, equal Euler triple: -56/-180/-7 as 124/0/173)."""
+    obj["smg_dir"] = [float(a) for a in rot]
+    obj["smg_dir_basis"] = flat(_zone_local(obj))
+
+
+def stored_dir(obj, matrix=None):
+    """The remembered dir values if the object is still turned as then (moved or scaled is fine), else None."""
+    if "smg_dir" not in obj or "smg_dir_basis" not in obj:
+        return None
+    then = unflat(obj["smg_dir_basis"]).decompose()[1]
+    now = (matrix if matrix is not None else _zone_local(obj)).decompose()[1]
+    return [float(a) for a in obj["smg_dir"]] if then.rotation_difference(now).angle < 1e-5 else None
+
+
 def set_zone_local(obj, matrix):
     """Places the object so that its matrix in its zone is matrix (the inverse of _zone_local)."""
     if obj.parent is not None and obj.parent.get("smg_kind") == "stageobjinfo":
@@ -375,6 +394,7 @@ def collect(scene, galaxy):
         original = unflat(obj["smg_basis"]) if "smg_basis" in obj else None
         if row < 0 or original is None or not same_matrix(original, matrix):
             pos, rot, scale = game_from_basis(matrix)
+            rot = stored_dir(obj, matrix) or rot
             for i, a in enumerate("xyz"):
                 values[f"pos_{a}"], values[f"dir_{a}"], values[f"scale_{a}"] = pos[i], rot[i], scale[i]
         tables.setdefault(table, []).append(Record(zone, table, row, values, obj))
@@ -403,6 +423,35 @@ def _same_row(galaxy, originals, zone, table, row, values):
     return old.get("name") == values.get("name") or old.get("l_id") == values.get("l_id")
 
 
+def point_entries(obj):
+    """(stored, entries): the path's stored point records (args, game, curve; smg_points) and, per point
+    of its curve, the record that is its own, or None for a new point.
+
+    A point keeps its record by its place (co), so inserting or deleting points does not shift its
+    point_arg values onto other points; a moved point keeps it by index while the count of the records
+    as read or saved (those with game values) is unchanged."""
+    stored = json.loads(obj.get("smg_points", "[]"))
+    spline = obj.data.splines[0] if obj.data.splines else None
+    if spline is None:
+        return stored, []
+    items = spline.bezier_points if spline.type == "BEZIER" else spline.points
+    by_place = {tuple(k["curve"][:3]): k for k in stored if k.get("curve")}
+    read = [k for k in stored if k.get("game")]
+    entries = []
+    for i, p in enumerate(items):
+        place = tuple(round(c, 7) for c in (p.co if spline.type == "BEZIER" else p.co.xyz))
+        entries.append(by_place.get(place) or (read[i] if len(items) == len(read) else None))
+    return stored, entries
+
+
+def point_curve(point):
+    """A curve point's co and handles as stored in smg_points (rounded)."""
+    co = point.co if hasattr(point, "handle_left") else point.co.xyz
+    left = point.handle_left if hasattr(point, "handle_left") else co
+    right = point.handle_right if hasattr(point, "handle_right") else co
+    return [round(c, 7) for vec in (co, left, right) for c in vec]
+
+
 def _path_from(obj, values, matrix):
     if len(obj.data.splines) > 1:
         raise RuntimeError(f"{obj.name} hat {len(obj.data.splines)} Teile; im Bearbeitungsmodus mit P → "
@@ -410,32 +459,21 @@ def _path_from(obj, values, matrix):
     spline = obj.data.splines[0] if obj.data.splines else None
     if spline is None or len(spline.bezier_points if spline.type == "BEZIER" else spline.points) < 2:
         raise RuntimeError(f"{obj.name}: ein Pfad braucht mindestens zwei Punkte")
-    stored = json.loads(obj.get("smg_points", "[]"))
-    # A point keeps its point_arg values by its place (co), so inserting or deleting points does not
-    # shift them onto other points; a moved point keeps them by index while the count is unchanged.
-    by_place = {tuple(k["curve"][:3]): k for k in stored if k.get("curve")}
-    count = len(spline.bezier_points if spline.type == "BEZIER" else spline.points)
+    _, entries = point_entries(obj)
     unmoved = "smg_basis" in obj and same_matrix(unflat(obj["smg_basis"]), matrix)
     points = []
-    if spline is not None:
-        bezier = spline.bezier_points if spline.type == "BEZIER" else None
-        items = bezier if bezier is not None else spline.points
-        for i, p in enumerate(items):
-            co = p.co if bezier is not None else p.co.xyz
-            left = p.handle_left if bezier is not None else co
-            right = p.handle_right if bezier is not None else co
-            curve = [round(c, 7) for vec in (co, left, right) for c in vec]
-            known = by_place.get(tuple(curve[:3])) or (stored[i] if count == len(stored) else None)
-            if known and unmoved and known.get("curve") == curve:
-                point = dict(known["game"])
-            else:
-                point = {}
-                for n, vec in (("0", co), ("1", left), ("2", right)):
-                    g = to_game(matrix @ vec)
-                    point.update({f"pnt{n}_x": round(g.x, 3), f"pnt{n}_y": round(g.y, 3), f"pnt{n}_z": round(g.z, 3)})
-            point.update(known["args"] if known else {f"point_arg{k}": -1 for k in range(8)})
-            points.append(PathPoint(point))
-        values["closed"] = "CLOSE" if spline.use_cyclic_u else "OPEN"
+    for p, known in zip(spline.bezier_points if spline.type == "BEZIER" else spline.points, entries):
+        curve = point_curve(p)
+        if known and unmoved and known.get("curve") == curve and known.get("game"):
+            point = dict(known["game"])
+        else:
+            point = {}
+            for n in range(3):
+                g = to_game(matrix @ Vector(curve[n * 3:n * 3 + 3]))
+                point.update({f"pnt{n}_x": round(g.x, 3), f"pnt{n}_y": round(g.y, 3), f"pnt{n}_z": round(g.z, 3)})
+        point.update(known["args"] if known else {f"point_arg{k}": -1 for k in range(8)})
+        points.append(PathPoint(point))
+    values["closed"] = "CLOSE" if spline.use_cyclic_u else "OPEN"
     return Path_(obj.get("smg_zone"), obj.get("smg_row", -1), values, points, obj.get("smg_table") or None, obj)
 
 
@@ -468,6 +506,8 @@ def rebase(edits, written):
                 obj["smg_row"], obj["smg_table"] = row, table
                 if "l_id" in record.values:
                     obj[PREFIX + "l_id"] = record.values["l_id"]
+                if "dir_x" in record.values:
+                    remember_dir(obj, [record.values[f"dir_{a}"] for a in "xyz"])
                 obj["smg_basis"] = flat(_zone_local(obj))
         for row, path in enumerate(paths):
             obj = path.owner

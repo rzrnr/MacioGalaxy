@@ -33,11 +33,17 @@ and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens 
   `mods.txt`, **Speichern** = ⌘S in this workspace, **Automatisch testen (Bilder)** = the headless run
   with pictures, optionally from the Vorschau-Start, **Selbst spielen**), **Anzeigen** (the kinds drawn, with their colours as the legend;
   the sky and cameras start off), **Objektliste** (search, kind, zone; layer and ID per row).
-- **Tab Objekt**: the selected object's picture, internal name, description, ID, a layer menu (for
-  every selected object), **Lage im Spiel** (position, rotation, scale in game units, editable), and its
-  fields: **Argumente** with their meaning and a menu of the values the object database lists (unused
+- **Tab Objekt**: the selected object's picture, internal name, description, ID, a zone menu and a layer
+  menu (both for every selected object; another zone keeps the objects where they stand in the galaxy
+  and makes them new rows there, paths with a free ID), **Lage im Spiel** (position, rotation, scale in
+  game units, editable; the rotation shows the zone's own dir values while the object is turned as read,
+  and typing one angle keeps the other two), **Punkte** for a path (a point number, marked in the
+  viewport, and its point_arg0..7), and its fields: **Argumente** with their meaning and a menu of the values the object database lists (unused
   ones folded away), **Schalter**, **Verknüpfungen** (MessageId shows the message's text, CommonPath_ID
-  has a path chooser), **Weitere Felder**; at the bottom Speichern, Testen and Spielen.
+  has a path chooser), **Weitere Felder**; at the top Speichern, Testen and Spielen. With several
+  objects selected, ↓ beside a field copies its value to all selected that have it (arguments only to
+  objects of the same name), and "gemischt" marks a field whose values differ; the value menus and the
+  path chooser set all of them.
 - **The object palette**: a strip at the bottom of the 3D view (an asset shelf, `shelf.py`) with every
   placeable object, level part and gravity as a picture, in German catalogs (Objekte/Gegenstände,
   Gegner, Levelteile, ..., Schwerkraft; an older palette is rebuilt in the background). A click chooses it for the Setzen tool and
@@ -59,7 +65,8 @@ and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens 
 - Move, rotate, scale, duplicate (Shift+D) and delete as usual; a duplicated path gets its own ID, and a
   path's point_arg values stay with their points when points are added or removed. A path of several
   parts (Shift+D in edit mode) is refused on saving: P separates the parts into paths. Saving is an
-  undo step. Opening another galaxy with unsaved changes asks first.
+  undo step. Saving warns about galaxy objects moved out of the galaxy's collection (they are not
+  saved). Opening another galaxy with unsaved changes asks first.
 - **Objekt-Palette aufbauen** / **Vorschaubilder erzeugen** (menu Galaxie in the top bar) rebuild the
   palette and the pictures (models are rendered in a second, headless Blender at low priority, waiting
   while the game runs; areas, cameras and gravity are drawn as wire pictures without Blender).

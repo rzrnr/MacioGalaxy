@@ -6,6 +6,8 @@
 Opens the galaxy, saves without a change (nothing may be written: transforms read back exactly),
 then moves, adds, duplicates and deletes objects, adds gravity and a path, changes a field and a
 zone's placement, saves into the mod "EditorTest", and reads the archives back to check each edit.
+Then: a duplicated path, a coin line, rows after an undo past a save, one angle typed (the others as
+the zone stored them), a field copied to all selected, an object moved to another zone, a point_arg.
 Prints EDITOR TEST PASS or the first failure and exits non-zero.
 """
 import shutil
@@ -186,4 +188,72 @@ for obj, pos in ((first, first_pos), (second, second_pos)):
     game = editor.scene_io.to_game(editor.scene_io._zone_local(obj).translation)
     hits = [v for v in values if v["name"] == obj["smg.name"] and abs(v["pos_x"] - game.x) < 0.5 and abs(v["pos_z"] - game.z) < 0.5]
     check(len(hits) == 1, f"stale rows: {obj['smg.name']} written at its own place")
+
+# 6. The stored dir values, a field for all selected, another zone, a path point's point_arg.
+scene_io = editor.scene_io
+main_objects = [o for o in root.all_objects if o.get("smg_kind") == "objinfo" and o.get("smg_zone") == main
+                and o.get("smg_row", -1) >= 0 and o.parent is None]
+turned = next(o for o in main_objects if scene_io.stored_dir(o) and
+              max(abs(a - b) for a, b in zip(scene_io.stored_dir(o), editor.convert.game_from_basis(scene_io._zone_local(o))[1])) > 1)
+dir_before = scene_io.stored_dir(turned)
+check(list(turned.mge_game_rot) == [round(a, 2) for a in dir_before] or
+      max(abs(a - b) for a, b in zip(turned.mge_game_rot, dir_before)) < 1e-3, f"stored angles shown ({dir_before})")
+turned.mge_game_rot = (dir_before[0], dir_before[1], dir_before[2] + 10.0)
+turned_id = turned["smg.l_id"]
+nudged = next(o for o in main_objects if o is not turned and scene_io.stored_dir(o) and any(scene_io.stored_dir(o)))
+nudged_dir = scene_io.stored_dir(nudged)
+nudged.location.z += 0.5
+nudged_id = nudged["smg.l_id"]
+
+same = [o for o in main_objects if o is not turned and o is not nudged and "smg.Obj_arg0" in o and o.visible_get()]
+by_name = {}
+for o in same:
+    by_name.setdefault(o["smg.name"], []).append(o)
+group = next(g for g in by_name.values() if len(g) >= 2)
+for o in bpy.context.selected_objects:
+    o.select_set(False)
+for o in group:
+    o.select_set(True)
+bpy.context.view_layer.objects.active = group[0]
+group[0]["smg.Obj_arg0"] = 4321
+assert bpy.ops.mge.copy_field(field="Obj_arg0") == {"FINISHED"}
+check(all(o["smg.Obj_arg0"] == 4321 for o in group), f"Obj_arg0 copied to all {len(group)} selected {group[0]['smg.name']}")
+
+other_zone = next(z.name for z in scene.mge_zones if z.name != main)
+mover = next(o for o in main_objects if o not in group and o is not turned and o is not nudged)
+mover_world = mover.matrix_world.copy()
+for o in bpy.context.selected_objects:
+    o.select_set(False)
+mover.select_set(True)
+bpy.context.view_layer.objects.active = mover
+assert bpy.ops.mge.move_zone(zone=other_zone) == {"FINISHED"}
+check(mover["smg_zone"] == other_zone and (mover.matrix_world.translation - mover_world.translation).length < 1e-4,
+      f"{mover['smg.name']} moved to {other_zone}, in the same place")
+mover_local = scene_io.to_game(scene_io._zone_local(mover).translation)
+mover_name, mover_id = mover["smg.name"], mover["smg.l_id"]
+
+for o in bpy.context.selected_objects:
+    o.select_set(False)
+new_path.select_set(True)
+bpy.context.view_layer.objects.active = new_path
+scene.mge_point = 2
+scene.mge_point_args = (5, -1, 7, -1, -1, -1, -1, -1)
+check(list(scene.mge_point_args)[:3] == [5, -1, 7], "point_arg of point 2 set")
+path_id = new_path["smg.l_id"]
+
+out = editor.export_mod(Reporter(), bpy.context)
+data = GameData(user).open(main)
+zone = data.zone(main)
+values = [r.values for r in zone.records()]
+row = next(v for v in values if v.get("l_id") == turned_id and v["name"] == turned["smg.name"])
+check(abs(row["dir_x"] - dir_before[0]) < 1e-3 and abs(row["dir_y"] - dir_before[1]) < 1e-3 and
+      abs(row["dir_z"] - dir_before[2] - 10) < 1e-3, f"one angle changed, the others as stored ({row['dir_x']}, {row['dir_y']}, {row['dir_z']})")
+row = next(v for v in values if v.get("l_id") == nudged_id and v["name"] == nudged["smg.name"])
+check(all(abs(row[f"dir_{a}"] - d) < 1e-3 for a, d in zip("xyz", nudged_dir)), "a moved object keeps its stored angles")
+moved_rows = [r.values for r in data.zone(other_zone).records() if r.values["name"] == mover_name
+              and abs(r.values["pos_x"] - mover_local.x) < 0.5 and abs(r.values["pos_z"] - mover_local.z) < 0.5]
+check(len(moved_rows) == 1, f"{mover_name} written in {other_zone}")
+check(not any(v["name"] == mover_name and v.get("l_id") == mover_id for v in values), f"{mover_name} gone from {main}")
+point = next(p for p in zone.paths() if p.values.get("l_id") == path_id).points[1].values
+check(point["point_arg0"] == 5 and point["point_arg2"] == 7, "point_arg written for point 2")
 print("EDITOR TEST PASS")
