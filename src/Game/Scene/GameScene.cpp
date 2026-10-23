@@ -61,6 +61,8 @@ extern "C" void petari_os_preemption_point(void);
 #include <petari/editor/runtime_hooks.hpp>
 #include <petari/editor_settings.hpp>
 #include <petari/player_launch.hpp>
+#include <petari/cheats.hpp>
+#include "Game/System/GameDataFunction.hpp"
 // StorySequenceExecutor.cpp
 bool petariDirectStageMove(GalaxyMoveArgument* pMoveArgument, const char* pStage, s32 selected, const char* pLabel);
 #endif
@@ -99,6 +101,7 @@ GameScene::~GameScene() {
 #ifdef PETARI_NATIVE
     PetariEditor::Runtime::sceneEnded();  // before the hooks forget the scene
     PetariEditor::Hooks::sceneDestroyed();
+    PetariNative::Cheats::currentLives.store(-1);  // no file in play until the next galaxy
 #endif
     MR::destroySceneMessage();
     NPCFunction::deleteNPCData();
@@ -245,6 +248,13 @@ void GameScene::update() {
             GameSequenceFunction::requestGalaxyMove(argument);
         }
     }
+    // Cheats page (native/MODS.md): a 1-Up count set in the menu, through the
+    // game's own counter; then the count in play, for the menu to show.
+    const int requestedLives = PetariNative::Cheats::requestedLives.exchange(-1);
+    if (requestedLives >= 0) {
+        GameDataFunction::addPlayerLeft(requestedLives - GameDataFunction::getPlayerLeft());
+    }
+    PetariNative::Cheats::currentLives.store(GameDataFunction::getPlayerLeft());
 #endif
 
     bool isTimeUp = MR::isGlobalTimerEnd() && !isNerve(GET_NERVE(GameScene, GameSceneTimeUp)) && MR::isGreaterEqualStep(this, 2);

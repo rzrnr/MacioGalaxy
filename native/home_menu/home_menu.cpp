@@ -59,6 +59,7 @@ constexpr int kConfirmCancel = 1;
 constexpr int kProgressItems = 4;
 constexpr int kCameraItems = 6;
 constexpr int kLevelItems = 4;
+constexpr int kCheatsItems = 3;  // 1-Ups, Keep 1-Ups when loading, Back
 constexpr int kFolderMaxItems = kFolderPageSize + 2;  // the page's toggles, Next page, Back
 static_assert(kMaxItems >= kListCount, "View::items must hold the pause list");
 static_assert(kMaxItems >= kProgressItems && kMaxItems >= kCameraItems && kMaxItems >= kLevelItems, "View::items too small");
@@ -162,6 +163,7 @@ void Menu::update(const FrameInput& input) {
     case Phase::Camera:
     case Phase::ModFolder:
     case Phase::Progress:
+    case Phase::Cheats:
         break;
     }
 
@@ -204,6 +206,13 @@ void Menu::update(const FrameInput& input) {
         const std::uint32_t side = input.trigger & (Button::Left | Button::Right);
         if (side == Button::Left || side == Button::Right) {
             changeCameraValue(mFocus, side == Button::Left ? -1 : 1);
+            return;
+        }
+    }
+    if (mPhase == Phase::Cheats && mFocus == 0) {
+        const std::uint32_t side = input.trigger & (Button::Left | Button::Right);
+        if (side == Button::Left || side == Button::Right) {
+            changeCheatsValue(mFocus, side == Button::Left ? -1 : 1);
             return;
         }
     }
@@ -326,6 +335,52 @@ void Menu::changeCameraValue(int item, int delta) {
     mCameraChanged = true;
     refreshCameraLabels();
     play(item == 1 ? Sound::Focus : Sound::Select);
+}
+
+void Menu::setCheats(const CheatOptions& options) {
+    mCheats = options;
+    if (mCheats.lives >= 0) {
+        mCheats.lives = std::clamp(mCheats.lives, kMinCheatLives, kMaxCheatLives);
+    }
+    mCheatsPage = true;
+    mCheatsChanged = false;
+    refreshCheatsLabels();
+}
+
+bool Menu::takeCheatsChange(CheatOptions* options) {
+    if (!mCheatsChanged) {
+        return false;
+    }
+    mCheatsChanged = false;
+    *options = mCheats;
+    return true;
+}
+
+void Menu::refreshCheatsLabels() {
+    if (mCheats.lives >= 0) {
+        std::snprintf(mCheatsLabels[0], sizeof(mCheatsLabels[0]), "1-Ups: %d", mCheats.lives);
+    } else {
+        std::snprintf(mCheatsLabels[0], sizeof(mCheatsLabels[0]), "1-Ups: in a galaxy only");
+    }
+    std::snprintf(mCheatsLabels[1], sizeof(mCheatsLabels[1]), "Keep 1-Ups when loading: %s", mCheats.keepLives ? "On" : "Off");
+}
+
+void Menu::changeCheatsValue(int item, int delta) {
+    switch (item) {
+    case 0:
+        if (mCheats.lives < 0) {
+            play(Sound::Cancel);  // no file in play: nothing to change
+            return;
+        }
+        // Wraps 99 -> 1 and 1 -> 99, so any count is a few presses away.
+        mCheats.lives = (mCheats.lives - kMinCheatLives + delta + kMaxCheatLives) % kMaxCheatLives + kMinCheatLives;
+        break;
+    case 1: mCheats.keepLives = !mCheats.keepLives; break;
+    default: return;
+    }
+    mCheatsChanged = true;
+    refreshCheatsLabels();
+    play(item == 0 ? Sound::Focus : Sound::Select);
 }
 
 void Menu::setFolderMods(const FolderModEntry* entries, int count) {
@@ -501,6 +556,7 @@ void Menu::startBlackOut() {
     case Phase::Camera:
     case Phase::ModFolder:
     case Phase::Progress:
+    case Phase::Cheats:
     case Phase::Closing:
         blackOut(Selection::Restart);
         break;
@@ -551,6 +607,7 @@ View Menu::view() const {
     case Phase::Camera:
     case Phase::ModFolder:
     case Phase::Progress:
+    case Phase::Cheats:
         view.panelOpacity = 1.0f;
         break;
     case Phase::Closing:
@@ -631,6 +688,9 @@ View Menu::view() const {
         if (mFolderPage) {
             setItem(mModCount + 2, "Mod folder...");
         }
+        if (mCheatsPage) {
+            setItem(modsCheatsIndex(), "Cheats...");
+        }
         setItem(modsBackIndex(), "Back");
     } else if (mPhase == Phase::ModFolder) {
         view.title = "Mod folder";
@@ -643,6 +703,12 @@ View Menu::view() const {
             setItem(shown, "Next page");
         }
         setItem(shown + (folderPages() > 1 ? 1 : 0), "Back");
+    } else if (mPhase == Phase::Cheats) {
+        view.title = "Cheats";
+        view.message = "1-Ups go into your save when the game saves.";
+        setItem(0, mCheatsLabels[0]);
+        setItem(1, mCheatsLabels[1]);
+        setItem(2, "Back");
     } else if (mPhase == Phase::Camera) {
         view.title = "Odyssey camera";
         view.message = "Right stick or middle-drag orbits; wheel or Z/X zooms; C recentres. P: photo mode.";
@@ -675,7 +741,7 @@ View Menu::view() const {
         setItem(kConfirmCancel, "Cancel");
     }
     // "<icon> <key>: <what>" for each button that works here.
-    const bool changes = mPhase == Phase::Levels || mPhase == Phase::Camera || progressPage;
+    const bool changes = mPhase == Phase::Levels || mPhase == Phase::Camera || mPhase == Phase::Cheats || progressPage;
     size_t used = 0;
     auto hint = [&](const char* icon, const char* key, const char* what) {
         if (used >= sizeof(view.footer)) return;
@@ -740,6 +806,9 @@ int Menu::pageItemCount() const {
     }
     if (mPhase == Phase::Camera) {
         return kCameraItems;
+    }
+    if (mPhase == Phase::Cheats) {
+        return kCheatsItems;
     }
     if (mPhase == Phase::Levels) {
         return kLevelItems;
@@ -940,6 +1009,15 @@ void Menu::activate(int index) {
             mFocus = mModCount + 2;
             mRepeatDir = 0;
         }
+    } else if (mPhase == Phase::Cheats) {
+        if (index == 0 || index == 1) {
+            changeCheatsValue(index, 1);
+        } else {
+            play(Sound::Cancel);
+            mPhase = Phase::Mods;
+            mFocus = modsCheatsIndex();
+            mRepeatDir = 0;
+        }
     } else if (mPhase == Phase::Camera) {
         if (index >= 0 && index < 5) {
             changeCameraValue(index, 1);
@@ -967,6 +1045,12 @@ void Menu::activate(int index) {
             mFolderPageIndex = 0;
             refreshFolderLabels();
             mPhase = Phase::ModFolder;
+            mFocus = 0;
+            mRepeatDir = 0;
+        } else if (mCheatsPage && index == modsCheatsIndex()) {
+            play(Sound::Select);
+            refreshCheatsLabels();
+            mPhase = Phase::Cheats;
             mFocus = 0;
             mRepeatDir = 0;
         } else if (index >= 0 && index < mModCount) {
@@ -1009,6 +1093,8 @@ void Menu::back() {
         activate(3);
     } else if (mPhase == Phase::Camera) {
         activate(5);
+    } else if (mPhase == Phase::Cheats) {
+        activate(kCheatsItems - 1);
     } else {
         play(Sound::ReturnApp);
         close();

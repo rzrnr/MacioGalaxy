@@ -422,6 +422,23 @@ next to any smoke script, it holds Space through each cutscene and dialogue and
 logs `[skip-probe]` lines (what was on screen, the latch, the end, whether the
 game saw A, Mario afterwards). `PETARI_SKIP_PROBE_SHOTS=<dir>` adds
 screenshots. See native/app/skip_probe.cpp.
+## Cheats
+
+F1 → Mods → **Cheats...** (the entry before Back):
+
+- **1-Ups**: the 1-Ups of the file in play. Left/Right change it by one (A adds one); it wraps
+  between 1 and 99, the game's own limit. The game takes the new count at its next frame, so
+  the counter in the corner counts up as for a collected 1-Up. Outside a galaxy (title screen,
+  file select) there is no file in play and the line says so.
+- **Keep 1-Ups when loading** (on by default; `KeepLives=on|off` in `cheats.txt` next to
+  `mods.txt`). The game always writes the 1-Ups into the save, but the original starts every
+  load with 4; with 10 or more saved, a Toad in the observatory hands out a refill. While this is
+  on, a loaded file starts with the saved count instead, and the refill is skipped. Off: the
+  original's behaviour. Files saved before this edit load as before.
+
+The count goes into `GameData.bin` only when the game itself saves (a star, a save prompt);
+the save file's format is unchanged, so the file still loads in Dolphin and on a Wii (with 4 1-Ups
+there).
 
 ## How they follow the game's rules
 

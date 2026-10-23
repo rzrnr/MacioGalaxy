@@ -75,6 +75,7 @@ enum class Phase : std::uint8_t {
     Camera,    // Odyssey camera mod options (docs/dev/ODYSSEY_CAMERA.md)
     Progress,  // My Progress: the personal clear record, one galaxy at a time (native/PROGRESS.md)
     ModFolder, // disc-file mods found in the mods folder: toggles, paging, Back (native/MODS.md)
+    Cheats,    // 1-Ups and whether loading keeps them (native/MODS.md)
     Closing,   // fade out before reporting Resume
     BlackOut,  // fade to black before reporting Restart or Quit
     Finished,  // selection() reports the result
@@ -148,8 +149,8 @@ struct Rect {
 };
 
 constexpr int kMaxMods = 16;         // Mods::Mod::Count must stay <= this (the Mods page has one toggle each)
-// The Mods page lists every mod toggle, then Odyssey camera, Level Select, Mod folder and Back.
-constexpr int kModsPageExtraItems = 4;
+// The Mods page lists every mod toggle, then Odyssey camera, Level Select, Mod folder, Cheats and Back.
+constexpr int kModsPageExtraItems = 5;
 // Sized from the worst page (the Mods page); other pages use at most 6 items. View::items
 // must never be indexed past this: a write past it lands on View::lineCount.
 constexpr int kMaxItems = kMaxMods + kModsPageExtraItems;
@@ -167,6 +168,14 @@ struct CameraOptions {
     bool invertX = false;
     bool invertY = false;
     bool photo = false;  // photo mode (P), independent of the orbit camera
+};
+
+// The Cheats page's options (Mods -> Cheats). 1-Ups as the game allows them.
+constexpr int kMinCheatLives = 1;
+constexpr int kMaxCheatLives = 99;
+struct CheatOptions {
+    int lives = -1;          // 1-Ups of the file in play, 1..99; -1: no file in play
+    bool keepLives = true;   // a loaded file keeps its saved 1-Ups
 };
 
 // One toggle of the Mods page: what the mod does, and whether it is on.
@@ -328,6 +337,11 @@ public:
     void setCamera(const CameraOptions& options);
     bool takeCameraChange(CameraOptions* options);
     const CameraOptions& camera() const { return mCamera; }
+    // The Cheats page. Calling this adds a "Cheats..." entry to the Mods page,
+    // before Back; changes are reported once (true) and copied to *options.
+    void setCheats(const CheatOptions& options);
+    bool takeCheatsChange(CheatOptions* options);
+    const CheatOptions& cheats() const { return mCheats; }
     int levelMission() const { return mLevelMission; }
     // Keyboard names for the footer's buttons (A, Plus, Home, the + Control
     // Pad's left/right); empty names show the icon alone. Kept across opens.
@@ -394,7 +408,8 @@ private:
     void changeProgressGalaxy(int delta);
     int folderPages() const { return (mFolderCount + kFolderPageSize - 1) / kFolderPageSize; }
     int folderShown() const { return std::clamp(mFolderCount - mFolderPageIndex * kFolderPageSize, 0, kFolderPageSize); }
-    int modsBackIndex() const { return mModCount + (mFolderPage ? 3 : 2); }
+    int modsCheatsIndex() const { return mModCount + (mFolderPage ? 3 : 2); }
+    int modsBackIndex() const { return modsCheatsIndex() + (mCheatsPage ? 1 : 0); }
     void refreshFolderLabels();
     int mLevelGalaxy = 0;   // index into LaunchStage::galaxies
     int mLevelMission = 1;
@@ -441,6 +456,12 @@ private:
     CameraOptions mCamera;
     bool mCameraChanged = false;
     char mCameraLabels[5][48] = {};
+    CheatOptions mCheats;
+    bool mCheatsPage = false;
+    bool mCheatsChanged = false;
+    char mCheatsLabels[2][48] = {};
+    void refreshCheatsLabels();
+    void changeCheatsValue(int item, int delta);
     void refreshCameraLabels();
     void refreshModLabels();
     void changeCameraValue(int item, int delta);

@@ -106,6 +106,7 @@ add_library(petari_input STATIC
     camera_input.cpp
     editor_input.cpp
     editor_pick.cpp
+    cheats.cpp
     mods.cpp
     remap.cpp
     point_move.cpp

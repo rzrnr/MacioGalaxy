@@ -14,6 +14,7 @@
 #include <cstring>
 #include <string>
 
+#include "petari/cheats.hpp"
 #include "petari/host_allocation.hpp"
 #include "petari/input.hpp"
 #include "petari/input_remap.hpp"
@@ -395,6 +396,34 @@ void applyCameraChange() {
     }
 }
 
+// The Cheats page, from the file in play and cheats.txt.
+void refreshCheats() {
+    CheatOptions options;
+    const int pending = Cheats::requestedLives.load();
+    options.lives = pending >= 0 ? pending : Cheats::currentLives.load();
+    options.keepLives = Cheats::keepLives();
+    instance().setCheats(options);
+}
+
+// Applies a Cheats page change: the 1-Ups at the game's next frame
+// (GameScene::update), Keep 1-Ups saved to cheats.txt.
+void applyCheatsChange() {
+    CheatOptions options;
+    if (!instance().takeCheatsChange(&options)) {
+        return;
+    }
+    if (options.lives >= 0) {
+        Cheats::requestedLives.store(options.lives);
+    }
+    if (options.keepLives != Cheats::keepLives()) {
+        Cheats::setKeepLives(options.keepLives);
+        std::string error;
+        if (!Cheats::save(&error)) {
+            std::fprintf(stderr, "petari: cheats: %s\n", error.c_str());
+        }
+    }
+}
+
 // The Mod folder page: the disc-file mods found, with their saved states.
 void refreshFolderMods() {
     FolderModEntry entries[kMaxFolderMods];
@@ -456,6 +485,7 @@ void init() {
     refreshMods();
     refreshFolderMods();
     refreshCamera();
+    refreshCheats();
 #endif
 #ifdef PETARI_HOME_MENU_INPUT
     instance().setEditorEnabled(Mods::enabled(Mods::Mod::LevelEditor));
@@ -477,6 +507,7 @@ void calc(const HBMControllerData* controllers) {
     menu.setEditorEnabled(Mods::enabled(Mods::Mod::LevelEditor));
     applyFolderToggles();
     applyCameraChange();
+    applyCheatsChange();
 #endif
     // Level Select's Go, once the menu has closed: the game starts the warp
     // at its next normal gameplay frame (GameScene::update).

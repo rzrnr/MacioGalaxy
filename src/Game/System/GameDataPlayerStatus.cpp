@@ -2,6 +2,10 @@
 #include "Game/Util/MathUtil.hpp"
 #include <JSystem/JSupport/JSUMemoryInputStream.hpp>
 #include <JSystem/JSupport/JSUMemoryOutputStream.hpp>
+#ifdef PETARI_NATIVE
+#include <cstdio>
+#include <petari/cheats.hpp>
+#endif
 
 GameDataPlayerStatus::GameDataPlayerStatus() {
     initializeData();
@@ -43,6 +47,20 @@ s32 GameDataPlayerStatus::deserialize(const u8* pBuffer, u32 size) {
     }
 
     mPlayerLeft = 4;
+
+#ifdef PETARI_NATIVE
+    // The file saved its 1-Ups in the field read into mPlayerLeftSupply (10 or
+    // more there earns a refill from a Toad). Cheats -> Keep 1-Ups when loading
+    // (native/MODS.md) starts with that count instead, and then has no refill.
+    // Older files end before the 1-Ups (7 bytes: u8, u32, u16) and keep the 4.
+    if (PetariNative::Cheats::keepLives() && size >= sizeof(u8) + sizeof(u32) + sizeof(u16)) {
+        mPlayerLeft = MR::clamp(static_cast<s32>(mPlayerLeftSupply), 1, 99);
+        mPlayerLeftSupply = 0;
+        if (mPlayerLeft != 4) {
+            std::fprintf(stderr, "petari: cheats: a loaded file keeps its %d saved 1-Ups\n", static_cast<int>(mPlayerLeft));
+        }
+    }
+#endif
 
     return 0;
 }

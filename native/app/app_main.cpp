@@ -40,6 +40,7 @@ extern "C" int petari_present_take_readback(const void* copy, unsigned char* rgb
 #include <petari/editor/import_assets.hpp>
 #include <petari/platform/mod_folder.hpp>
 #include <petari/platform/mod_galaxy.hpp>
+#include <petari/cheats.hpp>
 #include <petari/progress.hpp>
 #include <petari/camera_input.h>
 #include <petari/camera_settings.hpp>
@@ -874,6 +875,10 @@ int main(int argc, char** argv) {
     if (!PetariNative::CameraSettings::load(paths.user / "camera.txt", &error)) {
         std::fprintf(stderr, "petari: camera: %s\n", error.c_str());
         return 1;
+    }
+    // F1 -> Mods -> Cheats (native/MODS.md); a damaged file keeps the default (Keep 1-Ups on).
+    if (!PetariNative::Cheats::load(paths.user / "cheats.txt", &error)) {
+        std::fprintf(stderr, "petari: cheats: %s (using the defaults)\n", error.c_str());
     }
     if (PetariNative::CameraSettings::enabled()) std::fputs("PETARI MODS: OdysseyCamera on\n", stderr);
     for (int m = 0; m < static_cast<int>(PetariNative::Mods::Mod::Count); ++m) {
