@@ -208,25 +208,39 @@ class MGE_OT_tool_click(bpy.types.Operator):
         return self._add(context, name, matrix, values, target=_target_of(context, hit))
 
     def _add(self, context, name, matrix, extra=None, target=None):
-        core = editor()
-        cat = core.catalog(context.scene)
-        entry = cat.entries.get(name)
-        if entry is None:
-            self.report({"WARNING"}, "Erst unten in der Palette oder im Werkzeugkopf ein Objekt wählen")
-            return {"CANCELLED"}
-        collection, zone = target or (core._target_collection(context), core._target_collection(context)["smg_zone"])
-        parent = core._zone_parent(context, zone)
-        local = parent.matrix_world.inverted() @ matrix if parent is not None else matrix
-        values = dict(cat.defaults(name), **(extra or {}))
-        obj = scene_io.new_object(name, entry["kind"], zone, values, local, collection, cat, parent=parent,
-                                  library=core.model_library(context.scene))
-        for other in context.selected_objects:
-            other.select_set(False)
-        obj.select_set(True)
-        context.view_layer.objects.active = obj
-        editor().ui.mark_dirty(context.scene)
-        self.report({"INFO"}, f"{entry['label']} gesetzt: {collection.name}")
-        return {"FINISHED"}
+        return place(self, context, name, matrix, extra, target)
+
+
+def place(op, context, name, matrix, extra=None, target=None):
+    """Adds the catalog's object name at matrix (world) in target (collection, zone), selected; reports on op."""
+    core = editor()
+    cat = core.catalog(context.scene)
+    entry = cat.entries.get(name)
+    if entry is None:
+        op.report({"WARNING"}, "Erst unten in der Palette oder im Werkzeugkopf ein Objekt wählen")
+        return {"CANCELLED"}
+    collection, zone = target or (core._target_collection(context), core._target_collection(context)["smg_zone"])
+    parent = core._zone_parent(context, zone)
+    local = parent.matrix_world.inverted() @ matrix if parent is not None else matrix
+    values = dict(cat.defaults(name), **(extra or {}))
+    obj = scene_io.new_object(name, entry["kind"], zone, values, local, collection, cat, parent=parent,
+                              library=core.model_library(context.scene))
+    for other in context.selected_objects:
+        other.select_set(False)
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
+    core.ui.mark_dirty(context.scene)
+    hint = core.ui.scenario_hint(context.scene, zone, collection.get("smg_layer", "common"))
+    op.report({"WARNING"} if hint else {"INFO"}, f"{entry['label']} gesetzt: {collection.name}{hint}")
+    return {"FINISHED"}
+
+
+def free_path_id(context, zone):
+    """The next path ID of the zone (for CommonPath_ID, so a path has it before the first save)."""
+    root = bpy.data.collections.get(f"SMG {context.scene['smg_galaxy']}")
+    used = [o.get(scene_io.PREFIX + "l_id", -1) for o in root.all_objects
+            if o.get("smg_kind") == "path" and o.get("smg_zone") == zone]
+    return max([i for i in used if isinstance(i, int)] + [-1]) + 1
 
 
 class MGE_OT_tool_path(bpy.types.Operator):
@@ -245,10 +259,7 @@ class MGE_OT_tool_path(bpy.types.Operator):
         _, _, hit = pick(context, event)
         collection, self.zone = _target_of(context, _placed_root(hit))
         self.parent = core._zone_parent(context, self.zone)
-        root = bpy.data.collections.get(f"SMG {context.scene['smg_galaxy']}")
-        used = [o.get(scene_io.PREFIX + "l_id", -1) for o in root.all_objects
-                if o.get("smg_kind") == "path" and o.get("smg_zone") == self.zone]
-        self.path_id = max([i for i in used if isinstance(i, int)] + [-1]) + 1
+        self.path_id = free_path_id(context, self.zone)
         self.points = []
         self.obj = None
         self._add_point(context, event)
@@ -282,20 +293,75 @@ class MGE_OT_tool_path(bpy.types.Operator):
             return {"RUNNING_MODAL"}
         if event.type in ("RET", "NUMPAD_ENTER", "RIGHTMOUSE") and event.value == "PRESS":
             context.workspace.status_text_set(None)
+            if len(self.points) < 2:
+                self._drop()
+                self.report({"WARNING"}, "Ein Pfad braucht mindestens zwei Punkte")
+                return {"CANCELLED"}
             for other in context.selected_objects:
                 other.select_set(False)
             self.obj.select_set(True)
             context.view_layer.objects.active = self.obj
             editor().ui.mark_dirty(context.scene)
             self.report({"INFO"}, f"Pfad {self.path_id} mit {len(self.points)} Punkten (für CommonPath_ID: {self.path_id})")
+            bpy.ops.wm.call_menu(name=MGE_MT_path_use.bl_idname)
             return {"FINISHED"}
         if event.type == "ESC":
             context.workspace.status_text_set(None)
-            data = self.obj.data
-            bpy.data.objects.remove(self.obj, do_unlink=True)
-            bpy.data.curves.remove(data)
+            self._drop()
             return {"CANCELLED"}
         return {"PASS_THROUGH"}
+
+    def _drop(self):
+        data = self.obj.data
+        bpy.data.objects.remove(self.obj, do_unlink=True)
+        bpy.data.curves.remove(data)
+
+
+RAIL_OBJECTS = (("RailCoin", "Münzreihe", "Münzen entlang des Pfads"),
+                ("PurpleRailCoin", "Lila Münzreihe", "Lila Münzen entlang des Pfads"))
+COIN_SPACING = 100  # game units between the coins of a new coin line
+
+
+class MGE_MT_path_use(bpy.types.Menu):
+    bl_label = "Pfad benutzen für"
+    bl_idname = "MGE_MT_path_use"
+
+    def draw(self, context):
+        layout = self.layout
+        for name, label, _ in RAIL_OBJECTS:
+            layout.operator(MGE_OT_path_use.bl_idname, text=label, icon="KEYTYPE_KEYFRAME_VEC").name = name
+        layout.separator()
+        layout.label(text="Nur Pfad (für Plattformen, Gegner, Kamera: im Objekt-Reiter bei CommonPath_ID)", icon="INFO")
+
+
+class MGE_OT_path_use(bpy.types.Operator):
+    """Puts an object that runs along the selected path at its start (CommonPath_ID = the path's ID)."""
+    bl_idname = "mge.path_use"
+    bl_label = "Objekt auf den Pfad"
+    bl_description = "Ein Objekt an den Pfad hängen, das ihm folgt"
+    bl_options = {"REGISTER", "UNDO"}
+    name: EnumProperty(items=RAIL_OBJECTS)
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("smg_kind") == "path"
+
+    def execute(self, context):
+        core = editor()
+        path = context.active_object
+        points = [path.matrix_world @ p.co for p in path.data.splines[0].bezier_points]
+        length = sum((a - b).length for a, b in zip(points, points[1:])) / 0.01
+        count = max(2, min(64, round(length / COIN_SPACING) + 1))
+        zone = path["smg_zone"]
+        collection = core._target_collection(context)
+        if collection.get("smg_zone") != zone:
+            root = bpy.data.collections[f"SMG {context.scene['smg_galaxy']}"]
+            collection = scene_io.layer_collection(root, zone, "common")
+        if path.get(scene_io.PREFIX + "l_id", -1) < 0:
+            path[scene_io.PREFIX + "l_id"] = free_path_id(context, zone)
+        extra = {"CommonPath_ID": path[scene_io.PREFIX + "l_id"], "Obj_arg0": count}
+        return place(self, context, self.name, Matrix.Translation(points[0]), extra, (collection, zone))
 
 
 # --- the tools -------------------------------------------------------------------------------
@@ -361,12 +427,12 @@ class MGE_Tool_Start(bpy.types.WorkSpaceTool):
     bl_space_type, bl_context_mode = "VIEW_3D", "OBJECT"
     bl_idname = "mge.tool_start"
     bl_label = "Vorschau-Start"
-    bl_description = "Klick legt fest, wo Mario im Schnelltest startet (der Startpunkt der Galaxie bleibt)"
+    bl_description = "Klick legt fest, wo Mario beim automatischen Test beginnt (der Startpunkt der Galaxie bleibt)"
     bl_icon = "ops.generic.cursor"
     bl_keymap = (("mge.tool_click", {"type": "LEFTMOUSE", "value": "PRESS"}, {"properties": [("mode", "START")]}),)
 
     def draw_settings(context, layout, tool):
-        layout.prop(context.scene, "mge_warp", text="Schnelltest startet hier")
+        layout.prop(context.scene, "mge_warp", text="Test beginnt hier")
 
 
 TOOLS = (MGE_Tool_Place, MGE_Tool_Path, MGE_Tool_Gravity, MGE_Tool_Start)
@@ -382,6 +448,8 @@ def register():
         tool.bl_icon = icons[key]
     bpy.utils.register_class(MGE_OT_tool_click)
     bpy.utils.register_class(MGE_OT_tool_path)
+    bpy.utils.register_class(MGE_OT_path_use)
+    bpy.utils.register_class(MGE_MT_path_use)
     bpy.types.WindowManager.mge_tool_object = bpy.props.StringProperty(
         name="Objekt", default="Coin", search=_object_search, description="Was das Werkzeug Setzen setzt")
     bpy.types.WindowManager.mge_tool_gravity = EnumProperty(name="Gravity", items=GRAVITY_TYPES)
@@ -393,7 +461,8 @@ def register():
                                                                   description="Runde statt gerader Abschnitte")
     bpy.types.Scene.mge_tool_path_height = FloatProperty(name="Höhe über Boden", default=100.0, min=0.0, soft_max=2000.0,
                                                          description="Spieleinheiten über der Oberfläche")
-    bpy.utils.register_tool(MGE_Tool_Place, after={"builtin.select_box"}, separator=True, group=False)
+    # After the cursor, as their own items: after "builtin.select_box" they'd join the select tools' group.
+    bpy.utils.register_tool(MGE_Tool_Place, after={"builtin.cursor"}, separator=True, group=False)
     bpy.utils.register_tool(MGE_Tool_Path, after={MGE_Tool_Place.bl_idname})
     bpy.utils.register_tool(MGE_Tool_Gravity, after={MGE_Tool_Path.bl_idname})
     bpy.utils.register_tool(MGE_Tool_Start, after={MGE_Tool_Gravity.bl_idname})
@@ -406,5 +475,7 @@ def unregister():
         delattr(bpy.types.WindowManager, name)
     for name in ("mge_tool_align", "mge_tool_path_height", "mge_tool_place_height", "mge_tool_path_curved"):
         delattr(bpy.types.Scene, name)
+    bpy.utils.unregister_class(MGE_MT_path_use)
+    bpy.utils.unregister_class(MGE_OT_path_use)
     bpy.utils.unregister_class(MGE_OT_tool_path)
     bpy.utils.unregister_class(MGE_OT_tool_click)

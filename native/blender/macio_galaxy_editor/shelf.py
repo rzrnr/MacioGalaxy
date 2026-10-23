@@ -17,9 +17,15 @@ SHELF_KINDS = {"objinfo", "mappartsinfo", "planetobjinfo", "childobjinfo"}
 
 
 def object_name(asset_name: str):
-    """The game's object name for an asset name (names.json, written with the library)."""
-    if not _names and assets.NAMES.exists():
-        _names.update(json.loads(assets.NAMES.read_text()))
+    """The game's object name for an asset name (names.json, written with the library; else the listing's labels)."""
+    if not _names:
+        if assets.NAMES.exists():
+            _names.update(json.loads(assets.NAMES.read_text()))
+        else:
+            listing = assets.LIBRARY / "entries.json"
+            for entry in json.loads(listing.read_text()) if listing.exists() else []:
+                _names.setdefault(entry["label"], entry["name"])
+                _names.setdefault(entry["name"], entry["name"])
     return _names.get(asset_name)
 
 

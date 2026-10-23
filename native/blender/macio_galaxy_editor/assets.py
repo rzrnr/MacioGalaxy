@@ -21,16 +21,32 @@ LIBRARY_NAME = "Mario Galaxy"
 BLEND = LIBRARY / "MarioGalaxy.blend"
 NAMES = LIBRARY / "names.json"  # asset name -> object name
 NAMESPACE = uuid.UUID("6b1f0a52-6a55-4a5e-9a1e-4d61726961a0")
-KIND_CATALOG = {"objinfo": "Objekte", "mappartsinfo": "Map-Teile", "areaobjinfo": "Areas", "cameracubeinfo": "Kameras",
-                "planetobjinfo": "Gravity", "startinfo": "Startpunkte", "childobjinfo": "Objekte", "demoobjinfo": "Sonstiges",
+VERSION = 5  # of the library's layout; an older library is rebuilt when the workspace opens
+VERSION_FILE = LIBRARY / "version.txt"
+# The shelf lists catalogs in alphabetical order, so "Objekte" (and in it "Gegenstände") comes first.
+KIND_CATALOG = {"objinfo": "Objekte", "mappartsinfo": "Objekte", "areaobjinfo": "Bereiche", "cameracubeinfo": "Kamerabereiche",
+                "planetobjinfo": "Schwerkraft", "startinfo": "Startpunkte", "childobjinfo": "Objekte", "demoobjinfo": "Sonstiges",
                 "soundinfo": "Sonstiges", "generalposinfo": "Sonstiges"}
+CATEGORY = {"Items": "Gegenstände", "Enemies": "Gegner", "Bosses": "Gegner/Bosse", "NPCs": "Personen",
+            "Stage Parts": "Levelteile", "Level Features": "Levelelemente", "Backgrounds": "Hintergründe",
+            "Controllers": "Steuerung", "Cutscenes": "Zwischensequenzen", "Particles": "Partikel"}
+LEFT_OUT = {"Deprecated"}
 
 
 def catalog_path(entry: dict) -> str:
-    """The asset catalog of a catalog entry: its kind, then the database's category ("Objekte/Enemies")."""
+    """The asset catalog of a catalog entry: its kind, then the category in German ("Objekte/Gegner")."""
     kind = KIND_CATALOG.get(entry["kind"], "Sonstiges")
-    category = (entry.get("category") or "").replace("/", "-").strip()
-    return f"{kind}/{category}" if category and kind in ("Objekte", "Map-Teile") else kind
+    category = (entry.get("category") or "").strip()
+    category = CATEGORY.get(category, category.replace("/", "-")) or "Sonstiges"  # not "Objekte" itself: it'd come first
+    return f"{kind}/{category}" if kind == "Objekte" else kind
+
+
+def stale():
+    """Whether the library is missing or from an older layout."""
+    try:
+        return int(VERSION_FILE.read_text()) != VERSION or not BLEND.exists()
+    except (OSError, ValueError):
+        return True
 
 
 def catalog_id(path: str) -> str:
@@ -63,7 +79,8 @@ def start_build(catalog, user: Path):
     entries = []
     for name in catalog.names():
         entry = catalog.entries[name]
-        if entry.get("unused"):
+        if entry.get("unused") or entry.get("category") in LEFT_OUT or "[Unused]" in entry["label"] or \
+                "[Broken]" in entry["label"]:
             continue
         entries.append(dict(name=name, label=entry["label"], kind=entry["kind"], category=entry.get("category", ""),
                             notes=entry.get("notes", ""), archive=archive_name(name, catalog.defaults(name)),
@@ -96,10 +113,10 @@ def adopt_dropped(context, obj, editor):
     scene = context.scene
     cat = editor.catalog(scene)
     entry = cat.entries.get(name)
-    collection = editor._target_collection(context)
-    zone = collection["smg_zone"]
+    normal, hit = surface_hit(context, location, exclude=obj)
+    from .tools import _placed_root, _target_of
+    collection, zone = _target_of(context, _placed_root(hit))  # the layer of the planet it lands on
     parent = editor._zone_parent(context, zone)
-    normal = surface_normal(context, location, exclude=obj)
     matrix = aligned_matrix(location, normal)
     local = parent.matrix_world.inverted() @ matrix if parent is not None else matrix
     bpy.data.objects.remove(obj, do_unlink=True)
@@ -112,8 +129,8 @@ def adopt_dropped(context, obj, editor):
     return new
 
 
-def surface_normal(context, location, exclude=None):
-    """The surface's normal at location, seen from the viewport (None when nothing is there)."""
+def surface_hit(context, location, exclude=None):
+    """(normal, object) of the surface at location, seen from the viewport ((None, None) when nothing is there)."""
     from mathutils import Vector
     view = None
     for window in context.window_manager.windows:
@@ -123,16 +140,16 @@ def surface_normal(context, location, exclude=None):
     origin = view.view_matrix.inverted().translation if view is not None else location + Vector((0, 0, 50))
     direction = (location - origin)
     if direction.length < 1e-6:
-        return None
+        return None, None
     direction.normalize()
     hidden = exclude is not None and not exclude.hide_get()
     if hidden:
         exclude.hide_set(True)
-    hit, _, normal, _, _, _ = context.scene.ray_cast(context.evaluated_depsgraph_get(), location - direction * 0.5, direction,
-                                                     distance=1.5)
+    hit, _, normal, _, found, _ = context.scene.ray_cast(context.evaluated_depsgraph_get(), location - direction * 0.5,
+                                                         direction, distance=1.5)
     if hidden:
         exclude.hide_set(False)
-    return normal if hit else None
+    return (normal, found.original if found is not None else None) if hit else (None, None)
 
 
 def aligned_matrix(location, normal):
@@ -167,6 +184,8 @@ def _build(listing: Path):
         for tag in {entry["name"], entry["kind"], entry["category"]} - {""}:
             data.tags.new(tag)
         picture = thumbs / f"{entry['archive']}.png"
+        if not picture.exists():
+            picture = thumbs / f"_{entry['kind']}.png"  # no model: the kind's wire cube (thumbnails.py)
         if picture.exists():
             image = bpy.data.images.load(str(picture))
             preview = obj.preview_ensure()
@@ -182,6 +201,7 @@ def _build(listing: Path):
     tmp = BLEND.with_suffix(".tmp.blend")
     bpy.ops.wm.save_as_mainfile(filepath=str(tmp), compress=True)
     tmp.replace(BLEND)
+    VERSION_FILE.write_text(str(VERSION))
 
 
 if __name__ == "__main__":

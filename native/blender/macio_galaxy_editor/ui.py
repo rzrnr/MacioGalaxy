@@ -154,6 +154,19 @@ class MGE_UL_layers(bpy.types.UIList):
         row.label(text=layer_label(item.name), icon="CHECKMARK" if item.in_scenario else "BLANK1")
 
 
+def scenario_hint(scene, zone_name, layer_name):
+    """"" when the zone and layer appear in the chosen scenario, else a warning to add to a report."""
+    zone = next((z for z in scene.mge_zones if z.name == zone_name), None)
+    if zone is None:
+        return ""
+    if not zone.in_scenario:
+        return f" – Achtung: die Zone {zone_name} kommt im gewählten Szenario nicht vor"
+    layer = next((x for x in zone.layers if x.name == layer_name), None)
+    if layer is not None and not layer.in_scenario:
+        return f" – Achtung: {layer_label(layer_name)} kommt im gewählten Szenario nicht vor"
+    return ""
+
+
 def layer_label(layer):
     return "Gemeinsam" if layer == "common" else f"Ebene {layer[-1].upper()}"
 
@@ -393,8 +406,16 @@ class MGE_OT_build_assets(bpy.types.Operator):
         if event.type != "TIMER" or self.process.poll() is None:
             return {"PASS_THROUGH"}
         context.window_manager.event_timer_remove(self._timer)
-        if bpy.ops.asset.library_refresh.poll():
-            bpy.ops.asset.library_refresh()
+        from . import shelf
+        shelf._names.clear()
+        # The palette (asset shelf) and any Asset Browser read the library again.
+        for area in context.screen.areas:
+            for region in area.regions if area.type in ("VIEW_3D", "FILE_BROWSER") else []:
+                if region.type in ("ASSET_SHELF", "WINDOW"):
+                    with context.temp_override(area=area, region=region):
+                        if bpy.ops.asset.library_refresh.poll():
+                            bpy.ops.asset.library_refresh()
+                            break
         context.scene.mge_status = "Objekt-Palette fertig: Asset Browser, Bibliothek \"Mario Galaxy\""
         for area in context.screen.areas:
             area.tag_redraw()
@@ -495,6 +516,7 @@ class MGE_OT_set_layer(bpy.types.Operator):
         apply_visibility(context.scene)
         zone = next((z for z in context.scene.mge_zones if z.name == context.active_object.get("smg_zone")), None)
         layer = next((x for x in zone.layers if x.name == self.layer), None) if zone else None
+        mark_dirty(context.scene)
         hint = "" if layer is None or layer.in_scenario else f"; {layer_label(self.layer)} kommt im gewählten Szenario nicht vor"
         self.report({"INFO"}, f"{moved} Objekt(e) nach {layer_label(self.layer)}{hint}")
         return {"FINISHED"}
@@ -655,7 +677,7 @@ class MGE_PT_props(_ObjectPanel, bpy.types.Panel):
             sub.enabled = False
             _wrapped(sub, context, entry["notes"])
         layout.use_property_split = True
-        layout.prop(obj, f'["{scene_io.PREFIX}name"]', text="Name im Spiel")
+        layout.prop(obj, f'["{scene_io.PREFIX}name"]', text="Interner Name")
         if kind == "path" and obj.data.splines:
             spline = obj.data.splines[0]
             layout.label(text=f"{len(spline.bezier_points)} Punkte · bearbeiten mit Tab (Griffe = Kontrollpunkte)",
@@ -753,6 +775,18 @@ class MGE_PT_props_more(_ObjectPanel, bpy.types.Panel):
             _field_row(self.layout, obj, field, cat, name, context)
 
 
+class MGE_PT_props_play(_ObjectPanel, bpy.types.Panel):
+    bl_label = "Speichern und Spielen"
+    bl_options = {"HIDE_HEADER"}
+
+    def draw(self, context):
+        core = editor()
+        row = self.layout.row(align=True)
+        row.operator(core.MGE_OT_save.bl_idname, text="Speichern", icon="FILE_TICK")
+        row.operator(core.MGE_OT_preview.bl_idname, text="Testen", icon="RENDER_STILL")
+        row.operator(core.MGE_OT_play.bl_idname, text="Spielen", icon="PLAY")
+
+
 # --- the tabs --------------------------------------------------------------------------------
 
 
@@ -776,19 +810,20 @@ class MGE_PT_galaxy(bpy.types.Panel):
             _check(box, game.disc.exists(), "Spiel-Disc gefunden" if game.disc.exists() else f"Keine Disc in {game.disc}")
             from . import assets
             row = box.row()
-            _check(row, assets.BLEND.exists(), "Objekt-Palette bereit" if assets.BLEND.exists() else "Objekt-Palette fehlt")
-            if not assets.BLEND.exists():
+            ready = not assets.stale()
+            _check(row, ready, "Objekt-Palette bereit" if ready else "Objekt-Palette fehlt oder ist veraltet")
+            if not ready:
                 row.operator("mge.build_assets", text="Aufbauen")
             box.separator()
-            box.label(text="1  Galaxie wählen (Name im Spiel oder intern):")
+            _wrapped(box, context, "1  Galaxie wählen (Name im Spiel oder intern):", 2)
             box.prop(scene, "mge_galaxy", text="", icon="VIEWZOOM")
             big = box.row()
             big.scale_y = 1.6
             big.operator(core.MGE_OT_open.bl_idname, text="Galaxie öffnen", icon="FILE_FOLDER")
             hints = box.column(align=True)
             hints.enabled = False
-            hints.label(text="2  Objekte aus der Palette unten auf einen Planeten ziehen")
-            hints.label(text="3  Spielen → Schnelltest oder im Spiel starten")
+            _wrapped(hints, context, "2  Objekte aus der Palette unten auf einen Planeten ziehen", 2)
+            _wrapped(hints, context, "3  Spielen: automatisch testen oder selbst spielen", 2)
             return
         layout.label(text=core.galaxy_label(scene, scene["smg_galaxy"]), icon="WORLD_DATA")
         row = layout.row(align=True)
@@ -819,17 +854,18 @@ class MGE_PT_play(bpy.types.Panel):
         if on is not None:
             row.operator("mge.mod_toggle", text="an" if on else "aus", icon="CHECKBOX_HLT" if on else "CHECKBOX_DEHLT",
                          depress=on)
+        layout.operator(core.MGE_OT_save.bl_idname, text="Speichern  (⌘S)", icon="FILE_TICK")
+        test = layout.column(align=True)
+        test.operator(core.MGE_OT_preview.bl_idname, text="Automatisch testen (Bilder)", icon="RENDER_STILL")
+        test.prop(scene, "mge_warp", text="Test beginnt am Vorschau-Start")
         big = layout.row()
-        big.scale_y = 1.4
-        big.operator(core.MGE_OT_save.bl_idname, text="Speichern  (⌘S)", icon="FILE_TICK")
-        row = layout.row(align=True)
-        row.operator(core.MGE_OT_preview.bl_idname, text="Schnelltest (Bilder)", icon="RENDER_STILL")
-        row.prop(scene, "mge_warp", text="", icon="PIVOT_CURSOR")
-        layout.operator(core.MGE_OT_play.bl_idname, text="Im Spiel starten", icon="PLAY")
+        big.scale_y = 1.5
+        big.operator(core.MGE_OT_play.bl_idname, text="Selbst spielen", icon="PLAY")
         hints = layout.column(align=True)
         hints.enabled = False
-        _wrapped(hints, context, "Im Spiel: einen Spielstand laden, dann geht es direkt hierher. "
-                                 "Deine Disc bleibt unverändert; der Mod liegt daneben.", 4)
+        _wrapped(hints, context, "Automatisch testen: das Spiel läuft unsichtbar, Mario läuft los, du bekommst Bilder. "
+                                 "Selbst spielen: einen Spielstand laden, dann geht es direkt hierher. "
+                                 "Deine Disc bleibt unverändert; der Mod liegt daneben.", 6)
         if scene.mge_status:
             layout.label(text=scene.mge_status, icon="INFO")
 
@@ -940,9 +976,9 @@ def swatch_icon(group):
 CLASSES = (MGE_Layer, MGE_Zone, MGE_CatalogItem, MGE_UL_zones, MGE_UL_layers, MGE_UL_objects, MGE_UL_catalog,
            MGE_OT_zones_all, MGE_OT_zone_solo, MGE_OT_frame, MGE_OT_place, MGE_OT_build_assets, MGE_OT_thumbnails,
            MGE_OT_set_layer, MGE_OT_set_field, MGE_OT_pick_value, MGE_OT_pick_path, MGE_OT_fill_catalog,
-           MGE_PT_galaxy, MGE_PT_play, MGE_PT_scenarios, MGE_PT_zones, MGE_PT_show, MGE_PT_objects,
+           MGE_PT_galaxy, MGE_PT_scenarios, MGE_PT_zones, MGE_PT_play, MGE_PT_show, MGE_PT_objects,
            MGE_PT_props, MGE_PT_props_place, MGE_PT_props_args, MGE_PT_props_switches, MGE_PT_props_links,
-           MGE_PT_props_more)
+           MGE_PT_props_more, MGE_PT_props_play)
 _owner = object()
 
 

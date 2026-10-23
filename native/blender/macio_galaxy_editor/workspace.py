@@ -3,8 +3,8 @@
 Made from a copy of the Layout workspace (else the current one), its areas turned to the editor's
 work: the 3D view with the toolbar (the editor's tools), the sidebar on the "Galaxie" tab, the object
 palette as its shelf (shelf.py) and the HUD (hud.py) over a space-blue background (the viewport's own
-colour; the theme is not touched), and the Outliner, collections only, as the zone and layer tree; the
-Properties editor and the timeline closed. The top bar gets the menus "Galaxie" and
+colour; the theme is not touched); the Outliner, the Properties editor and the timeline closed (the
+sidebar lists zones, layers and objects). The top bar gets the menus "Galaxie" and
 "Spiel" while this workspace is active.
 """
 import sys
@@ -35,10 +35,10 @@ def configure(window):
             space.overlay.show_floor = False
             space.overlay.show_axis_x = space.overlay.show_axis_y = False
             space.clip_end = max(space.clip_end, 20000.0)
-    # The Properties editor and the timeline go: the 3D view takes the height (the object palette is
-    # its shelf at the bottom, shelf.py) and the zone tree (Outliner, collections only) the right column.
+    # The Properties editor, the timeline and the Outliner go: the 3D view takes the height (the object
+    # palette is its shelf at the bottom, shelf.py) and the width.
     for area in list(screen.areas):
-        if area.type in ("PROPERTIES", "DOPESHEET_EDITOR", "TIMELINE"):
+        if area.type in ("PROPERTIES", "DOPESHEET_EDITOR", "TIMELINE", "OUTLINER"):
             with bpy.context.temp_override(window=window, screen=screen, area=area):
                 bpy.ops.screen.area_close()
     for area in screen.areas:
@@ -48,8 +48,6 @@ def configure(window):
             except AttributeError:
                 pass  # read-only until the shelf is available (it shows by itself: DEFAULT_VISIBLE)
             area.spaces[0].overlay.show_text = False  # the HUD (hud.py) says where you are
-        elif area.type == "OUTLINER":
-            area.spaces[0].use_filter_object = False
     bpy.app.timers.register(lambda: _palette(window), first_interval=0.5)
 
 
@@ -73,13 +71,15 @@ class MGE_OT_workspace(bpy.types.Operator):
 
     def execute(self, context):
         window = context.window
+        from . import assets
+        if assets.BLEND.exists():
+            assets.register_library(context)
+            if assets.stale() and not bpy.app.background:
+                bpy.ops.mge.build_assets()  # an older palette: rebuilt in the background
         existing = bpy.data.workspaces.get(NAME)
         if existing is not None:
             window.workspace = existing
             return {"FINISHED"}
-        from . import assets
-        if assets.BLEND.exists():
-            assets.register_library(context)
         base = bpy.data.workspaces.get("Layout")
         if base is not None and window.workspace != base:
             window.workspace = base
@@ -100,6 +100,8 @@ def _duplicate(window):
 def _finish(window):
     workspace = window.workspace
     workspace.name = NAME
+    with bpy.context.temp_override(window=window):
+        editor()._galaxy_scene(bpy.context)  # an empty galaxy scene, not the startup cube
     configure(window)
     return None
 
@@ -126,7 +128,7 @@ class MGE_MT_game(bpy.types.Menu):
         layout.operator("mge.preview", text="Vorschau (unsichtbar)", icon="RENDER_STILL")
         layout.prop(context.scene, "mge_warp", text="Vorschau am Mario-Start")
         layout.separator()
-        layout.operator("mge.play", text="Im Spiel starten", icon="PLAY")
+        layout.operator("mge.play", text="Selbst spielen", icon="PLAY")
 
 
 def _topbar(self, context):

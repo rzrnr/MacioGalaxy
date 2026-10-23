@@ -151,4 +151,39 @@ check(len({p.values["l_id"] for p in paths}) == len(paths), "path ids unique")
 # 4. Saving again changes nothing: the written rows are the new originals.
 out = editor.export_mod(Reporter(), bpy.context)
 check(out == {}, f"second save without a change writes nothing ({sorted(out) if out else ''})")
+
+# 5. A duplicated path gets its own ID; a coin line along the new path; rows from before an undo.
+disc_path = next(o for o in root.all_objects if o.get("smg_kind") == "path" and o.get("smg_zone") == main
+                 and o.get("smg_row", -1) >= 0)
+path_twin = disc_path.copy()
+path_twin.data = disc_path.data.copy()
+disc_path.users_collection[0].objects.link(path_twin)
+for other in bpy.context.selected_objects:
+    other.select_set(False)
+new_path.select_set(True)
+bpy.context.view_layer.objects.active = new_path
+assert bpy.ops.mge.path_use(name="RailCoin") == {"FINISHED"}
+rail_id = new_path["smg.l_id"]
+table = [o for o in root.all_objects if o.get("smg_kind") == "objinfo" and o.get("smg_zone") == main
+         and o.get("smg_table") == moving_table and o.get("smg_row", -1) >= 0]
+single = [o for o in table if sum(1 for x in table if x["smg.name"] == o["smg.name"]) == 1]  # not the duplicate
+first, second = single[0], single[1]
+first_pos, second_pos = first.matrix_world.translation.copy(), second.matrix_world.translation.copy()
+first["smg_row"], second["smg_row"] = second["smg_row"], first["smg_row"]  # as after an undo past a save
+count = len(GameData(user).open(main).zone(main).table(moving_table).rows)
+out = editor.export_mod(Reporter(), bpy.context)
+zone = GameData(user).open(main).zone(main)
+paths = zone.paths()
+check(len({p.values["l_id"] for p in paths}) == len(paths) and
+      sum(1 for p in paths if len(p.points) == len(disc_path.data.splines[0].bezier_points)
+          and p.values["name"] == disc_path["smg.name"]) >= 2, "the duplicated path written with its own ID")
+rows = [r.values for r in zone.records() if r.table == "jmp/placement/common/objinfo"]
+rail = [v for v in rows if v["name"] == "RailCoin" and v.get("CommonPath_ID") == rail_id]
+check(len(rail) == 1 and rail[0]["Obj_arg0"] >= 2, f"coin line on path {rail_id} ({rail[0]['Obj_arg0'] if rail else 0} coins)")
+values = [r.values for r in zone.records() if r.table == moving_table]
+check(len([v for v in values if v["name"] != "RailCoin"]) == count, f"stale rows: {moving_table} keeps its {count} rows")
+for obj, pos in ((first, first_pos), (second, second_pos)):
+    game = editor.scene_io.to_game(editor.scene_io._zone_local(obj).translation)
+    hits = [v for v in values if v["name"] == obj["smg.name"] and abs(v["pos_x"] - game.x) < 0.5 and abs(v["pos_z"] - game.z) < 0.5]
+    check(len(hits) == 1, f"stale rows: {obj['smg.name']} written at its own place")
 print("EDITOR TEST PASS")

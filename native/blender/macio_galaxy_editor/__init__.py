@@ -205,7 +205,14 @@ def _arm(scene_name):
     scene = bpy.data.scenes.get(scene_name)
     if scene is not None:
         scene["mge_armed"] = True
+        scene["mge_count"] = _object_count(scene)
     return None
+
+
+def _object_count(scene):
+    """How many objects the open galaxy has (a deletion changes it; transforms mark the rest)."""
+    root = bpy.data.collections.get(f"SMG {scene.get('smg_galaxy')}")
+    return len(root.all_objects) if root is not None else 0
 
 
 def message_text(scene, zone, name, number):
@@ -393,6 +400,7 @@ def export_mod(operator, context):
         operator.report({"ERROR"}, str(error))
         return None
     scene["mge_dirty"] = False
+    scene["mge_count"] = _object_count(scene)
     if out:
         game_io.write_mod(game_data(scene), mod, out)
         forget(scene)
@@ -419,6 +427,9 @@ class MGE_OT_save(bpy.types.Operator):
             self.report({"INFO"}, "Keine Änderungen")
         else:
             self.report({"INFO"}, f"Gespeichert in mods/{context.scene.mge_mod}: {', '.join(out)}")
+            # The objects now stand for the saved rows: an undo step, so Ctrl+Z first returns here.
+            if not bpy.app.background:
+                bpy.ops.ed.undo_push(message="Galaxie gespeichert")
         return {"FINISHED"}
 
 
@@ -438,7 +449,7 @@ class MGE_OT_save_shortcut(bpy.types.Operator):
 
 class MGE_OT_preview(bpy.types.Operator):
     bl_idname = "mge.preview"
-    bl_label = "Schnelltest (Bilder)"
+    bl_label = "Automatisch testen (Bilder)"
     bl_description = ("Speichern, dann die Galaxie unsichtbar im Spiel laden (eigener Wegwerf-Spielstand), Mario laufen "
                       "lassen und Bilder zeigen; mit dem Startpunkt-Knopf beginnt Mario am Vorschau-Startpunkt")
     _timer = None
@@ -459,7 +470,7 @@ class MGE_OT_preview(bpy.types.Operator):
             return {"CANCELLED"}
         self._timer = context.window_manager.event_timer_add(1.0, window=context.window)
         context.window_manager.modal_handler_add(self)
-        scene.mge_status = "Schnelltest läuft …"
+        scene.mge_status = "Automatischer Test läuft …"
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
@@ -496,7 +507,7 @@ def _show_in_image_editor(context, pictures):
 
 class MGE_OT_play(bpy.types.Operator):
     bl_idname = "mge.play"
-    bl_label = "Im Spiel starten"
+    bl_label = "Selbst spielen"
     bl_description = "Speichern und das Spiel starten: nach dem Laden eines Spielstands geht es direkt in diese Galaxie"
 
     @classmethod
@@ -532,6 +543,8 @@ def _gravity_handler(scene, depsgraph):
             scene_io.refresh_gravity(obj)
         elif obj.get("smg_asset_name") and not obj.get("smg_kind") and scene.get("smg_galaxy"):
             dropped.append(obj.name)
+    if scene.get("mge_armed") and not scene.get("mge_dirty") and _object_count(scene) != scene.get("mge_count"):
+        scene["mge_dirty"] = True  # an object deleted (or added outside the tools)
     if dropped:
         bpy.app.timers.register(lambda: _adopt(dropped), first_interval=0.0)
 

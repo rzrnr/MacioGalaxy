@@ -22,7 +22,7 @@ import bpy
 from . import shapes
 from .catalog import KIND_GROUP
 from .convert import basis_from_game, flat, game_from_basis, same_matrix, to_blender, to_game, unflat
-from .galaxy import LAYERS, TRANSFORM, Path_, PathPoint, Record
+from .galaxy import LAYERS, TRANSFORM, Path_, PathPoint, Record, row_values
 
 PREFIX = "smg."
 COLORS = {"objinfo": (1.0, 0.55, 0.1, 1), "mappartsinfo": (0.25, 0.5, 1.0, 1), "childobjinfo": (1.0, 0.8, 0.2, 1),
@@ -348,6 +348,7 @@ def collect(scene, galaxy):
     objects = sorted(root.all_objects, key=lambda o: (o.get("smg_row", -1) < 0, o.get("smg_row", -1), o.name))
     edits = {}
     claimed = set()
+    originals = {}
     for obj in objects:
         kind, zone = obj.get("smg_kind"), obj.get("smg_zone")
         if not kind or not zone:
@@ -356,13 +357,19 @@ def collect(scene, galaxy):
         values = fields_of(obj)
         matrix = _zone_local(obj)
         if kind == "path":
-            paths.append(_path_from(obj, values, matrix))
+            path = _path_from(obj, values, matrix)
+            key = (zone, "path", path.row)
+            if path.row >= 0 and key in claimed:  # a duplicated path: a new one, with its own ID
+                path.row = -1
+            claimed.add(key)
+            paths.append(path)
             continue
         table = f"jmp/{KIND_GROUP.get(kind, 'placement')}/{_layer_of(obj)}/{kind}"
         row = obj.get("smg_row", -1)
         # A duplicate (Shift+D copies the properties) or a moved object is a new row in its table.
         key = (zone, obj.get("smg_table"), row)
-        if row < 0 or obj.get("smg_table") != table or key in claimed:
+        if row < 0 or obj.get("smg_table") != table or key in claimed or \
+                not _same_row(galaxy, originals, zone, table, row, values):
             row = -1
         claimed.add(key)
         original = unflat(obj["smg_basis"]) if "smg_basis" in obj else None
@@ -380,9 +387,34 @@ def collect(scene, galaxy):
     return edits
 
 
+def _same_row(galaxy, originals, zone, table, row, values):
+    """Whether row of the zone's table (as read now) is still the object's: an undo past a save brings
+    back row numbers of the table before it. Then name and l_id both differ, and the object is a new row."""
+    key = (zone, table)
+    if key not in originals:
+        try:
+            originals[key] = galaxy.zone(zone).table(table)
+        except (KeyError, ValueError):
+            originals[key] = None
+    data = originals[key]
+    if data is None or row >= len(data.rows):
+        return False
+    old = row_values(data, row)
+    return old.get("name") == values.get("name") or old.get("l_id") == values.get("l_id")
+
+
 def _path_from(obj, values, matrix):
+    if len(obj.data.splines) > 1:
+        raise RuntimeError(f"{obj.name} hat {len(obj.data.splines)} Teile; im Bearbeitungsmodus mit P → "
+                           "„Nach losen Teilen trennen“ zu eigenen Pfaden machen")
     spline = obj.data.splines[0] if obj.data.splines else None
+    if spline is None or len(spline.bezier_points if spline.type == "BEZIER" else spline.points) < 2:
+        raise RuntimeError(f"{obj.name}: ein Pfad braucht mindestens zwei Punkte")
     stored = json.loads(obj.get("smg_points", "[]"))
+    # A point keeps its point_arg values by its place (co), so inserting or deleting points does not
+    # shift them onto other points; a moved point keeps them by index while the count is unchanged.
+    by_place = {tuple(k["curve"][:3]): k for k in stored if k.get("curve")}
+    count = len(spline.bezier_points if spline.type == "BEZIER" else spline.points)
     unmoved = "smg_basis" in obj and same_matrix(unflat(obj["smg_basis"]), matrix)
     points = []
     if spline is not None:
@@ -392,8 +424,8 @@ def _path_from(obj, values, matrix):
             co = p.co if bezier is not None else p.co.xyz
             left = p.handle_left if bezier is not None else co
             right = p.handle_right if bezier is not None else co
-            known = stored[i] if i < len(stored) else None
             curve = [round(c, 7) for vec in (co, left, right) for c in vec]
+            known = by_place.get(tuple(curve[:3])) or (stored[i] if count == len(stored) else None)
             if known and unmoved and known.get("curve") == curve:
                 point = dict(known["game"])
             else:
@@ -418,7 +450,7 @@ def _unique_ids(tables, paths):
             used.add(r.values.get("l_id"))
     path_ids = {p.values.get("l_id") for p in paths if p.row >= 0}
     for p in paths:
-        if p.row < 0 and (p.values.get("l_id") in path_ids or p.values.get("l_id") is None):
+        if p.row < 0 and p.values.get("l_id") in path_ids | {None, -1}:
             p.values["l_id"] = max([i for i in path_ids if isinstance(i, int)] + [-1]) + 1
         path_ids.add(p.values.get("l_id"))
 

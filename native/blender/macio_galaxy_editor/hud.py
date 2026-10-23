@@ -5,7 +5,7 @@
 - Bottom left: the legend of the wire shapes' colours, for the kinds that are shown.
 - Without a galaxy: a card in the middle saying what to do first.
 - Q (in this workspace only; elsewhere Blender's Quick Favorites): a pie with the editor's tools, the
-  quick test, saving and "show everything".
+  automatic test, saving and playing.
 """
 import sys
 
@@ -24,7 +24,7 @@ HINTS = {
     "mge.tool_place": "Klick: Objekt setzen  ·  Klick auf ein Objekt: auswählen  ·  Strg+Klick: trotzdem setzen",
     "mge.tool_path": "Klicks: Pfadpunkte  ·  Enter oder Rechtsklick: fertig  ·  Esc: verwerfen",
     "mge.tool_gravity": "Klick auf einen Planeten: Schwerkraft in seine Mitte",
-    "mge.tool_start": "Klick: dort startet Mario im Schnelltest",
+    "mge.tool_start": "Klick: dort beginnt Mario beim automatischen Test",
 }
 DEFAULT_HINT = "Palette unten: Objekt anklicken oder auf einen Planeten ziehen  ·  Q: Werkzeuge"
 LEGEND = [("objects", "Objekte", "objinfo"), ("mapparts", "Levelteile", "mappartsinfo"), ("areas", "Bereiche", "areaobjinfo"),
@@ -55,6 +55,12 @@ def _text(x, y, text, size, colour, scale):
 def _top_inset(area):
     """The height of the header and tool header drawn over the viewport (region overlap)."""
     return sum(r.height for r in area.regions if r.type in ("HEADER", "TOOL_HEADER") and r.height > 1 and r.alignment == "TOP")
+
+
+def _bottom_inset(area):
+    """The height of the asset shelf (the palette) drawn over the viewport's bottom."""
+    return sum(r.height for r in area.regions if r.type in ("ASSET_SHELF", "ASSET_SHELF_HEADER") and r.height > 1
+               and r.alignment == "BOTTOM")
 
 
 def _left_edge(area):
@@ -91,14 +97,20 @@ def draw():
         target = core._target_collection(context).name
     except (KeyError, RuntimeError):
         target = ""
+    if " · " in target:  # "Ebene A · Zone" -> "Zone › Ebene A"
+        layer, zone = target.split(" · ", 1)
+        target = f"{zone} › {layer}"
     tool = context.workspace.tools.from_space_view3d_mode("OBJECT", create=False)
     hint = HINTS.get(tool.idname if tool else "", DEFAULT_HINT)
-    rows = [(galaxy, 14, TEXT), (scenario.split("   ·")[0], 12, DIM), (f"Neues landet in: {target}", 12, DIM), (hint, 12, DIM)]
+    rows = [(galaxy, 14, TEXT), (scenario.split("   ·")[0], 12, DIM), (f"Neues landet in: Ebene des Planeten darunter, sonst {target}", 12, DIM), (hint, 12, DIM)]
+    active = context.active_object
+    if active is not None and active.select_get() and active.get("smg_kind"):
+        rows.append((f"Ausgewählt: {active.name}  ·  G verschieben  ·  Shift+D kopieren  ·  X löschen", 12, DIM))
     x = _left_edge(area)
     blf.size(0, 14 * scale)
     width = max(blf.dimensions(0, r[0])[0] if r[1] == 14 else 0 for r in rows)
     blf.size(0, 12 * scale)
-    width = max([width] + [blf.dimensions(0, r[0])[0] for r in rows if r[1] == 12]) + 28 * scale
+    width = max([width + 110 * scale] + [blf.dimensions(0, r[0])[0] for r in rows if r[1] == 12]) + 28 * scale
     height = (len(rows) * 19 + 14) * scale
     y = region.height - _top_inset(area) - height - 10 * scale
     _rect(x, y, width, height, PANEL)
@@ -108,10 +120,12 @@ def draw():
         _text(x + 14 * scale, yy, text, size, colour, scale)
         yy -= 19 * scale
     if scene.get("mge_dirty"):
-        _text(x + width - 24 * scale, y + height - 22 * scale, "●", 14, HAZEL, scale)
+        blf.size(0, 11 * scale)
+        w = blf.dimensions(0, "● ungespeichert")[0]
+        _text(x + width - w - 12 * scale, y + height - 22 * scale, "● ungespeichert", 11, HAZEL, scale)
     # The legend of the shown kinds' colours.
     shown = [(label, kind) for key, label, kind in LEGEND if getattr(scene, f"mge_show_{key}", False)]
-    lx, ly = x, 14 * scale
+    lx, ly = x, _bottom_inset(area) + 14 * scale
     for label, kind in shown:
         colour = scene_io.COLORS.get(kind, (1.0, 0.95, 0.3, 1)) if kind else (1.0, 0.95, 0.3, 1)
         _rect(lx, ly + 2 * scale, 10 * scale, 10 * scale, colour)
@@ -129,9 +143,9 @@ class MGE_MT_pie(bpy.types.Menu):
         pie.operator("wm.tool_set_by_id", text="Auswählen", icon="RESTRICT_SELECT_OFF").name = "builtin.select_box"
         pie.operator("wm.tool_set_by_id", text="Pfad zeichnen", icon="CURVE_BEZCURVE").name = "mge.tool_path"
         pie.operator("wm.tool_set_by_id", text="Schwerkraft", icon="FORCE_FORCE").name = "mge.tool_gravity"
-        pie.operator("mge.preview", text="Schnelltest", icon="RENDER_STILL")
+        pie.operator("mge.preview", text="Automatisch testen", icon="RENDER_STILL")
         pie.operator("mge.save_mod", text="Speichern", icon="FILE_TICK")
-        pie.operator("mge.zones_all", text="Alles zeigen", icon="HIDE_OFF").mode = "ALL"
+        pie.operator("mge.play", text="Selbst spielen", icon="PLAY")
         pie.operator("mge.view_start", text="Zum Start", icon="HOME")
 
 

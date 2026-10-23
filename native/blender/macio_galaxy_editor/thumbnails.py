@@ -141,20 +141,12 @@ if __name__ == "__main__":
 
 def shape_thumbnails(catalog, force=False):
     """Pictures of the objects that are shapes, not models: their wire shape at an angle, in the kind's
-    colour (as in the viewport), drawn with numpy (Blender's Python has no Pillow). Returns how many."""
-    import math
-
-    import numpy as np
-
+    colour (as in the viewport), drawn with numpy (Blender's Python has no Pillow), and a wire cube per
+    kind (_objinfo.png, ...) for objects without a model. Returns how many."""
     from . import shapes
-    from .models import write_png
     colours = {"areaobjinfo": (80, 230, 90), "cameracubeinfo": (190, 80, 255), "planetobjinfo": (30, 215, 240)}
     THUMBS.mkdir(parents=True, exist_ok=True)
-    big = SIZE * 3
-    ys, xs = np.mgrid[-3:4, -3:4]
-    brush = (xs ** 2 + ys ** 2) <= 9
     written = 0
-    yaw, pitch = math.radians(35), math.radians(25)
     for name in catalog.names():
         entry = catalog.entries[name]
         kind = entry["kind"]
@@ -172,27 +164,49 @@ def shape_thumbnails(catalog, force=False):
             verts, edges, _ = shapes.area_shape(shapes.area_shape_name(name, entry.get("area_shape")))
         if not verts or not edges:
             continue
-        v = np.array(verts, dtype=np.float64)
-        x1 = v[:, 0] * math.cos(yaw) - v[:, 2] * math.sin(yaw)
-        z1 = v[:, 0] * math.sin(yaw) + v[:, 2] * math.cos(yaw)
-        y1 = v[:, 1] * math.cos(pitch) - z1 * math.sin(pitch)
-        px, py = x1, -y1
-        span = max(px.max() - px.min(), py.max() - py.min()) or 1.0
-        scale = big * 0.78 / span
-        px = (px - (px.max() + px.min()) / 2) * scale + big / 2
-        py = (py - (py.max() + py.min()) / 2) * scale + big / 2
-        mask = np.zeros((big, big), bool)
-        for a, b in edges:
-            steps = int(max(abs(px[b] - px[a]), abs(py[b] - py[a]))) + 1
-            t = np.linspace(0.0, 1.0, steps)
-            lx = np.clip(np.round(px[a] + (px[b] - px[a]) * t).astype(int), 3, big - 4)
-            ly = np.clip(np.round(py[a] + (py[b] - py[a]) * t).astype(int), 3, big - 4)
-            for dy, dx in zip(*np.nonzero(brush)):
-                mask[ly + dy - 3, lx + dx - 3] = True
-        alpha = mask.reshape(SIZE, 3, SIZE, 3).mean(axis=(1, 3))  # 3x3 supersampling
-        image = np.zeros((SIZE, SIZE, 4), np.uint8)
-        image[..., :3] = colours[kind]
-        image[..., 3] = (alpha * 255).astype(np.uint8)
-        write_png(out, image)
+        _draw_wire(verts, edges, colours[kind], out)
         written += 1
+    # Objects without a model of their own (controllers, groups, ...): a wire cube in the kind's colour.
+    cube = [(x, y, z) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]
+    edges = [(a, b) for a in range(8) for b in range(a + 1, 8) if sum(cube[a][i] != cube[b][i] for i in range(3)) == 1]
+    for kind, colour in (("objinfo", (255, 150, 50)), ("mappartsinfo", (80, 130, 255)), ("childobjinfo", (255, 150, 50))):
+        out = THUMBS / f"_{kind}.png"
+        if force or not out.exists():
+            _draw_wire(cube, edges, colour, out)
+            written += 1
     return written
+
+
+def _draw_wire(verts, edges, colour, out):
+    """A wire picture of verts and edges, turned to an angle, in colour (RGB), written to out as a PNG."""
+    import math
+
+    import numpy as np
+
+    from .models import write_png
+    big = SIZE * 3
+    ys, xs = np.mgrid[-3:4, -3:4]
+    brush = (xs ** 2 + ys ** 2) <= 9
+    yaw, pitch = math.radians(35), math.radians(25)
+    v = np.array(verts, dtype=np.float64)
+    x1 = v[:, 0] * math.cos(yaw) - v[:, 2] * math.sin(yaw)
+    z1 = v[:, 0] * math.sin(yaw) + v[:, 2] * math.cos(yaw)
+    y1 = v[:, 1] * math.cos(pitch) - z1 * math.sin(pitch)
+    px, py = x1, -y1
+    span = max(px.max() - px.min(), py.max() - py.min()) or 1.0
+    scale = big * 0.78 / span
+    px = (px - (px.max() + px.min()) / 2) * scale + big / 2
+    py = (py - (py.max() + py.min()) / 2) * scale + big / 2
+    mask = np.zeros((big, big), bool)
+    for a, b in edges:
+        steps = int(max(abs(px[b] - px[a]), abs(py[b] - py[a]))) + 1
+        t = np.linspace(0.0, 1.0, steps)
+        lx = np.clip(np.round(px[a] + (px[b] - px[a]) * t).astype(int), 3, big - 4)
+        ly = np.clip(np.round(py[a] + (py[b] - py[a]) * t).astype(int), 3, big - 4)
+        for dy, dx in zip(*np.nonzero(brush)):
+            mask[ly + dy - 3, lx + dx - 3] = True
+    alpha = mask.reshape(SIZE, 3, SIZE, 3).mean(axis=(1, 3))  # 3x3 supersampling
+    image = np.zeros((SIZE, SIZE, 4), np.uint8)
+    image[..., :3] = colour
+    image[..., 3] = (alpha * 255).astype(np.uint8)
+    write_png(out, image)
