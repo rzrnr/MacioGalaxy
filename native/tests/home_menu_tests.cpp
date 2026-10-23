@@ -168,14 +168,17 @@ void testLifecycle() {
     }
     check(menu.phase() == HM::Phase::List, "list after the fade in");
     const HM::View list = menu.view();
-    check(list.itemCount == 6 && std::strcmp(list.items[0].label, "Resume") == 0 &&
+    check(list.itemCount == 8 && std::strcmp(list.items[0].label, "Resume") == 0 &&
               std::strcmp(list.items[1].label, "Controls") == 0 && std::strcmp(list.items[2].label, "Mods") == 0 &&
-              std::strcmp(list.items[3].label, "My Progress") == 0 && std::strcmp(list.items[4].label, "Restart from Title") == 0 &&
-              std::strcmp(list.items[5].label, "Quit") == 0,
-          "list offers Resume, Controls, Mods, My Progress, Restart from Title, Quit");
+              std::strcmp(list.items[3].label, "Graphics") == 0 && std::strcmp(list.items[4].label, "My Progress") == 0 &&
+              std::strcmp(list.items[5].label, "Volume") == 0 && std::strcmp(list.items[6].label, "Restart from Title") == 0 &&
+              std::strcmp(list.items[7].label, "Quit") == 0,
+          "list offers Resume, Controls, Mods, Graphics, My Progress, Volume, Restart from Title, Quit");
+    check(list.items[5].slider == 1.0f && list.items[4].slider < 0.0f && list.items[6].slider < 0.0f,
+          "Volume is a slider at 100%, the rest are buttons");
     check(list.bands && list.panel.y0 >= -1.0f && list.messageY < list.panel.y1 && list.items[0].rect.y0 > list.panel.y1 &&
-              list.items[5].rect.y1 < 0.9f,
-          "the list: title and message in the top band, six items between the bands");
+              list.items[7].rect.y1 < 0.9f,
+          "the list: title and message in the top band, eight items between the bands");
     check(list.items[0].focused && !list.items[1].focused, "Resume focused first");
 
     for (int i = 0; i < 300; i++) {
@@ -207,6 +210,8 @@ void testSelections() {
         menu.update(press(Down));
         menu.update(press(Down));
         menu.update(press(Down));
+        menu.update(press(Down));
+        menu.update(press(Down));
         if (quit) {
             menu.update(press(Down));
         }
@@ -220,7 +225,7 @@ void testSelections() {
         check(std::strcmp(confirm.items[0].label, quit ? "Quit" : "Restart") == 0, "confirm names the action");
         check(menu.focus() == 1, "Cancel focused by default");
         menu.update(press(A));
-        check(menu.phase() == HM::Phase::List && menu.focus() == (quit ? 5 : 4), "A on Cancel returns to the item");
+        check(menu.phase() == HM::Phase::List && menu.focus() == (quit ? 7 : 6), "A on Cancel returns to the item");
 
         menu.update(press(A));
         menu.update(press(Up));
@@ -253,10 +258,12 @@ void testCancellation() {
     menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
+    menu.update(press(Down));
+    menu.update(press(Down));
     menu.update(press(A));
     sounds.clear();
     menu.update(press(Plus | B));
-    check(menu.phase() == HM::Phase::List && menu.focus() == 4, "Escape in a confirmation goes back");
+    check(menu.phase() == HM::Phase::List && menu.focus() == 6, "Escape in a confirmation goes back");
     check(played(HM::Sound::Cancel), "cancel sound");
 
     menu.update(press(A));
@@ -275,6 +282,8 @@ void testCancellation() {
     check(menu.phase() == HM::Phase::Closing, "a left click outside the items is back");
 
     openToList(menu);
+    menu.update(press(Down));
+    menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
@@ -320,6 +329,8 @@ void testBlackOut() {
             menu.update(press(Down));
             menu.update(press(Down));
             menu.update(press(Down));
+            menu.update(press(Down));
+            menu.update(press(Down));
             menu.update(press(A));
         } else if (at == HM::Phase::Closing) {
             menu.update(press(A));
@@ -337,6 +348,8 @@ void testBlackOut() {
 
     // A reset during a Quit fade keeps its timing and becomes the reset result.
     openToList(menu);
+    menu.update(press(Down));
+    menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
@@ -404,12 +417,16 @@ void testFocusAndRepeat() {
     for (int i = 0; i < 6; i++) {
         menu.update(hold(Down));
     }
-    check(menu.focus() == 5, "fourth repeat reaches the last item");
+    check(menu.focus() == 5, "fourth repeat");
+    for (int i = 0; i < 12; i++) {
+        menu.update(hold(Down));
+    }
+    check(menu.focus() == 7, "sixth repeat reaches the last item");
     sounds.clear();
     for (int i = 0; i < 12; i++) {
         menu.update(hold(Down));
     }
-    check(menu.focus() == 5 && sounds.empty(), "repeats stop at the end without sound");
+    check(menu.focus() == 7 && sounds.empty(), "repeats stop at the end without sound");
 
     // Interval, counted on the Up side: from item 2, press Up at 0 -> 1, repeat at 24 -> 0.
     openToList(menu);
@@ -449,26 +466,26 @@ void testFocusAndRepeat() {
     openToList(menu);
     const HM::View view = menu.view();
     float x, y;
-    center(view.items[5].rect, &x, &y);
+    center(view.items[7].rect, &x, &y);
     sounds.clear();
     menu.update(pointer(x, y));
-    check(menu.focus() == 5 && playedCount(HM::Sound::Focus) == 1, "pointer moving onto Quit focuses it");
+    check(menu.focus() == 7 && playedCount(HM::Sound::Focus) == 1, "pointer moving onto Quit focuses it");
     menu.update(pointer(x, y));
     check(playedCount(HM::Sound::Focus) == 1, "no sound while resting");
     HM::FrameInput up = pointer(x, y, Up);
     menu.update(up);
-    check(menu.focus() == 4, "keyboard moves the focus under a resting pointer");
+    check(menu.focus() == 6, "keyboard moves the focus under a resting pointer");
     menu.update(pointer(x, y));
-    check(menu.focus() == 4, "resting pointer does not steal the focus back");
+    check(menu.focus() == 6, "resting pointer does not steal the focus back");
     menu.update(pointer(x + 0.01f, y));
-    check(menu.focus() == 5, "moving the pointer takes the focus");
+    check(menu.focus() == 7, "moving the pointer takes the focus");
     menu.update(pointer(0.95f, 0.95f));
-    check(menu.focus() == 5, "leaving the items keeps the focus");
+    check(menu.focus() == 7, "leaving the items keeps the focus");
     menu.update(pointer(x, y, B));
     check(menu.phase() == HM::Phase::Confirm && menu.confirming() == HM::Selection::Quit, "left click on Quit");
 
     openToList(menu);
-    center(menu.view().items[4].rect, &x, &y);
+    center(menu.view().items[6].rect, &x, &y);
     menu.update(pointer(x, y));
     menu.update(pointer(0.95f, 0.95f));
     menu.update(press(A));
@@ -975,6 +992,8 @@ void testWrapper() {
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
+    frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
+    frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_A, WPAD_BUTTON_A);
     check(HM::instance().phase() == HM::Phase::Confirm, "Restart chosen through RSO::HBMCalc");
     frame(WPAD_BUTTON_UP, WPAD_BUTTON_UP);
@@ -1003,6 +1022,8 @@ void testWrapper() {
     for (int i = 0; i < 10; i++) {
         frame(0, 0);
     }
+    frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
+    frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
     frame(WPAD_BUTTON_DOWN, WPAD_BUTTON_DOWN);
@@ -1307,6 +1328,8 @@ void testImGuiOverlay() {
         check(none == 0, "no title hint without text");
     }
 
+    menu.update(press(Down));
+    menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
     menu.update(press(Down));
@@ -1781,13 +1804,14 @@ void testGraphicsPage() {
     menu.update(press(A));
     check(menu.phase() == HM::Phase::Graphics && menu.focus() == 0 && played(HM::Sound::Select), "Graphics opens from the list");
     HM::View view = menu.view();
-    check(std::strcmp(view.title, "Graphics") == 0 && view.itemCount == 7 && std::strcmp(view.items[0].label, "Frame rate: 60") == 0 &&
-              std::strcmp(view.items[1].label, "Resolution: Display") == 0 &&
-              std::strcmp(view.items[2].label, "Upscaler: not needed at 1:1") == 0 &&
-              std::strcmp(view.items[3].label, "Sharpening: Off") == 0 && std::strcmp(view.items[4].label, "Anti-aliasing: Off") == 0 &&
-              std::strcmp(view.items[5].label, "Stats: Off") == 0 && std::strcmp(view.items[6].label, "Back") == 0,
+    check(std::strcmp(view.title, "Graphics") == 0 && view.itemCount == 8 && std::strcmp(view.items[0].label, "Frame rate: 60") == 0 &&
+              std::strcmp(view.items[1].label, "Input latency: Original") == 0 &&
+              std::strcmp(view.items[2].label, "Resolution: Display") == 0 &&
+              std::strcmp(view.items[3].label, "Upscaler: not needed at 1:1") == 0 &&
+              std::strcmp(view.items[4].label, "Sharpening: Off") == 0 && std::strcmp(view.items[5].label, "Anti-aliasing: Off") == 0 &&
+              std::strcmp(view.items[6].label, "Stats: Off") == 0 && std::strcmp(view.items[7].label, "Back") == 0,
           "the page shows its values and Back");
-    check(view.items[6].rect.y1 < view.panel.y1 && view.items[5].rect.y1 <= view.items[6].rect.y0, "seven items fit");
+    check(view.items[7].rect.y1 < view.panel.y1 && view.items[6].rect.y1 <= view.items[7].rect.y0, "eight items fit");
     check(std::strstr(view.message, "graphics.txt") != nullptr, "the message names the file before the size is known");
     menu.setGraphicsOutput(2560, 1440);
     check(std::strstr(menu.view().message, "Renders 2560 x 1440, shown at 2560 x 1440 (1:1)") != nullptr, "the message shows the sizes");
@@ -1810,20 +1834,28 @@ void testGraphicsPage() {
     menu.update(press(A));
     check(menu.takeGraphicsChange(&changed) && changed.frameRate == 60, "A switches back to 60");
     menu.update(press(Down));
+    sounds.clear();
+    menu.update(press(A));
+    check(menu.takeGraphicsChange(&changed) && changed.inputLatency == 1 &&
+              std::strcmp(menu.view().items[1].label, "Input latency: Reduced") == 0 && played(HM::Sound::Select),
+          "A switches Input latency to Reduced");
+    menu.update(press(HM::Button::Left));
+    check(menu.takeGraphicsChange(&changed) && changed.inputLatency == 0, "Left back to Original");
+    menu.update(press(Down));
     menu.update(press(HM::Button::Right));
     menu.update(press(HM::Button::Right));
     menu.update(press(HM::Button::Right));
     check(menu.takeGraphicsChange(&changed) && changed.resolution == 1080 && !menu.takeGraphicsChange(&changed),
           "Right steps the resolution up, reported once");
-    check(std::strcmp(menu.view().items[1].label, "Resolution: 1080p") == 0 &&
-              std::strcmp(menu.view().items[2].label, "Upscaler: FSR 1") == 0 &&
+    check(std::strcmp(menu.view().items[2].label, "Resolution: 1080p") == 0 &&
+              std::strcmp(menu.view().items[3].label, "Upscaler: FSR 1") == 0 &&
               std::strstr(menu.view().message, "Renders 1920 x 1080, shown at 2560 x 1440 (upscaled)") != nullptr,
           "below the display's resolution FSR 1 upscales");
     menu.update(press(HM::Button::Right));
-    check(menu.graphics().resolution == 1440 && std::strcmp(menu.view().items[2].label, "Upscaler: not needed at 1:1") == 0,
+    check(menu.graphics().resolution == 1440 && std::strcmp(menu.view().items[3].label, "Upscaler: not needed at 1:1") == 0,
           "the display's own height is 1:1");
     menu.update(press(HM::Button::Right));
-    check(menu.graphics().resolution == 2160 && std::strcmp(menu.view().items[2].label, "Downscaler: Area (automatic)") == 0 &&
+    check(menu.graphics().resolution == 2160 && std::strcmp(menu.view().items[3].label, "Downscaler: Area (automatic)") == 0 &&
               std::strstr(menu.view().message, "(supersampled)") != nullptr,
           "4K on a 1440 image is supersampled");
     check(menu.takeGraphicsChange(&changed) && changed.resolution == 2160, "the resolution change is reported");
@@ -1834,11 +1866,11 @@ void testGraphicsPage() {
     menu.update(press(Up));
     menu.update(press(HM::Button::Right));
     menu.update(press(HM::Button::Right));
-    check(menu.graphics().resolution == 480 && std::strcmp(menu.view().items[1].label, "Resolution: 480p (Wii)") == 0,
+    check(menu.graphics().resolution == 480 && std::strcmp(menu.view().items[2].label, "Resolution: 480p (Wii)") == 0,
           "the list wraps from 4K over Display to 480p");
     menu.update(press(Down));
     menu.update(press(HM::Button::Left));
-    check(menu.graphics().upscaler == 2 && std::strcmp(menu.view().items[2].label, "Upscaler: Bilinear") == 0,
+    check(menu.graphics().upscaler == 2 && std::strcmp(menu.view().items[3].label, "Upscaler: Bilinear") == 0,
           "Left steps the upscaler back, wrapping to Bilinear");
     menu.update(press(A));
     check(menu.graphics().upscaler == 0, "A steps it on to FSR 1");
@@ -1852,9 +1884,9 @@ void testGraphicsPage() {
     check(menu.takeGraphicsChange(&changed) && changed.frameRate == 60 && changed.resolution == 480 && changed.upscaler == 0 &&
               changed.sharpening == 2 && changed.fxaa && changed.stats == 2,
           "sharpening steps to Medium, FXAA toggles, Stats wraps to Detailed");
-    check(std::strcmp(menu.view().items[3].label, "Sharpening: Medium") == 0 &&
-              std::strcmp(menu.view().items[4].label, "Anti-aliasing: FXAA") == 0 &&
-              std::strcmp(menu.view().items[5].label, "Stats: Detailed") == 0,
+    check(std::strcmp(menu.view().items[4].label, "Sharpening: Medium") == 0 &&
+              std::strcmp(menu.view().items[5].label, "Anti-aliasing: FXAA") == 0 &&
+              std::strcmp(menu.view().items[6].label, "Stats: Detailed") == 0,
           "the labels follow");
     menu.update(press(Plus | B));
     check(menu.phase() == HM::Phase::List && menu.focus() == 3 && played(HM::Sound::Cancel), "Escape returns to the Graphics entry");
