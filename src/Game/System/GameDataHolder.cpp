@@ -344,6 +344,14 @@ namespace {
     }
 
     void loadModGalaxies(const char* pUserFile, GameDataAllGalaxyStorage* pStorage) {
+        // GameData.bin has no mod galaxies, so their storages still hold the last file's values: start
+        // them blank, so a file without records (new, cleared or copied from one without) has none.
+        for (s32 i = 0; i < pStorage->getGalaxyNum(); i++) {
+            GameDataSomeGalaxyStorage* pGalaxy = pStorage->getGalaxyStorage(i);
+            if (ModGalaxy::find(pGalaxy->mGalaxyName) != nullptr) {
+                pGalaxy->resetAllData();
+            }
+        }
         for (const ModGalaxy::GalaxyRecord& record : ModGalaxy::loadRecords(pUserFile)) {
             const s32 index = pStorage->findIndex(record.galaxy.c_str());
             if (index < 0) {

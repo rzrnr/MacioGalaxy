@@ -272,7 +272,8 @@ bool resolvePaths(int argc, char** argv, App::Paths* paths) {
     if (stageFixture) {
         const std::string& stage = PetariNative::TestFixture::stage;
         const std::filesystem::path scenario = std::filesystem::path("StageData") / stage / (stage + "Scenario.arc");
-        bool found = std::filesystem::is_regular_file(paths->disc / "files" / scenario);
+        const bool onDisc = std::filesystem::is_regular_file(paths->disc / "files" / scenario);
+        bool found = onDisc;
         // A new galaxy from a folder mod (<user>/mods/<Mod>/files/...); the overlay decides later
         // whether that mod is enabled.
         std::error_code ec;
@@ -285,6 +286,18 @@ bool resolvePaths(int argc, char** argv, App::Paths* paths) {
             std::fprintf(stderr, "petari: PETARI_STAGE %s has no StageData/%s/%sScenario.arc on the disc or in a mod folder\n",
                          stage.c_str(), stage.c_str(), stage.c_str());
             return false;
+        }
+        if (!onDisc) {
+            // The game loads a mod's galaxy only when an enabled mod registers it (galaxy.json): say so
+            // now rather than fail later in the parser.
+            std::vector<std::string> galaxyLog;
+            PetariNative::Platform::ModGalaxy::load(PetariNative::Platform::ModFolder::enabledRoots(paths->user), &galaxyLog);
+            for (const std::string& line : galaxyLog) std::fprintf(stderr, "[mods] %s\n", line.c_str());
+            if (PetariNative::Platform::ModGalaxy::find(stage.c_str()) == nullptr) {
+                std::fprintf(stderr, "petari: PETARI_STAGE %s is in a mod folder but not registered: its mod is off or "
+                             "has no galaxy.json (native/CUSTOM_GALAXY.md)\n", stage.c_str());
+                return false;
+            }
         }
         std::fprintf(stderr, "PETARI FIXTURE: synthetic stage entry requested: %s scenario %d (test entry through the "
                      "after-loading galaxy move; no progression claims)\n", stage.c_str(),

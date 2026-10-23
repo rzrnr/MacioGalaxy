@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -139,6 +140,64 @@ const char* modMessages(const char* language) {
     return text.c_str();
 }
 
+// Saves of the earlier port version kept the mod galaxies' progress in <user>/ModProgress/<file>.txt
+// ("<galaxy> stars=<bits> visited=<bits> coins=<8 numbers>" per line). Once their galaxies are
+// registered, each line becomes the registry's record (mods-saves/), unless the file already has one
+// there (never overwritten); when every line is over, the folder is renamed ModProgress.migrated.
+void migrateModProgress(const std::filesystem::path& user) {
+    const std::filesystem::path folder = user / "ModProgress";
+    std::error_code ec;
+    if (!std::filesystem::is_directory(folder, ec)) return;
+    bool everything = true;
+    for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+        if (entry.path().extension() != ".txt") continue;
+        const std::string file = entry.path().stem().string();
+        std::vector<std::string> present;
+        for (const auto& record : Platform::ModGalaxy::loadRecords(file)) present.push_back(record.galaxy);
+        std::vector<Platform::ModGalaxy::GalaxyRecord> records;
+        std::ifstream in(entry.path());
+        std::string line;
+        while (std::getline(in, line)) {
+            std::istringstream fields(line);
+            std::string galaxy, field;
+            if (!(fields >> galaxy) || galaxy[0] == '#') continue;
+            if (Platform::ModGalaxy::find(galaxy.c_str()) == nullptr) {
+                everything = false;  // its mod is off or has no galaxy.json yet: later
+                continue;
+            }
+            if (std::find(present.begin(), present.end(), galaxy) != present.end()) continue;
+            Platform::ModGalaxy::GalaxyRecord record;
+            record.galaxy = galaxy;
+            while (fields >> field) {
+                if (field.rfind("stars=", 0) == 0) record.stars = static_cast<std::uint8_t>(std::strtoul(field.c_str() + 6, nullptr, 0));
+                if (field.rfind("visited=", 0) == 0) record.visited = static_cast<std::uint8_t>(std::strtoul(field.c_str() + 8, nullptr, 0));
+                if (field.rfind("coins=", 0) == 0) {
+                    const char* p = field.c_str() + 6;
+                    for (std::uint16_t& coin : record.coins) {
+                        char* end = nullptr;
+                        coin = static_cast<std::uint16_t>(std::strtoul(p, &end, 10));
+                        p = *end == ',' ? end + 1 : end;
+                    }
+                }
+            }
+            records.push_back(record);
+        }
+        std::string error;
+        if (!records.empty()) {
+            if (Platform::ModGalaxy::saveRecords(file, records, &error)) {
+                std::fprintf(stderr, "[mods] ModProgress/%s.txt: %zu galaxy record(s) moved to mods-saves\n",
+                             file.c_str(), records.size());
+            } else {
+                std::fprintf(stderr, "[mods] ModProgress/%s.txt: %s\n", file.c_str(), error.c_str());
+                everything = false;
+            }
+        }
+    }
+    if (everything) {
+        std::filesystem::rename(folder, user / "ModProgress.migrated", ec);
+    }
+}
+
 }  // namespace
 
 bool preparePlatform(const Paths& paths, std::string* error) {
@@ -180,6 +239,7 @@ bool preparePlatform(const Paths& paths, std::string* error) {
             Platform::ModGalaxy::load(Platform::ModFolder::enabledRoots(paths.user), &galaxyLog);
             for (const std::string& line : galaxyLog) std::fprintf(stderr, "[mods] %s\n", line.c_str());
         }
+        migrateModProgress(paths.user);
         gEnabledModRoots = Platform::ModFolder::enabledRoots(paths.user);
         PetariNative::ModGalaxies::messages = modMessages;
         PetariNative::ModGalaxies::isModObject = isModObject;

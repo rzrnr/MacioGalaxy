@@ -186,8 +186,10 @@ own progress. The registry does most of it (docs/dev/level-editor/new-galaxies.m
 - **Off again:** without the mod its galaxy, miniature and texts are simply gone; its
   progress waits in `mods-saves/` for when it is turned on again.
 
-Saves of the earlier port version kept this progress in `ModProgress/<slot>.txt`; the game no
-longer reads that folder.
+Saves of the earlier port version kept this progress in `ModProgress/<slot>.txt`. At the first
+start the port moves each line into `mods-saves/` once its galaxy is registered, never over a record
+that is already there, and renames the folder `ModProgress.migrated` when every line is over
+(`platform_host.cpp`).
 
 What a mod still shares with the game: lives, coins and Star Bits collected in its
 galaxy count as in any other. A mod that changes one of the game's own levels (not
@@ -204,7 +206,10 @@ records (`GameDataGalaxyStorage.cpp`, `GameDataHolder.cpp`). On top of it:
   adds. The game code reaches them through `native/include/petari/mod_galaxies.hpp`, whose
   `isMod` asks the registry.
 - `MessageHolder.cpp`: after the registry's names and the disc, the mods' text.
-- `SaveDataHandler.cpp`: a mod galaxy's records cleared and copied with the user file.
+- `SaveDataHandler.cpp`: a mod galaxy's records cleared and copied with the user file;
+  `GameDataHolder.cpp`: a loaded file starts its mod galaxies blank before their records.
+- `NameObjFactory.cpp`: a mod's `Mini<Galaxy>` of a galaxy the registry does not have is left
+  out of the dome.
 - `NameObjFactory.cpp`, `MiniatureGalaxyHolder.cpp`, `MiniatureGalaxy.cpp`,
   `AstroDomeOrbit.cpp`: `Mini<Galaxy>` miniatures, six to eight orbits in a dome.
 - `PowerStar.cpp`: the theme colour for stars in mods' galaxies, and the one brought back

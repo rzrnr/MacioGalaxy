@@ -8133,6 +8133,13 @@ namespace {
     bool isModMiniature(const char* pName) {
         return std::strncmp(pName, "Mini", 4) == 0 && PetariNative::ModGalaxies::isMod(pName + 4);
     }
+
+    // A mod's miniature of a galaxy the registry does not have (no or a refused galaxy.json, its mod
+    // off while another mod's dome still places it): left out, not a planet floating in the dome.
+    bool isOrphanMiniature(const char* pName) {
+        return std::strncmp(pName, "Mini", 4) == 0 && !PetariNative::ModGalaxies::isMod(pName + 4) &&
+               PetariNative::ModGalaxies::isObject(pName);
+    }
 }  // namespace
 #endif
 
@@ -8149,7 +8156,7 @@ namespace NameObjFactory {
             if (isModMiniature(pName)) {
                 return createNameObj< MiniatureGalaxy >;
             }
-            if (PetariNative::ModGalaxies::isObject(pName)) {
+            if (PetariNative::ModGalaxies::isObject(pName) && !isOrphanMiniature(pName)) {
                 return createNameObj< PlanetMap >;  // a mod's own planet: model, collision
             }
 #endif
@@ -8237,7 +8244,7 @@ namespace NameObjFactory {
 #ifdef PETARI_NATIVE
             if (pName2CreateFunc == nullptr && isModMiniature(pName)) {
                 MiniatureGalaxy::makeArchiveList(pCollector, rIter);
-            } else if (pName2CreateFunc == nullptr && PetariNative::ModGalaxies::isObject(pName)) {
+            } else if (pName2CreateFunc == nullptr && PetariNative::ModGalaxies::isObject(pName) && !isOrphanMiniature(pName)) {
                 pCollector->addArchive(pName);
             }
 #endif

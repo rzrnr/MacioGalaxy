@@ -137,7 +137,9 @@ class GameData:
     def _registry_messages(self, prefix: str) -> dict:
         """The names galaxy.json gives (in English, the game's fallback): GalaxyName_, GalaxyNameShort_,
         ScenarioName_<G><n>."""
-        def text(value):
+        def text(value):  # {"en": ...} or a plain string, as the game accepts both
+            if isinstance(value, str):
+                return value
             return value.get("en") or next(iter(value.values()), "") if isinstance(value, dict) else ""
         out = {}
         for name, entry in self.registry().items():
