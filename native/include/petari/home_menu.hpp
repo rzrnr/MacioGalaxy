@@ -294,7 +294,7 @@ inline Rect sliderTrack(const Rect& item) {
     const float width = item.x1 - item.x0;
     const float middle = (item.y0 + item.y1) * 0.5f;
     const float half = (item.y1 - item.y0) * 0.14f;
-    return {item.x0 + width * 0.34f, middle - half, item.x0 + width * 0.78f, middle + half};
+    return {item.x0 + width * 0.34f, middle - half, item.x0 + width * 0.74f, middle + half};
 }
 
 // What the overlay draws.
