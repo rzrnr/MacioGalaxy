@@ -21,6 +21,7 @@ Drei Arten von Änderungen, getrennt gehalten:
 | Änderung | Was sie macht | Fürs offizielle Repo |
 | --- | --- | --- |
 | Speicher macOS-fremder Bibliotheken | Speicher, den macOS-Bibliotheken (CoreAudio, Core Animation) auf dem Spiel-Thread anlegen, landet nicht mehr im Wii-Speicher. Vorher stürzte das Spiel ab, sobald macOS ihn auf einem eigenen Thread freigab, zum Beispiel mit AirPods beim ersten Ton | vorbereitet, nicht eingereicht: Branch `fix-framework-allocations` |
+| Shader-Absturz Eisblume | Absturz beim Aufheben einer Eisblume in der Tiefdunkel-Galaxie (Bubble Blastoff): Aurora erzeugte Shader-Code mit einer nicht angelegten Texturkoordinate. Die Analyse markiert sie jetzt wie der Generator | vorgeschlagen: PR [#5](https://github.com/classicrob/MacioGalaxy/pull/5), Branch `fix-indirect-stage-texcoord` |
 | Seam-Test-Attrappe | Der Seam-Test linkte auf dem offiziellen `main` nicht (fehlende Attrappe für `SDL_SetWindowFullscreen`), deshalb war dessen CI rot. Steckt bei uns im Vollbild-Commit | vorgeschlagen: PR [#4](https://github.com/classicrob/MacioGalaxy/pull/4), Branch `fix-seam-test-fullscreen` |
 | CoreAudio-Linkfix | Ohne ihn bricht der Build auf diesem Mac beim Linken ab (auch mit dem offiziellen Stand vom 23.10.) | noch nicht vorgeschlagen |
 
