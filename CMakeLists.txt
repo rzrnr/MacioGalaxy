@@ -254,7 +254,8 @@ if(PETARI_BUILD_GX_PROBE)
         petari_home_menu petari_editor_runtime petari_sdk_mem petari_rfl petari_vi_bridge petari_gx_sync_bridge)
     target_link_options(petari PRIVATE -Wl,-dead_strip)
     target_sources(petari_testbed PRIVATE native/gx/legacy_commands.cpp native/gx/texture_cache.cpp)
+    # The game code calls the level editor's runtime (src/Game/Editor), so the testbed links it as petari does.
     target_link_libraries(petari_testbed PRIVATE petari_game_objects petari_game_libraries petari_sdk_helpers
-        petari_home_menu petari_sdk_mem petari_rfl petari_vi_bridge petari_gx_sync_bridge)
+        petari_home_menu petari_editor_runtime petari_sdk_mem petari_rfl petari_vi_bridge petari_gx_sync_bridge)
     target_link_options(petari_testbed PRIVATE -Wl,-dead_strip)
 endif()
