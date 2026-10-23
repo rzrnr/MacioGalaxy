@@ -964,7 +964,7 @@ def testplay_controls(layout, context, scale=1.6):
     starting = core.game_io.running
     if starting is not None and starting.done:
         starting = None
-    status = core.game_io.testbed_status_cached()
+    status = core.game_io.testbed_status_known()
     here = bool(status) and (status.get("stage"), status.get("scenario")) == (scene.get("smg_galaxy"), scene.mge_scenario)
     big = layout.row()
     big.scale_y = scale

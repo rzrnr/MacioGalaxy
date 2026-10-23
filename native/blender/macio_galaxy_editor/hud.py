@@ -94,7 +94,7 @@ def draw():
     galaxy = core.galaxy_label(scene, scene["smg_galaxy"])
     scenario = next((label for key, label, _ in core._scenarios(None, context) if key == scene.mge_scenario), "")
     try:
-        target = core._target_collection(context).name
+        target = core.target_name(context)
     except (KeyError, RuntimeError):
         target = ""
     if " · " in target:  # "Ebene A · Zone" -> "Zone › Ebene A"
@@ -108,7 +108,7 @@ def draw():
         rows.append((f"Ausgewählt: {active.name}  ·  G verschieben  ·  Shift+D kopieren  ·  X löschen", 12, DIM))
     if scene.mge_warp:
         rows.append(("Teststart an: Mario beginnt am Ring „Mario-Start (Test)“ (3D-Cursor)", 12, HAZEL))
-    status = core.game_io.testbed_status_cached()
+    status = core.game_io.testbed_status_known()
     if status and (status.get("stage"), status.get("scenario")) == (scene["smg_galaxy"], scene.mge_scenario):
         rows.append(("▶ Testspiel läuft  ·  ⌘S oder F5 übernimmt die Änderungen", 12, TEXT))
     elif status:
@@ -203,7 +203,7 @@ class MGE_MT_pie(bpy.types.Menu):
         pie.operator("wm.tool_set_by_id", text="Auswählen", icon="RESTRICT_SELECT_OFF").name = "builtin.select_box"
         pie.operator("wm.tool_set_by_id", text="Pfad zeichnen", icon="CURVE_BEZCURVE").name = "mge.tool_path"
         pie.operator("wm.tool_set_by_id", text="Schwerkraft", icon="FORCE_FORCE").name = "mge.tool_gravity"
-        status = editor().game_io.testbed_status_cached()
+        status = editor().game_io.testbed_status_known()
         here = bool(status) and (status.get("stage"), status.get("scenario")) == (context.scene.get("smg_galaxy"),
                                                                                    context.scene.mge_scenario)
         pie.operator("mge.testplay", text="Änderungen ins Testspiel (F5)" if here else "Testspielen (F5)", icon="PLAY")

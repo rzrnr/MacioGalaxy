@@ -47,7 +47,7 @@ def configure(window):
     bpy.app.timers.register(lambda: _palette(window), first_interval=0.5)
 
 
-def _palette(window):
+def _palette(window, tries=[0]):
     """The sidebar on the Galaxie tab and the object palette shown, once the 3D view has been drawn
     (before, the tab cannot be set, and showing a region of an area not yet set up crashed Blender in
     ED_area_init: the first workspace made while Blender was in the background)."""
@@ -57,13 +57,15 @@ def _palette(window):
                 if region.type == "UI":
                     try:
                         region.active_panel_category = "Galaxie"
-                    except AttributeError:
-                        return 0.3  # not drawn yet: try again
+                    except (AttributeError, TypeError):  # not drawn yet, or its tabs not there yet
+                        tries[0] += 1
+                        return 0.3 if tries[0] < 40 else None
             try:
                 with bpy.context.temp_override(window=window, screen=window.screen, area=area):
                     area.spaces[0].show_region_asset_shelf = True
             except AttributeError:
                 pass  # read-only until the shelf is available (it shows by itself: DEFAULT_VISIBLE)
+    tries[0] = 0
     return None
 
 
