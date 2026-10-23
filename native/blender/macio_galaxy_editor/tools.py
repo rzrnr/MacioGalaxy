@@ -8,7 +8,7 @@
   right click finishes, Esc drops it. The path gets its ID at once (for CommonPath_ID).
 - Schwerkraft: a click on a planet places the chosen gravity at the middle of its bounds with a Range
   reaching past the clicked point, in the planet's zone and layer; elsewhere at the click.
-- Mario-Start: a click sets where Mario starts in the headless preview (the 3D cursor, Warp on).
+- Teststart: a click sets where Mario starts in Testspielen and the automatic test (the 3D cursor, mge_warp on).
 
 The tool's options are in the tool header (the object to place, the height of path points, ...).
 Icons are drawn here as triangles in Blender's icon format (.dat: "VCO\\0", size, offset, then
@@ -163,7 +163,7 @@ class MGE_OT_tool_click(bpy.types.Operator):
     bl_idname = "mge.tool_click"
     bl_label = "Klicken"
     bl_options = {"REGISTER", "UNDO"}
-    mode: EnumProperty(items=[("PLACE", "Setzen", ""), ("GRAVITY", "Schwerkraft", ""), ("START", "Vorschau-Start", "")])
+    mode: EnumProperty(items=[("PLACE", "Setzen", ""), ("GRAVITY", "Schwerkraft", ""), ("START", "Teststart", "")])
     force: bpy.props.BoolProperty(default=False, options={"SKIP_SAVE"})
 
     @classmethod
@@ -179,7 +179,8 @@ class MGE_OT_tool_click(bpy.types.Operator):
             up = normal if normal is not None else Vector((0, 0, 1))
             scene.cursor.location = location + up * 0.5
             scene.mge_warp = True
-            self.report({"INFO"}, f"Mario startet in der Vorschau bei {tuple(round(v) for v in to_game(scene.cursor.location))}")
+            self.report({"INFO"}, f"Teststart gesetzt: Mario beginnt bei {tuple(round(v) for v in to_game(scene.cursor.location))} "
+                                  "(Testspielen und automatischer Test)")
             return {"FINISHED"}
         if normal is None:
             self.report({"WARNING"}, "Kein Boden unter der Maus: auf einen Planeten oder ein Levelteil klicken")
@@ -426,13 +427,14 @@ class MGE_Tool_Gravity(bpy.types.WorkSpaceTool):
 class MGE_Tool_Start(bpy.types.WorkSpaceTool):
     bl_space_type, bl_context_mode = "VIEW_3D", "OBJECT"
     bl_idname = "mge.tool_start"
-    bl_label = "Vorschau-Start"
-    bl_description = "Klick legt fest, wo Mario beim automatischen Test beginnt (der Startpunkt der Galaxie bleibt)"
+    bl_label = "Teststart"
+    bl_description = ("Klick setzt den Teststart: dort beginnt Mario beim Testspielen und beim automatischen Test "
+                      "(der Startpunkt der Galaxie im Spiel bleibt)")
     bl_icon = "ops.generic.cursor"
     bl_keymap = (("mge.tool_click", {"type": "LEFTMOUSE", "value": "PRESS"}, {"properties": [("mode", "START")]}),)
 
     def draw_settings(context, layout, tool):
-        layout.prop(context.scene, "mge_warp", text="Test beginnt hier")
+        layout.prop(context.scene, "mge_warp")
 
 
 TOOLS = (MGE_Tool_Place, MGE_Tool_Path, MGE_Tool_Gravity, MGE_Tool_Start)

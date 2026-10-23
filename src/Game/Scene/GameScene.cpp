@@ -48,6 +48,7 @@ extern "C" void petari_os_preemption_point(void);
 #include "Game/System/GalaxyMoveArgument.hpp"
 #include "Game/System/GameSequenceFunction.hpp"
 #include <petari/player_launch.hpp>
+#include <petari/testbed.hpp>
 #include <petari/cheats.hpp>
 #include "Game/System/GameDataFunction.hpp"
 // StorySequenceExecutor.cpp
@@ -339,6 +340,10 @@ void GameScene::exeCometRetryAfterMiss() {
 void GameScene::exeSaveAfterGameOver() {
     if (MR::isFirstStep(this)) {
         MR::incPlayerGameOverNum();
+#ifdef PETARI_NATIVE
+        // Level testbed: its file lives in memory only, so no "save?" prompt; it starts the mission again.
+        if (!PetariNative::Testbed::active)
+#endif
         GameSequenceFunction::startGameDataSaveSequence(true, true);
         MR::startStarPointerModePauseMenu(this);
     }

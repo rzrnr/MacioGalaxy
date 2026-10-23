@@ -106,6 +106,13 @@ def draw():
     active = context.active_object
     if active is not None and active.select_get() and active.get("smg_kind"):
         rows.append((f"Ausgewählt: {active.name}  ·  G verschieben  ·  Shift+D kopieren  ·  X löschen", 12, DIM))
+    if scene.mge_warp:
+        rows.append(("Teststart an: Mario beginnt am Ring „Mario-Start (Test)“ (3D-Cursor)", 12, HAZEL))
+    status = core.game_io.testbed_status_cached()
+    if status and (status.get("stage"), status.get("scenario")) == (scene["smg_galaxy"], scene.mge_scenario):
+        rows.append(("▶ Testspiel läuft  ·  ⌘S oder F5 übernimmt die Änderungen", 12, TEXT))
+    elif status:
+        rows.append(("▶ Testspiel läuft mit anderem Szenario  ·  F5 wechselt", 12, TEXT))
     x = _left_edge(area)
     blf.size(0, 14 * scale)
     width = max(blf.dimensions(0, r[0])[0] if r[1] == 14 else 0 for r in rows)
@@ -125,6 +132,8 @@ def draw():
         _text(x + width - w - 12 * scale, y + height - 22 * scale, "● ungespeichert", 11, HAZEL, scale)
     if active is not None and active.get("smg_kind") == "path" and active.mode == "OBJECT":
         _point_marker(context, active, scale)
+    if scene.mge_warp:
+        _start_marker(context, scale)
     # The legend of the shown kinds' colours.
     shown = [(label, kind) for key, label, kind in LEGEND if getattr(scene, f"mge_show_{key}", False)]
     lx, ly = x, _bottom_inset(area) + 14 * scale
@@ -165,6 +174,25 @@ def _point_marker(context, path, scale):
     _text(spot.x + 14 * scale, spot.y + 8 * scale, f"Punkt {index + 1}", 12, TEXT, scale)
 
 
+def _start_marker(context, scale):
+    """The Teststart: a ring and "Mario-Start (Test)" at the 3D cursor, where Testspielen puts Mario."""
+    import math
+
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+    spot = location_3d_to_region_2d(context.region, context.region_data, context.scene.cursor.location)
+    if spot is None:
+        return
+    shader = gpu.shader.from_builtin("POLYLINE_UNIFORM_COLOR")
+    shader.uniform_float("viewportSize", (context.region.width, context.region.height))
+    shader.uniform_float("lineWidth", 3.0 * scale)
+    shader.uniform_float("color", HAZEL)
+    for radius in (14 * scale, 5 * scale):
+        ring = [(spot.x + radius * math.cos(a / 20 * math.tau), spot.y + radius * math.sin(a / 20 * math.tau), 0.0)
+                for a in range(21)]
+        batch_for_shader(shader, "LINE_STRIP", {"pos": ring}).draw(shader)
+    _text(spot.x + 18 * scale, spot.y + 6 * scale, "Mario-Start (Test)", 12, HAZEL, scale)
+
+
 class MGE_MT_pie(bpy.types.Menu):
     bl_label = "Galaxie"
     bl_idname = "MGE_MT_pie"
@@ -175,12 +203,12 @@ class MGE_MT_pie(bpy.types.Menu):
         pie.operator("wm.tool_set_by_id", text="Auswählen", icon="RESTRICT_SELECT_OFF").name = "builtin.select_box"
         pie.operator("wm.tool_set_by_id", text="Pfad zeichnen", icon="CURVE_BEZCURVE").name = "mge.tool_path"
         pie.operator("wm.tool_set_by_id", text="Schwerkraft", icon="FORCE_FORCE").name = "mge.tool_gravity"
+        status = editor().game_io.testbed_status_cached()
+        here = bool(status) and (status.get("stage"), status.get("scenario")) == (context.scene.get("smg_galaxy"),
+                                                                                   context.scene.mge_scenario)
+        pie.operator("mge.testplay", text="Änderungen ins Testspiel (F5)" if here else "Testspielen (F5)", icon="PLAY")
+        pie.operator("mge.save_mod", text="Speichern (⌘S)", icon="FILE_TICK")
         pie.operator("mge.preview", text="Automatisch testen", icon="RENDER_STILL")
-        pie.operator("mge.save_mod", text="Speichern", icon="FILE_TICK")
-        play = pie.column(align=True)
-        play.scale_y = 1.2
-        play.operator("mge.testplay", text="Testspielen", icon="PLAY")
-        play.operator("mge.play", text="Im ganzen Spiel", icon="WORLD")
         pie.operator("mge.view_start", text="Zum Start", icon="HOME")
 
 

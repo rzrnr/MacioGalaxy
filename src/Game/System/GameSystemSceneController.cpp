@@ -526,6 +526,9 @@ bool GameSystemSceneController::tryDestroyFileCacheHeap(bool param1) {
     // Level testbed reload (petari/testbed.hpp): the same stage, but its archives read again.
     if (PetariNative::Testbed::dropFileCache.exchange(false)) {
         param1 = true;
+        if (PetariNative::Testbed::refreshDisc != nullptr) {
+            PetariNative::Testbed::refreshDisc();
+        }
     }
 #endif
     if (!param1 && SingletonHolder< HeapMemoryWatcher >::get()->mFileCacheHeap != nullptr && isSameAtNextSceneAndStage()) {

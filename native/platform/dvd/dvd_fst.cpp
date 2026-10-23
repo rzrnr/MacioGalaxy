@@ -4,6 +4,10 @@
 #include <cstring>
 #include <system_error>
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 
 namespace fs = std::filesystem;
 
@@ -288,8 +292,18 @@ struct OverlayNode {
     std::uint32_t length = 0;
     fs::path host;
     std::string mod;
+    std::shared_ptr<const int> fd;  // mod files: opened while sizing them
     std::vector<OverlayNode> children;
 };
+
+std::shared_ptr<const int> openHeld(const fs::path& host) {
+    const int fd = ::open(host.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return nullptr;
+    return std::shared_ptr<const int>(new int(fd), [](const int* p) {
+        ::close(*p);
+        delete p;
+    });
+}
 
 bool sameName(const std::string& a, const std::string& b) {
     return asciiUpper(a) == asciiUpper(b);
@@ -314,6 +328,7 @@ bool Fst::applyOverlay(const std::vector<OverlayFile>& files, OverlayResult& res
                 child.length = e.nextOrLength;
                 child.host = mHostPaths[i];
                 if (i < mOverlayMods.size()) child.mod = mOverlayMods[i];
+                if (i < mHostFds.size()) child.fd = mHostFds[i];
                 ++i;
             }
             node.children.push_back(std::move(child));
@@ -339,12 +354,15 @@ bool Fst::applyOverlay(const std::vector<OverlayFile>& files, OverlayResult& res
             result.skipped.push_back(path + ": invalid path");
             continue;
         }
-        std::error_code ec;
-        const std::uintmax_t size = fs::file_size(host, ec);
-        if (ec || !fs::is_regular_file(host, ec)) {
+        // Sized from the descriptor it will be read through: a file replaced after this (renamed
+        // over) is still read whole, at this size.
+        std::shared_ptr<const int> held = openHeld(host);
+        struct stat info {};
+        if (!held || ::fstat(*held, &info) != 0 || !S_ISREG(info.st_mode)) {
             result.skipped.push_back(path + ": cannot read " + host.string());
             continue;
         }
+        const std::uintmax_t size = static_cast<std::uintmax_t>(info.st_size);
         if (size > 0xFFFFFFFFu) {
             result.skipped.push_back(path + ": exceeds the 4 GiB DVD file limit");
             continue;
@@ -404,12 +422,14 @@ bool Fst::applyOverlay(const std::vector<OverlayFile>& files, OverlayResult& res
         file->length = static_cast<std::uint32_t>(size);
         file->host = host;
         file->mod = overlayFile.mod;
+        file->fd = std::move(held);
     }
 
     // Rebuild the tables.
     std::vector<FstEntry> entries;
     std::vector<fs::path> hosts;
     std::vector<std::string> mods;
+    std::vector<std::shared_ptr<const int>> fds;
     std::string strings;
     auto addName = [&](const std::string& n) {
         const std::size_t offset = strings.size();
@@ -420,6 +440,7 @@ bool Fst::applyOverlay(const std::vector<OverlayFile>& files, OverlayResult& res
     entries.push_back({true, 0, 0, 0});
     hosts.emplace_back();
     mods.emplace_back();
+    fds.emplace_back();
     auto emit = [&](auto&& self, const OverlayNode& dir, std::uint32_t dirIndex) -> void {
         for (const OverlayNode& child : dir.children) {
             const std::uint32_t index = static_cast<std::uint32_t>(entries.size());
@@ -427,12 +448,14 @@ bool Fst::applyOverlay(const std::vector<OverlayFile>& files, OverlayResult& res
                 entries.push_back({true, addName(child.name), dirIndex, 0});
                 hosts.emplace_back();
                 mods.emplace_back();
+                fds.emplace_back();
                 self(self, child, index);
                 entries[index].nextOrLength = static_cast<std::uint32_t>(entries.size());
             } else {
                 entries.push_back({false, addName(child.name), child.position, child.length});
                 hosts.push_back(child.host);
                 mods.push_back(child.mod);
+                fds.push_back(child.fd);
             }
         }
     };
@@ -447,6 +470,7 @@ bool Fst::applyOverlay(const std::vector<OverlayFile>& files, OverlayResult& res
     rebuilt.mEntries = std::move(entries);
     rebuilt.mHostPaths = std::move(hosts);
     rebuilt.mOverlayMods = std::move(mods);
+    rebuilt.mHostFds = std::move(fds);
     rebuilt.mStrings.assign(strings.begin(), strings.end());
     if (!rebuilt.finish(error)) {
         return false;

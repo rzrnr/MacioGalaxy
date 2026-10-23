@@ -956,16 +956,40 @@ class MGE_PT_props_more(_ObjectPanel, bpy.types.Panel):
             _field_row(self.layout, obj, field, cat, name, context)
 
 
+def testplay_controls(layout, context, scale=1.6):
+    """The Testspielen button as it stands now (starting, running here, elsewhere, not running), with the
+    running testbed's window and stop buttons. Shared by the Galaxie and Objekt tabs."""
+    core = editor()
+    scene = context.scene
+    starting = core.game_io.running
+    if starting is not None and starting.done:
+        starting = None
+    status = core.game_io.testbed_status_cached()
+    here = bool(status) and (status.get("stage"), status.get("scenario")) == (scene.get("smg_galaxy"), scene.mge_scenario)
+    big = layout.row()
+    big.scale_y = scale
+    if starting is not None and starting.mode == "launch":
+        big.enabled = False
+        big.operator(core.MGE_OT_testplay.bl_idname, text="Testspiel startet …", icon="SORTTIME")
+    elif status and not here:
+        big.operator(core.MGE_OT_testplay.bl_idname, text="Zu diesem Szenario wechseln (F5)", icon="PLAY")
+    else:
+        big.operator(core.MGE_OT_testplay.bl_idname, text="Änderungen ins Testspiel (F5)" if here else "Testspielen (F5)",
+                     icon="PLAY")
+    # Always there (greyed out while nothing runs), so the panel does not jump when it starts.
+    row = layout.row(align=True)
+    row.operator("mge.testbed_show", text="Fenster zeigen", icon="WINDOW")
+    row.operator("mge.testbed_stop", text="Beenden", icon="CANCEL")
+
+
 class MGE_PT_props_play(_ObjectPanel, bpy.types.Panel):
     bl_label = "Speichern und Spielen"
     bl_options = {"HIDE_HEADER"}
 
     def draw(self, context):
         core = editor()
-        row = self.layout.row(align=True)
-        row.operator(core.MGE_OT_save.bl_idname, text="Speichern", icon="FILE_TICK")
-        row.operator(core.MGE_OT_preview.bl_idname, text="Testen", icon="RENDER_STILL")
-        row.operator(core.MGE_OT_testplay.bl_idname, text="Testspielen", icon="PLAY")
+        testplay_controls(self.layout, context, 1.3)
+        self.layout.operator(core.MGE_OT_save.bl_idname, text="Speichern (⌘S)", icon="FILE_TICK")
 
 
 # --- the tabs --------------------------------------------------------------------------------
@@ -1004,7 +1028,7 @@ class MGE_PT_galaxy(bpy.types.Panel):
             hints = box.column(align=True)
             hints.enabled = False
             _wrapped(hints, context, "2  Objekte aus der Palette unten auf einen Planeten ziehen", 2)
-            _wrapped(hints, context, "3  Spielen: automatisch testen oder testspielen", 2)
+            _wrapped(hints, context, "3  Testspielen (F5)", 2)
             return
         layout.label(text=core.galaxy_label(scene, scene["smg_galaxy"]), icon="WORLD_DATA")
         row = layout.row(align=True)
@@ -1014,7 +1038,7 @@ class MGE_PT_galaxy(bpy.types.Panel):
         row.prop(scene, "mge_models", text="Modelle", icon="SHADING_TEXTURE", toggle=True)
         row.operator("mge.view_start", text="Zum Start", icon="HOME")
         if scene.get("mge_dirty"):
-            layout.label(text="Ungespeicherte Änderungen (⌘S speichert den Mod)", icon="RECORD_ON")
+            layout.label(text="Ungespeichert (⌘S)", icon="RECORD_ON")
 
 
 class MGE_PT_play(bpy.types.Panel):
@@ -1029,28 +1053,29 @@ class MGE_PT_play(bpy.types.Panel):
     def draw(self, context):
         scene, layout = context.scene, self.layout
         core = editor()
+        testplay_controls(layout, context)
+        layout.prop(scene, "mge_warp")
+        # Always two lines for the status, so the buttons below do not jump.
+        width = max(20, int((context.region.width - 30 * context.preferences.system.ui_scale) /
+                            (6.5 * context.preferences.system.ui_scale)))
+        lines = (_wrap(scene.mge_status, width) + ["", ""])[:2]
+        status = layout.column(align=True)
+        status.scale_y = 0.75
+        for line in lines:
+            status.label(text=line)
+        layout.operator(core.MGE_OT_save.bl_idname, text="Speichern (⌘S)", icon="FILE_TICK")
+        more = layout.column(align=True)
+        more.operator(core.MGE_OT_preview.bl_idname, text="Automatisch testen (Bilder)", icon="RENDER_STILL")
+        more.operator(core.MGE_OT_play.bl_idname, text="Im ganzen Spiel spielen", icon="WORLD")
         row = layout.row(align=True)
         row.prop(scene, "mge_mod", text="Mod", icon="PACKAGE")
         on = core.mod_enabled(scene)
         if on is not None:
-            row.operator("mge.mod_toggle", text="an" if on else "aus", icon="CHECKBOX_HLT" if on else "CHECKBOX_DEHLT",
-                         depress=on)
-        layout.operator(core.MGE_OT_save.bl_idname, text="Speichern  (⌘S)", icon="FILE_TICK")
-        test = layout.column(align=True)
-        test.operator(core.MGE_OT_preview.bl_idname, text="Automatisch testen (Bilder)", icon="RENDER_STILL")
-        test.prop(scene, "mge_warp", text="Test beginnt am Vorschau-Start")
-        big = layout.row()
-        big.scale_y = 1.5
-        big.operator(core.MGE_OT_testplay.bl_idname, text="Testspielen", icon="PLAY")
-        layout.operator(core.MGE_OT_play.bl_idname, text="Im ganzen Spiel spielen", icon="WORLD")
-        hints = layout.column(align=True)
-        hints.enabled = False
-        _wrapped(hints, context, "Automatisch testen: das Spiel läuft unsichtbar, Mario läuft los, du bekommst Bilder. "
-                                 "Testspielen: nur diese Galaxie im Testbed, ohne Titel und Spielstand; nach jedem "
-                                 "Speichern lädt es neu. Im ganzen Spiel: einen Spielstand laden, dann geht es hierher. "
-                                 "Deine Disc bleibt unverändert; der Mod liegt daneben.", 8)
-        if scene.mge_status:
-            layout.label(text=scene.mge_status, icon="INFO")
+            row.operator("mge.mod_toggle", text="im Spiel aktiv" if on else "inaktiv",
+                         icon="CHECKBOX_HLT" if on else "CHECKBOX_DEHLT", depress=on)
+        hint = layout.column()
+        hint.enabled = False
+        _wrapped(hint, context, "⌘S übernimmt Änderungen ins laufende Testspiel", 2)
 
 
 class MGE_PT_scenarios(bpy.types.Panel):
@@ -1161,7 +1186,7 @@ CLASSES = (MGE_Layer, MGE_Zone, MGE_CatalogItem, MGE_UL_zones, MGE_UL_layers, MG
            MGE_OT_zones_all, MGE_OT_zone_solo, MGE_OT_frame, MGE_OT_place, MGE_OT_build_assets, MGE_OT_thumbnails,
            MGE_OT_set_layer, MGE_OT_move_zone, MGE_OT_set_field, MGE_OT_copy_field, MGE_OT_pick_value, MGE_OT_pick_path,
            MGE_OT_fill_catalog,
-           MGE_PT_galaxy, MGE_PT_scenarios, MGE_PT_zones, MGE_PT_play, MGE_PT_show, MGE_PT_objects,
+           MGE_PT_galaxy, MGE_PT_play, MGE_PT_scenarios, MGE_PT_zones, MGE_PT_show, MGE_PT_objects,
            MGE_PT_props, MGE_PT_props_place, MGE_PT_props_args, MGE_PT_props_switches, MGE_PT_props_links,
            MGE_PT_props_points, MGE_PT_props_more, MGE_PT_props_play)
 _owner = object()

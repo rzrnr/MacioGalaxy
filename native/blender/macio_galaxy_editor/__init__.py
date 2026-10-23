@@ -14,6 +14,7 @@ bl_info = {
     "category": "Import-Export",
 }
 
+import os  # noqa: E402
 import subprocess  # noqa: E402
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -418,9 +419,25 @@ def export_mod(operator, context):
     return out
 
 
+def _reload_under_way(context):
+    """A save while a Testspielen is under way: the testbed restarts once more (after its start, if it
+    is still starting), with the Teststart as it is now."""
+    spawn = tuple(to_game(context.scene.cursor.location)) if context.scene.mge_warp else None
+    game_io.testbed_command(f"reload {game_io._spawn_text(spawn)}")
+    if game_io.running.mode == "launch":
+        game_io.running.follow_reload()
+
+
+def _testbed_here(context):
+    """A testbed runs this galaxy and scenario."""
+    status = game_io.testbed_status_cached(max_age=0.5)
+    return bool(status) and (status.get("stage"), status.get("scenario")) == (context.scene.get("smg_galaxy"),
+                                                                               context.scene.mge_scenario)
+
+
 class MGE_OT_save(bpy.types.Operator):
     bl_idname = "mge.save_mod"
-    bl_label = "Als Mod speichern"
+    bl_label = "Speichern (⌘S)"
     bl_description = "Die geänderten Zonen in den Ziel-Mod schreiben und ihn in mods.txt einschalten"
 
     @classmethod
@@ -438,6 +455,13 @@ class MGE_OT_save(bpy.types.Operator):
             # The objects now stand for the saved rows: an undo step, so Ctrl+Z first returns here.
             if not bpy.app.background:
                 bpy.ops.ed.undo_push(message="Galaxie gespeichert")
+        # A running testbed of this scenario takes the save at once (and restarts the mission even
+        # without a change: a moved Teststart, or just to try again).
+        if not bpy.app.background and _testbed_here(context):
+            if game_io.running is None or game_io.running.done:
+                bpy.ops.mge.testplay("INVOKE_DEFAULT")
+            else:
+                _reload_under_way(context)
         return {"FINISHED"}
 
 
@@ -457,9 +481,9 @@ class MGE_OT_save_shortcut(bpy.types.Operator):
 
 class MGE_OT_preview(bpy.types.Operator):
     bl_idname = "mge.preview"
-    bl_label = "Automatisch testen (Bilder)"
+    bl_label = "Automatisch testen"
     bl_description = ("Speichern, dann die Galaxie unsichtbar im Spiel laden (eigener Wegwerf-Spielstand), Mario laufen "
-                      "lassen und Bilder zeigen; mit dem Startpunkt-Knopf beginnt Mario am Vorschau-Startpunkt")
+                      "lassen und Bilder zeigen; mit dem Teststart beginnt Mario am 3D-Cursor")
     _timer = None
 
     @classmethod
@@ -516,7 +540,8 @@ def _show_in_image_editor(context, pictures):
 class MGE_OT_play(bpy.types.Operator):
     bl_idname = "mge.play"
     bl_label = "Im ganzen Spiel spielen"
-    bl_description = "Speichern und das Spiel starten: nach dem Laden eines Spielstands geht es direkt in diese Galaxie"
+    bl_description = ("Speichern und das ganze Spiel starten: nach dem Laden eines Spielstands geht es direkt in diese "
+                      "Galaxie. Ein laufendes Testspiel wird vorher geschlossen")
 
     @classmethod
     def poll(cls, context):
@@ -536,9 +561,9 @@ class MGE_OT_play(bpy.types.Operator):
 class MGE_OT_testplay(bpy.types.Operator):
     bl_idname = "mge.testplay"
     bl_label = "Testspielen"
-    bl_description = ("Speichern und die Galaxie im Testbed spielen: nur diese Galaxie mit der echten Spiellogik, ohne "
-                      "Titel und Spielstand. Läuft es schon, lädt es die Änderungen neu und startet die Mission neu; "
-                      "mit dem Startpunkt-Knopf beginnt Mario am Vorschau-Startpunkt")
+    bl_description = ("Speichern und die Galaxie im Testspiel spielen (eigenes Fenster „Galaxy Testbed“): nur diese "
+                      "Galaxie mit der echten Spiellogik, ohne Titel und Spielstand. Läuft es schon, übernimmt es die "
+                      "Änderungen und startet die Mission neu (etwa 8 s). Mit dem Teststart beginnt Mario am 3D-Cursor")
     _timer = None
 
     @classmethod
@@ -549,43 +574,133 @@ class MGE_OT_testplay(bpy.types.Operator):
         scene = context.scene
         spawn = tuple(to_game(scene.cursor.location)) if scene.mge_warp else None
         self.args = (game_data(scene), scene["smg_galaxy"], int(scene.mge_scenario), spawn)
-        self.testplay = game_io.Testplay(*self.args, fresh=fresh)
+        self.testplay = game_io.running = game_io.Testplay(*self.args, fresh=fresh)
 
     def execute(self, context):
         if export_mod(self, context) is None:
             return {"CANCELLED"}
+        if game_io.running is not None and not game_io.running.done:
+            # F5 again while one is under way: the save goes in with one more restart.
+            if _testbed_here(context) or game_io.running.mode == "launch":
+                _reload_under_way(context)
+                self.report({"INFO"}, "Gespeichert: wird übernommen, sobald das Testspiel bereit ist")
+                return {"FINISHED"}
         try:
             self._start(context)
         except RuntimeError as error:
-            self.report({"ERROR"}, str(error))
+            self.report({"WARNING"}, str(error))
             return {"CANCELLED"}
         self.retried = False
         self._timer = context.window_manager.event_timer_add(0.25, window=context.window)
         context.window_manager.modal_handler_add(self)
-        context.scene.mge_status = "Testbed lädt neu …" if self.testplay.mode == "reload" else "Testbed startet …"
+        self._show(context, self.testplay.progress())
+        self.report({"INFO"}, self.testplay.progress())
         return {"RUNNING_MODAL"}
+
+    def _finish(self, context):
+        if self._timer is not None:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        if game_io.running is self.testplay:
+            game_io.running = None
+
+    def cancel(self, context):
+        """The modal ended from outside (another file loaded, the window closed)."""
+        self._finish(context)
+        if context.workspace is not None:
+            context.workspace.status_text_set(None)
+
+    @staticmethod
+    def _show(context, text):
+        """The text in the Spielen panel and in the status bar, drawn now."""
+        context.scene.mge_status = text
+        if context.workspace is not None:
+            context.workspace.status_text_set(text)
+        for area in context.window.screen.areas:
+            area.tag_redraw()
 
     def modal(self, context, event):
         if event.type != "TIMER":
             return {"PASS_THROUGH"}
         result = self.testplay.poll()
         if result is None:
+            self._show(context, self.testplay.progress())
             return {"PASS_THROUGH"}
         ok, seconds, message = result
-        if not ok and self.testplay.mode == "reload" and not self.retried:
+        if not ok and self.testplay.failure == "error" and not self.retried:
             # In-process reload refused: a fresh start instead.
             self.retried = True
             try:
-                self.testplay = game_io.Testplay(*self.args, fresh=True)
-                context.scene.mge_status = "Testbed startet neu …"
+                self.testplay = game_io.running = game_io.Testplay(*self.args, fresh=True)
+                self.report({"INFO"}, f"{message}: das Testspiel startet neu")
                 return {"PASS_THROUGH"}
             except RuntimeError as error:
                 message = str(error)
-        context.window_manager.event_timer_remove(self._timer)
-        text = f"Testbed {message}: spielbar nach {seconds:.1f} s" if ok else f"Testbed: {message}"
-        context.scene.mge_status = text
-        self.report({"INFO" if ok else "WARNING"}, text)
+        self._finish(context)
+        if ok and self.testplay.mode == "reload":
+            text = f"Änderungen übernommen, Mission neu gestartet ({game_io.seconds_text(seconds)})"
+            if os.environ.get("MGE_TESTBED_BACKGROUND") != "1":
+                game_io.show_testbed()  # the edited mission in front
+        elif ok:
+            text = f"Testspiel bereit ({game_io.seconds_text(seconds)}): im Fenster „Galaxy Testbed“"
+        else:
+            text = message
+        self._show(context, text)
+        if context.workspace is not None:
+            context.workspace.status_text_set(None)
+        self.report({"INFO" if ok or self.testplay.failure == "stopped" else "WARNING"}, text)
         return {"FINISHED"}
+
+
+class MGE_OT_testbed_show(bpy.types.Operator):
+    bl_idname = "mge.testbed_show"
+    bl_label = "Fenster zeigen"
+    bl_description = "Das Fenster des laufenden Testspiels nach vorn holen"
+
+    @classmethod
+    def poll(cls, context):
+        return game_io.testbed_status_cached() is not None
+
+    def execute(self, context):
+        game_io.show_testbed()
+        return {"FINISHED"}
+
+
+class MGE_OT_testbed_stop(bpy.types.Operator):
+    bl_idname = "mge.testbed_stop"
+    bl_label = "Testspiel beenden"
+    bl_description = "Das laufende Testspiel schließen (wie ⌘Q in seinem Fenster)"
+
+    @classmethod
+    def poll(cls, context):
+        return game_io.testbed_status_cached() is not None
+
+    def execute(self, context):
+        game_io.stop_testbed()
+        context.scene.mge_status = "Testspiel beendet"
+        if context.workspace is not None:
+            context.workspace.status_text_set(None)
+        for area in context.window.screen.areas:
+            area.tag_redraw()
+        return {"FINISHED"}
+
+
+def _watch_testbed(last=[None]):
+    """Every 2 s: whether a testbed runs; the panels and the HUD are drawn again when that changes."""
+    status = game_io.testbed_status_cached(max_age=0)
+    key = status and (status.get("stage"), status.get("scenario"))
+    if key != last[0]:
+        if last[0] and not key and game_io.running is None:
+            # Closed (⌘Q in its window, or it ended): no "bereit" left standing.
+            for scene in bpy.data.scenes:
+                if scene.get("smg_galaxy"):
+                    scene.mge_status = "Testspiel beendet"
+        last[0] = key
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+    return 2.0
 
 
 # --- registration ----------------------------------------------------------------------------
@@ -622,7 +737,7 @@ def _adopt(names):
 
 
 CLASSES = (MGE_OT_open, MGE_OT_add, MGE_OT_add_path, MGE_OT_save, MGE_OT_save_shortcut, MGE_OT_preview, MGE_OT_play,
-           MGE_OT_testplay, MGE_OT_mod_toggle, MGE_OT_view_start)
+           MGE_OT_testplay, MGE_OT_testbed_show, MGE_OT_testbed_stop, MGE_OT_mod_toggle, MGE_OT_view_start)
 _keymaps = []
 
 
@@ -636,7 +751,9 @@ def register():
     bpy.types.Scene.mge_scenario = EnumProperty(name="Szenario", items=_scenarios, update=_scenario_changed)
     bpy.types.Scene.mge_mod = StringProperty(name="Ziel-Mod", default="",
                                              description="Mod-Ordner, in den gespeichert wird (mods/<Name>)")
-    bpy.types.Scene.mge_warp = BoolProperty(name="Am 3D-Cursor starten", default=False)
+    bpy.types.Scene.mge_warp = BoolProperty(name="Mario startet am 3D-Cursor (Teststart)", default=False,
+                                            description="Beim Testspielen und beim automatischen Test beginnt Mario am "
+                                                        "3D-Cursor (Werkzeug Teststart); der Start der Galaxie im Spiel bleibt")
     bpy.types.Scene.mge_models = BoolProperty(name="Modelle", default=True, update=_models_changed,
                                               description="Die Modelle des Spiels zeigen statt der Platzhalter-Würfel")
     bpy.types.Scene.mge_status = StringProperty(default="")
@@ -653,9 +770,15 @@ def register():
         for modifier in ("oskey", "ctrl"):
             item = keymap.keymap_items.new(MGE_OT_save_shortcut.bl_idname, "S", "PRESS", **{modifier: True})
             _keymaps.append((keymap, item))
+        view = keyconfig.keymaps.new(name="3D View", space_type="VIEW_3D")
+        _keymaps.append((view, view.keymap_items.new(MGE_OT_testplay.bl_idname, "F5", "PRESS")))
+    if not bpy.app.background:
+        bpy.app.timers.register(_watch_testbed, first_interval=2.0, persistent=True)
 
 
 def unregister():
+    if bpy.app.timers.is_registered(_watch_testbed):
+        bpy.app.timers.unregister(_watch_testbed)
     for keymap, item in _keymaps:
         keymap.keymap_items.remove(item)
     _keymaps.clear()
