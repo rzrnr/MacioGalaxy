@@ -1,0 +1,26 @@
+diff --git a/src/Game/NPC/TalkMessageCtrl.cpp b/src/Game/NPC/TalkMessageCtrl.cpp
+index 928b3a9..ad177bc 100644
+--- a/src/Game/NPC/TalkMessageCtrl.cpp
++++ b/src/Game/NPC/TalkMessageCtrl.cpp
+@@ -199,10 +199,10 @@ void TalkMessageCtrl::rootNodePre(bool arg) {
+         case TalkMessageCtrl_TypeA:
+             cond = MR::isPlayerLuigi();
+             break;
+-        case TalkMessageCtrl_TypeB:
++        case TalkMessageCtrl_TypeC:
+             cond = MR::isTimeKeepDemoActive();
+             break;
+-        case TalkMessageCtrl_TypeC:
++        case TalkMessageCtrl_TypeE:
+             cond = MR::isOnMessageAlreadyRead(branch->mNextIdx);
+             break;
+ #if (VERSION == RMGK01)
+@@ -210,7 +210,7 @@ void TalkMessageCtrl::rootNodePre(bool arg) {
+             cond = MR::isMsgLedPattern();
+             break;
+ #endif
+-        case TalkMessageCtrl_TypeE:
++        case TalkMessageCtrl_TypeB:
+             cond = TalkFunction::getBranchAstroGalaxyResult(branch->mNextIdx);
+             break;
+         }
