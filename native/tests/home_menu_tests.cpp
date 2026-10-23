@@ -1767,6 +1767,97 @@ void testCheatsPage() {
           "without a file in play the 1-Ups stay unset");
 }
 
+// The Volume slider, between My Progress and Restart from Title: Left/Right step 5% with hold
+// repeat and stop at 0 and 100; a click sets it where it lands; dragging with
+// the left button follows the pointer; each change is reported once.
+void testVolumeSlider() {
+    HM::Menu menu = newMenu();
+    menu.setVolume(83);
+    check(menu.volume() == 85, "setVolume snaps to 5% steps");
+    menu.setVolume(100);
+    openToList(menu);
+    for (int i = 0; i < 4; i++) {
+        menu.update(press(Down));
+        menu.update(none());
+    }
+    check(menu.focus() == 4 && menu.view().items[4].focused, "Down reaches the slider");
+
+    int percent = -1;
+    check(!menu.takeVolumeChange(&percent), "no change before input");
+    sounds.clear();
+    menu.update(press(Right));
+    check(menu.volume() == 100 && !menu.takeVolumeChange(&percent) && sounds.empty(), "Right at 100% does nothing, silently");
+    menu.update(none());
+    menu.update(press(Left));
+    check(menu.volume() == 95 && playedCount(HM::Sound::Focus) == 1, "Left steps down 5% with a tick");
+    check(menu.takeVolumeChange(&percent) && percent == 95, "the change is reported");
+    check(!menu.takeVolumeChange(&percent), "and only once");
+    check(std::fabs(menu.view().items[4].slider - 0.95f) < 1e-6f, "the view shows the new fill");
+    check(menu.phase() == HM::Phase::List && menu.focus() == 4, "Left on the slider keeps the menu where it is");
+
+    for (int i = 0; i < 23; i++) {
+        menu.update(hold(Left));
+    }
+    check(menu.volume() == 95, "no repeat before 24 frames");
+    menu.update(hold(Left));
+    check(menu.volume() == 90, "repeat at 24 frames");
+    for (int i = 0; i < 6 * 30; i++) {
+        menu.update(hold(Left));
+    }
+    check(menu.volume() == 0 && std::strcmp(menu.view().items[4].label, "Volume") == 0, "holding Left stops at 0");
+    menu.update(none());
+    menu.update(press(A));
+    check(menu.volume() == 5, "A without the pointer steps up");
+
+    // Left/Right elsewhere in the list do not touch the volume.
+    menu.update(press(Up));
+    menu.update(press(Right));
+    check(menu.volume() == 5 && menu.focus() == 3, "Right on My Progress leaves the volume alone");
+    menu.update(press(Down));
+    menu.update(press(Down));
+    menu.update(press(Right));
+    check(menu.volume() == 5 && menu.focus() == 5, "Right on Restart leaves the volume alone");
+
+    // Clicks and drags map the pointer through the track.
+    const HM::Rect item = menu.view().items[4].rect;
+    const HM::Rect track = HM::sliderTrack(item);
+    const float y = (item.y0 + item.y1) * 0.5f;
+    check(track.x0 > item.x0 && track.x1 < item.x1 && track.y0 > item.y0 && track.y1 < item.y1, "the track lies inside the item");
+    menu.update(pointer(track.x0 + (track.x1 - track.x0) * 0.62f, y, B));
+    check(menu.volume() == 60 && menu.focus() == 4, "a click at 62% of the track sets 60%");
+    HM::FrameInput drag = pointer(track.x0 + (track.x1 - track.x0) * 0.2f, y);
+    drag.hold = B;
+    menu.update(drag);
+    check(menu.volume() == 20, "dragging follows the pointer");
+    drag.pointerX = track.x1 + 0.3f;
+    drag.pointerY = item.y1 + 0.3f;
+    menu.update(drag);
+    check(menu.volume() == 100 && menu.phase() == HM::Phase::List, "a drag past the end clamps to 100% and stays in the list");
+    menu.update(pointer(track.x0, y));
+    menu.update(pointer(track.x0 + 0.01f, y));
+    check(menu.volume() == 100, "after release the pointer no longer moves the slider");
+    menu.update(pointer(item.x0 + 0.001f, y, B));
+    check(menu.volume() == 0, "a click left of the track mutes");
+    menu.update(none());
+    // The A button (the left mouse button when controls.txt swaps them) clicks and drags too.
+    menu.update(pointer(track.x0 + (track.x1 - track.x0) * 0.5f, y, A));
+    check(menu.volume() == 50, "an A click on the track sets it");
+    drag = pointer(track.x0 + (track.x1 - track.x0) * 0.75f, y);
+    drag.hold = A;
+    menu.update(drag);
+    check(menu.volume() == 75, "an A drag follows the pointer");
+    menu.update(none());
+    menu.update(pointer(track.x0, y, B));
+    check(menu.takeVolumeChange(&percent) && percent == 0, "the last value is reported");
+
+    // Reopening keeps the value set by the caller.
+    menu.update(press(Home));
+    framesUntilSelection(menu);
+    menu.setVolume(40);
+    openToList(menu);
+    check(std::fabs(menu.view().items[4].slider - 0.4f) < 1e-6f && !menu.takeVolumeChange(&percent), "reopening shows the saved volume");
+}
+
 void testCameraPage() {
     HM::Menu menu = newMenu();
     HM::ModsEntry entries[3];
@@ -1837,6 +1928,7 @@ int main() {
     testLevelSelect();
     testCameraPage();
     testCheatsPage();
+    testVolumeSlider();
     testBridgeInput();
     testWrapper();
 #ifdef PETARI_HOME_MENU_TEST_IMGUI

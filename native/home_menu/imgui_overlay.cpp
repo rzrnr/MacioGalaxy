@@ -360,6 +360,44 @@ void galaxyButton(ImDrawList* list, ImFont* font, float textSize, ImVec2 min, Im
     centeredText(list, font, textSize, labelWidth, center, ink, label, false);
 }
 
+// The Volume slider: the same capsule as a button (gold when focused), with the
+// label on the left, a bar with a knob in the middle (sliderTrack) and the
+// percentage, or "Mute", on the right.
+void galaxySlider(ImDrawList* list, ImFont* font, float textSize, const ImageSpace& image, const ViewItem& item, float unit,
+                  float alpha) {
+    const ImVec2 itemMin = image.point(item.rect.x0, item.rect.y0);
+    const ImVec2 itemMax = image.point(item.rect.x1, item.rect.y1);
+    galaxyButton(list, font, textSize, itemMin, itemMax, item.focused, unit, alpha, "");
+    const float middle = (itemMin.y + itemMax.y) * 0.5f;
+    const float value = std::clamp(item.slider, 0.0f, 1.0f);
+    const Rect trackRect = sliderTrack(item.rect);
+    const ImVec2 trackMin = image.point(trackRect.x0, trackRect.y0);
+    const ImVec2 trackMax = image.point(trackRect.x1, trackRect.y1);
+    const float trackRound = (trackMax.y - trackMin.y) * 0.5f;
+    const float fillX = trackMin.x + (trackMax.x - trackMin.x) * value;
+    list->AddRectFilled(trackMin, trackMax, color(0.10f, 0.20f, 0.36f, 0.85f * alpha), trackRound);
+    if (value > 0.0f) {
+        // Blue when quiet, turning gold toward full volume.
+        const ImU32 fill = color(0.30f + 0.68f * value, 0.62f + 0.18f * value, 1.0f - 0.78f * value, alpha);
+        list->AddRectFilled(trackMin, ImVec2(std::max(fillX, trackMin.x + trackRound * 2.0f), trackMax.y), fill, trackRound);
+    }
+    for (int tick = 1; tick < 4; tick++) {  // every 25%
+        const float x = trackMin.x + (trackMax.x - trackMin.x) * static_cast<float>(tick) * 0.25f;
+        list->AddLine(ImVec2(x, trackMin.y + trackRound * 0.5f), ImVec2(x, trackMax.y - trackRound * 0.5f),
+                      color(1.0f, 1.0f, 1.0f, 0.35f * alpha), unit);
+    }
+    const float knob = (trackMax.y - trackMin.y) * 1.05f;
+    list->AddCircleFilled(ImVec2(fillX, middle), knob, color(1.0f, 1.0f, 1.0f, alpha));
+    list->AddCircle(ImVec2(fillX, middle), knob, color(0.98f, 0.80f, 0.22f, alpha), 0, unit * 2.0f);
+
+    const ImU32 ink = item.focused ? color(0.30f, 0.17f, 0.02f, alpha) : color(0.20f, 0.25f, 0.34f, alpha);
+    const float pad = (itemMax.x - itemMin.x) * 0.05f;
+    leftText(list, font, textSize, trackMin.x - itemMin.x - 2.0f * pad, ImVec2(itemMin.x + pad, middle), ink, item.label);
+    char percent[8];
+    std::snprintf(percent, sizeof(percent), "%d%%", static_cast<int>(std::lround(value * 100.0f)));
+    centeredText(list, font, textSize, itemMax.x - trackMax.x - pad, ImVec2((trackMax.x + itemMax.x) * 0.5f, middle),
+                 value > 0.0f ? ink : color(0.75f, 0.20f, 0.12f, alpha), value > 0.0f ? percent : "Mute", false);
+}
 
 // The Controls page's remapper: action names, then two keyboard/mouse and two
 // controller slots per row, each a small key cap; the focused slot is a gold
@@ -842,6 +880,10 @@ void drawImGuiOverlay(float imageX, float imageY, float imageWidth, float imageH
             // A page with many rows (the Mods page with a dozen mods) has short buttons: the label shrinks
             // with them instead of crowding the edges. Normal pages keep itemSize.
             const float labelSize = std::min(itemSize, (itemMax.y - itemMin.y) * 0.78f);
+            if (item.slider >= 0.0f) {
+                galaxySlider(list, font, labelSize, image, item, unit, alpha);
+                continue;
+            }
             galaxyButton(list, font, labelSize, itemMin, itemMax, item.focused, unit, alpha, item.label);
         }
 

@@ -41,6 +41,7 @@ extern "C" int petari_present_take_readback(const void* copy, unsigned char* rgb
 #include <petari/platform/mod_folder.hpp>
 #include <petari/platform/mod_galaxy.hpp>
 #include <petari/cheats.hpp>
+#include <petari/volume.hpp>
 #include <petari/progress.hpp>
 #include <petari/camera_input.h>
 #include <petari/camera_settings.hpp>
@@ -875,6 +876,9 @@ int main(int argc, char** argv) {
     if (!PetariNative::CameraSettings::load(paths.user / "camera.txt", &error)) {
         std::fprintf(stderr, "petari: camera: %s\n", error.c_str());
         return 1;
+    }
+    if (!PetariNative::Volume::load(paths.user / "sound.txt", &error)) {
+        std::fprintf(stderr, "petari: sound: %s (volume stays at %d%%)\n", error.c_str(), PetariNative::Volume::percent());
     }
     // F1 -> Mods -> Cheats (native/MODS.md); a damaged file keeps the default (Keep 1-Ups on).
     if (!PetariNative::Cheats::load(paths.user / "cheats.txt", &error)) {
