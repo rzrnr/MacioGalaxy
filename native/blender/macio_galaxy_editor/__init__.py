@@ -27,6 +27,7 @@ from . import game as game_io  # noqa: E402
 from . import scene_io  # noqa: E402
 from . import assets  # noqa: E402
 from . import hud  # noqa: E402
+from . import library  # noqa: E402
 from . import outlines  # noqa: E402
 from . import shelf  # noqa: E402
 from . import tools  # noqa: E402
@@ -120,10 +121,12 @@ def _scenarios(self, context):
         names = game_data(scene).messages(f"ScenarioName_{galaxy.name}")
 
         def label(s):
+            return f"{s.no}: {names.get(f'ScenarioName_{galaxy.name}{s.no}') or s.name}"
+
+        def description(s):
             layers = " ".join(layer[-1].upper() for layer in s.layers(galaxy.name)[1:])
-            shown = names.get(f"ScenarioName_{galaxy.name}{s.no}") or s.name
-            return f"{s.no}: {shown}" + (f"   · Ebenen {layers}" if layers else "")
-        _cache[key] = [(str(s.no), label(s), f"Szenario {s.no}: {s.name}") for s in galaxy.scenarios]
+            return f"Szenario {s.no} ({s.name})" + (f"; Ebenen {layers}" if layers else "")
+        _cache[key] = [(str(s.no), label(s), description(s)) for s in galaxy.scenarios]
     return _cache[key]
 
 
@@ -778,6 +781,7 @@ def register():
     shelf.register()
     hud.register()
     outlines.register()
+    library.register()
     bpy.app.handlers.depsgraph_update_post.append(_gravity_handler)
     keyconfig = bpy.context.window_manager.keyconfigs.addon
     if keyconfig is not None:
@@ -799,6 +803,7 @@ def unregister():
     _keymaps.clear()
     if _gravity_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_gravity_handler)
+    library.unregister()
     outlines.unregister()
     hud.unregister()
     shelf.unregister()

@@ -1,9 +1,6 @@
-"""The viewport's HUD in the Galaxie workspace (gpu and blf in a POST_PIXEL draw handler), and the Q pie.
+"""Markers in the Galaxie workspace's viewport (gpu and blf in a POST_PIXEL draw handler), and the Q pie.
 
-- Top left: the galaxy and scenario, where new things go (zone and layer), what the active tool does,
-  and a hazelnut dot while there are unsaved changes.
-- Bottom left: the legend of the wire shapes' colours, for the kinds that are shown.
-- Without a galaxy: a card in the middle saying what to do first.
+- The path point the Punkte panel edits, and the Teststart ring where Mario begins a test.
 - Q (in this workspace only; elsewhere Blender's Quick Favorites): a pie with the editor's tools, the
   automatic test, saving, test play (the testbed) and playing in the whole game.
 """
@@ -14,22 +11,8 @@ import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 
-from . import scene_io
-
 HAZEL = (0.541, 0.353, 0.196, 1.0)
-PANEL = (0.05, 0.06, 0.11, 0.78)
 TEXT = (0.92, 0.93, 0.96, 1.0)
-DIM = (0.70, 0.72, 0.80, 1.0)
-HINTS = {
-    "mge.tool_place": "Klick: Objekt setzen  ·  Klick auf ein Objekt: auswählen  ·  Strg+Klick: trotzdem setzen",
-    "mge.tool_path": "Klicks: Pfadpunkte  ·  Enter oder Rechtsklick: fertig  ·  Esc: verwerfen",
-    "mge.tool_gravity": "Klick auf einen Planeten: Schwerkraft in seine Mitte",
-    "mge.tool_start": "Klick: dort beginnt Mario beim automatischen Test",
-}
-DEFAULT_HINT = "Palette unten: Objekt anklicken oder auf einen Planeten ziehen  ·  Q: Werkzeuge"
-LEGEND = [("objects", "Objekte", "objinfo"), ("mapparts", "Levelteile", "mappartsinfo"), ("areas", "Bereiche", "areaobjinfo"),
-          ("cameras", "Kamerabereiche", "cameracubeinfo"), ("gravity", "Schwerkraft", "planetobjinfo"),
-          ("starts", "Startpunkte", "startinfo"), ("paths", "Pfade", None)]
 _handle = None
 
 
@@ -37,11 +20,6 @@ def editor():
     return sys.modules[__package__]
 
 
-def _rect(x, y, w, h, colour):
-    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
-    batch = batch_for_shader(shader, "TRIS", {"pos": [(x, y), (x + w, y), (x + w, y + h), (x, y), (x + w, y + h), (x, y + h)]})
-    shader.uniform_float("color", colour)
-    batch.draw(shader)
 
 
 def _text(x, y, text, size, colour, scale):
@@ -52,99 +30,28 @@ def _text(x, y, text, size, colour, scale):
     return blf.dimensions(0, text)[0]
 
 
-def _top_inset(area):
-    """The height of the header and tool header drawn over the viewport (region overlap)."""
-    return sum(r.height for r in area.regions if r.type in ("HEADER", "TOOL_HEADER") and r.height > 1 and r.alignment == "TOP")
 
 
-def _bottom_inset(area):
-    """The height of the asset shelf (the palette) drawn over the viewport's bottom."""
-    return sum(r.height for r in area.regions if r.type in ("ASSET_SHELF", "ASSET_SHELF_HEADER") and r.height > 1
-               and r.alignment == "BOTTOM")
 
 
-def _left_edge(area):
-    tools = next((r for r in area.regions if r.type == "TOOLS"), None)
-    return (tools.width if tools is not None and tools.width > 1 else 0) + 12
 
 
 def draw():
+    """Only markers in the view: the path point the Punkte panel edits and the Teststart; what is open
+    and what is unsaved are the header's (workspace.py)."""
     context = bpy.context
     if context.workspace is None or context.workspace.name != "Galaxie" or context.region is None:
         return
-    area, region, scene = context.area, context.region, context.scene
+    scene = context.scene
+    if not scene.get("smg_galaxy"):
+        return
     scale = context.preferences.system.ui_scale
     gpu.state.blend_set("ALPHA")
-    if not scene.get("smg_galaxy"):
-        lines = [("Keine Galaxie geöffnet", 18, TEXT), ("Rechts im Reiter „Galaxie“ eine Galaxie wählen und öffnen", 13, DIM),
-                 ("(N blendet die Seitenleiste ein)", 12, DIM)]
-        width, height = 470 * scale, 104 * scale
-        x, y = (region.width - width) / 2, (region.height - height) / 2
-        _rect(x, y, width, height, PANEL)
-        _rect(x, y + height - 4 * scale, width, 4 * scale, HAZEL)
-        yy = y + height - 34 * scale
-        for text, size, colour in lines:
-            blf.size(0, size * scale)
-            w = blf.dimensions(0, text)[0]
-            _text(x + (width - w) / 2, yy, text, size, colour, scale)
-            yy -= 26 * scale
-        gpu.state.blend_set("NONE")
-        return
-    core = editor()
-    galaxy = core.galaxy_label(scene, scene["smg_galaxy"])
-    scenario = next((label for key, label, _ in core._scenarios(None, context) if key == scene.mge_scenario), "")
-    try:
-        target = core.target_name(context)
-    except (KeyError, RuntimeError):
-        target = ""
-    if " · " in target:  # "Ebene A · Zone" -> "Zone › Ebene A"
-        layer, zone = target.split(" · ", 1)
-        target = f"{zone} › {layer}"
-    tool = context.workspace.tools.from_space_view3d_mode("OBJECT", create=False)
-    hint = HINTS.get(tool.idname if tool else "", DEFAULT_HINT)
-    rows = [(galaxy, 14, TEXT), (scenario.split("   ·")[0], 12, DIM), (f"Neues landet in: Ebene des Planeten darunter, sonst {target}", 12, DIM), (hint, 12, DIM)]
     active = context.active_object
-    if active is not None and active.select_get() and active.get("smg_kind"):
-        rows.append((f"Ausgewählt: {active.name}  ·  G verschieben  ·  Shift+D kopieren  ·  X löschen", 12, DIM))
-    if scene.mge_warp:
-        rows.append(("Teststart an: Mario beginnt am Ring „Mario-Start (Test)“ (3D-Cursor)", 12, HAZEL))
-    status = core.game_io.testbed_status_known()
-    if status and (status.get("stage"), status.get("scenario")) == (scene["smg_galaxy"], scene.mge_scenario):
-        rows.append(("▶ Testspiel läuft  ·  ⌘S oder F5 übernimmt die Änderungen", 12, TEXT))
-    elif status:
-        rows.append(("▶ Testspiel läuft mit anderem Szenario  ·  F5 wechselt", 12, TEXT))
-    x = _left_edge(area)
-    blf.size(0, 14 * scale)
-    width = max(blf.dimensions(0, r[0])[0] if r[1] == 14 else 0 for r in rows)
-    blf.size(0, 12 * scale)
-    width = max([width + 110 * scale] + [blf.dimensions(0, r[0])[0] for r in rows if r[1] == 12]) + 28 * scale
-    height = (len(rows) * 19 + 14) * scale
-    y = region.height - _top_inset(area) - height - 10 * scale
-    _rect(x, y, width, height, PANEL)
-    _rect(x, y, 4 * scale, height, HAZEL)
-    yy = y + height - 22 * scale
-    for text, size, colour in rows:
-        _text(x + 14 * scale, yy, text, size, colour, scale)
-        yy -= 19 * scale
-    if scene.get("mge_dirty"):
-        blf.size(0, 11 * scale)
-        w = blf.dimensions(0, "● ungespeichert")[0]
-        _text(x + width - w - 12 * scale, y + height - 22 * scale, "● ungespeichert", 11, HAZEL, scale)
     if active is not None and active.get("smg_kind") == "path" and active.mode == "OBJECT":
         _point_marker(context, active, scale)
     if scene.mge_warp:
         _start_marker(context, scale)
-    # The legend of the shown kinds' colours.
-    shown = [(label, kind) for key, label, kind in LEGEND if getattr(scene, f"mge_show_{key}", False)]
-    lx, ly = x, _bottom_inset(area) + 14 * scale
-    if shown:  # a backdrop, so the outlines behind do not run through the words
-        blf.size(0, 11 * scale)
-        span = sum(26 * scale + blf.dimensions(0, label)[0] for label, _ in shown)
-        _rect(lx - 8 * scale, ly - 5 * scale, span + 6 * scale, 24 * scale, PANEL)
-    for label, kind in shown:
-        colour = scene_io.COLORS.get(kind, (1.0, 0.95, 0.3, 1)) if kind else (1.0, 0.95, 0.3, 1)
-        _rect(lx, ly + 2 * scale, 10 * scale, 10 * scale, colour)
-        lx += 16 * scale + _text(lx + 15 * scale, ly + 2 * scale, label, 11, DIM, scale) + 10 * scale
     gpu.state.blend_set("NONE")
 
 

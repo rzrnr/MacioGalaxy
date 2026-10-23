@@ -21,31 +21,37 @@ a pull updates it (restart Blender). In the 3D view: sidebar (N), the tabs **Gal
 ## Use
 
 The editor works in its own workspace **Galaxie** (a tab beside Layout, Modeling, ...). Opening a
-galaxy switches to it (made the first time from a copy of Layout: the Properties editor, the timeline
-and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens in a scene of its own,
-"Mario Galaxy", when the current scene holds other things (the workspace starts in it, empty).
+galaxy switches to it (made the first time from a copy of Layout: the Properties editor and the
+timeline closed, the Outliner kept, a space-blue viewport; `workspace.py`; a workspace of an older
+layout is made again). A galaxy opens in a scene of its own, "Mario Galaxy", when the current scene
+holds other things (the workspace starts in it, empty).
 
-- **The sidebar (N), tab Galaxie**: a welcome checklist (disc found, object palette ready) and the
-  galaxy to open, searched by its name in the game ("Good Egg Galaxy (EggStarGalaxy)"; the observatory is
-  "Observatory Grounds (AstroGalaxy)") or its internal name. Once open: **Szenarien** (each with the main
-  zone's layers it uses), **Zonen und Ebenen** (an eye and a solo button per zone; the selected zone's
-  layers, ✓ = used by the scenario), **Spielen** (target mod and a switch to turn it on or off in
-  `mods.txt`, **Speichern** = ⌘S in this workspace, **Automatisch testen (Bilder)** = the headless run
-  with pictures, optionally from the Teststart, **Testspielen** = the level testbed (below),
-  **Im ganzen Spiel spielen** = the installed game with `--stage`), **Anzeigen** (the kinds drawn, with their colours as the legend;
-  the sky and cameras start off; **Linienstärke**: areas, cameras, gravity and paths are drawn again
-  over Blender's one-pixel wires, this many pixels wide, in their legend colours, `outlines.py`), **Objektliste** (search, kind, zone; layer and ID per row).
-- **Tab Objekt**: the selected object's picture, internal name, description, ID, a zone menu and a layer
-  menu (both for every selected object; another zone keeps the objects where they stand in the galaxy
-  and makes them new rows there, paths with a free ID), **Lage im Spiel** (position, rotation, scale in
-  game units, editable; the rotation shows the zone's own dir values while the object is turned as read,
-  and typing one angle keeps the other two), **Punkte** for a path (a point number, marked in the
-  viewport, and its point_arg0..7), and its fields: **Argumente** with their meaning and a menu of the values the object database lists (unused
-  ones folded away), **Schalter**, **Verknüpfungen** (MessageId shows the message's text, CommonPath_ID
-  has a path chooser), **Weitere Felder**; at the top Testspielen, Speichern and Bilder (the automatic test). With several
-  objects selected, ↓ beside a field copies its value to all selected that have it (arguments only to
-  objects of the same name), and "gemischt" marks a field whose values differ; the value menus and the
-  path chooser set all of them.
+- **The galaxy library** (`library.py`): a window in the middle of the screen with every galaxy as a
+  picture (its dome miniature, rendered once in the background), grouped: the mods' galaxies, the
+  galaxies, the rest (hubs, small galaxies); a search field narrows them by either name. A click opens
+  the galaxy. It opens by itself when the workspace starts without a galaxy, and from the header.
+- **The 3D view's header**: the galaxy (a click: the library) and its mission.
+- **The tool header**: Speichern (red while there are unsaved changes; ⌘S in this workspace),
+  **Testspielen** (the level testbed, below; ✕ stops it) and a switch per kind drawn, a swatch in its
+  colour (the name in its tooltip): objects, level parts, areas, cameras, gravity, starts, paths, zones,
+  sky, the rest. Areas, cameras, gravity and paths are drawn over Blender's one-pixel wires in these
+  colours (`outlines.py`).
+- **The sidebar (N), tab Galaxie**: Galaxie wählen, Modelle on/off, Zum Start; **Zonen und Ebenen** (an eye
+  and a solo button per zone; the selected zone's layers, ✓ = used by the scenario); **Mod und Tests**
+  (closed: the target mod and its switch in `mods.txt`, the Teststart, the testbed's window, the
+  automatic test with pictures, the whole game with `--stage`, the line width).
+- **Tab Item, panel Galaxie-Objekt** (below Blender's Transform): the selected object's picture, name,
+  kind and ID, a zone menu and a layer menu (both for every selected object; another zone keeps the
+  objects where they stand in the galaxy and makes them new rows there, paths with a free ID), its
+  internal name; **Lage im Spiel** (closed: position, rotation, scale in game units; the rotation shows
+  the zone's own dir values while the object is turned as read, and typing one angle keeps the other
+  two), **Punkte** for a path (a point number, marked in the viewport, and its point_arg0..7), and its
+  fields: **Argumente** ("Color Frame · arg1", with a menu of the values the object database lists;
+  unused ones folded away), **Schalter**, **Verknüpfungen** (MessageId with its text, CommonPath_ID
+  with a path chooser), **Weitere Felder**. With several objects selected, ↓ beside a field copies its
+  value to all selected that have it (arguments only to objects of the same name), and "gemischt"
+  marks a field whose values differ; the value menus and the path chooser set all of them.
+- **The Outliner**: Blender's, with the galaxy's collections (zones, their layers and paths) and objects.
 - **The object palette**: a strip at the bottom of the 3D view (an asset shelf, `shelf.py`) with every
   placeable object, level part and gravity as a picture, in German catalogs (Objekte/Gegenstände,
   Gegner, Levelteile, ..., Schwerkraft; an older palette is rebuilt in the background). A click chooses it for the Setzen tool and
@@ -60,9 +66,7 @@ and the Outliner closed, a space-blue viewport; `workspace.py`). A galaxy opens 
   or purple coin line along it, RailCoin with CommonPath_ID and a coin count for its length), **Schwerkraft** (a click on a planet: the gravity at the middle of its bounds with a
   fitting Range), **Teststart** (where Mario starts in Testspielen and the automatic test, with "Am
   Teststart beginnen" on; the galaxy's own start stays).
-- **The HUD** (`hud.py`): the galaxy and scenario, where new things go, what the active tool does, the
-  selection's keys, "● ungespeichert" while there are unsaved changes (also after deleting), and the
-  colour legend above the palette; without a galaxy a card says what to do.
+- **In the view** (`hud.py`): only markers, the path point being edited and the Teststart ring.
 - **Q** opens a pie menu with the tools, automatic test, saving, Testspielen (and the whole game below
   it) and "back to the start" (in this workspace; elsewhere Blender's Quick Favorites). **Zum Start** frames Mario's start.
 - Move, rotate, scale, duplicate (Shift+D) and delete as usual; a duplicated path gets its own ID, and a
