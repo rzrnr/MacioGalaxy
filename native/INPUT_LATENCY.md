@@ -2,20 +2,24 @@
 
 Two changes bring input to the screen sooner.
 
-## Reduced frame order (`PETARI_INPUT_LATENCY=reduced`)
+## Reduced frame order (F1 → Graphics → Input latency: Reduced)
 
 The Wii's frame loop (`GameSystem::frameLoop`) draws, at the start of each frame,
 the step it computed in the frame before, and then computes the next step while
 the GPU draws: on the Wii both ran at once. A button pressed now is read by the
 next step and shown a frame after that.
 
-With `PETARI_INPUT_LATENCY=reduced` the loop (`GameSystem::frameLoopInputFirst`)
+With Input latency Reduced (`InputLatency=reduced` in `graphics.txt`) the loop (`GameSystem::frameLoopInputFirst`)
 computes the step first and draws it at once, in the same frame: the same work,
 one frame (16.7 ms) sooner on screen. Game logic is unchanged. What the draw-sync
 token callbacks (the Star Pointer's and lens flares' EFB reads, the talk
 balloons') write is read by the next step, as before, and the screen preserver's
-capture still follows the draw. Without the variable, or with
-`PETARI_INPUT_LATENCY=original`, the loop keeps the Wii's order.
+capture still follows the draw. The default, Original, keeps the Wii's order.
+`PETARI_INPUT_LATENCY=reduced|original` overrides the setting for one run.
+
+At Frame rate 120 (native/FRAME_RATE.md) the extra frame then comes before the
+step's frame: it is drawn between calcAnim and the draw and presented first, and
+the step's frame follows half a field later.
 
 ## Fresh input (always on)
 

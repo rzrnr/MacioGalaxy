@@ -14,6 +14,7 @@ namespace PetariNative::Graphics {
 namespace {
 
 std::atomic<int> gFrameRate{60};
+std::atomic<int> gInputLatency{static_cast<int>(InputLatency::Original)};
 std::atomic<int> gResolution{kDisplay};
 std::atomic<int> gUpscaler{static_cast<int>(Upscaler::Fsr1)};
 std::atomic<int> gSharpening{static_cast<int>(Sharpening::Off)};
@@ -60,6 +61,12 @@ bool parseLine(const std::string& key, const std::string& value, Settings* setti
             return false;
         }
         settings->frameRate = v == "120" ? 120 : 60;
+    } else if (key == "InputLatency") {
+        if (v != "original" && v != "reduced") {
+            *message = "InputLatency must be original or reduced";
+            return false;
+        }
+        settings->inputLatency = v == "reduced" ? InputLatency::Reduced : InputLatency::Original;
     } else if (key == "Resolution") {
         const int resolution = parseResolution(v);
         if (resolution < 0) {
@@ -100,6 +107,7 @@ bool parseLine(const std::string& key, const std::string& value, Settings* setti
 Settings current() {
     Settings settings;
     settings.frameRate = gFrameRate.load(std::memory_order_relaxed);
+    settings.inputLatency = static_cast<InputLatency>(gInputLatency.load(std::memory_order_relaxed));
     settings.resolution = gResolution.load(std::memory_order_relaxed);
     settings.upscaler = static_cast<Upscaler>(gUpscaler.load(std::memory_order_relaxed));
     settings.sharpening = static_cast<Sharpening>(gSharpening.load(std::memory_order_relaxed));
@@ -110,6 +118,8 @@ Settings current() {
 
 void set(const Settings& settings) {
     gFrameRate.store(settings.frameRate >= 120 ? 120 : 60, std::memory_order_relaxed);
+    gInputLatency.store(std::clamp(static_cast<int>(settings.inputLatency), 0, static_cast<int>(InputLatency::Count) - 1),
+                        std::memory_order_relaxed);
     gResolution.store(nearestResolution(settings.resolution), std::memory_order_relaxed);
     gUpscaler.store(std::clamp(static_cast<int>(settings.upscaler), 0, static_cast<int>(Upscaler::Count) - 1),
                     std::memory_order_relaxed);
@@ -124,6 +134,7 @@ std::string serialize() {
     std::ostringstream out;
     out << "# Petari graphics settings (F1 -> Graphics; native/GRAPHICS.md)\n"
         << "FrameRate=" << settings.frameRate << "\n"
+        << "InputLatency=" << (settings.inputLatency == InputLatency::Reduced ? "reduced" : "original") << "\n"
         << "Resolution=";
     if (settings.resolution == kDisplay) {
         out << "display";

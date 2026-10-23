@@ -512,6 +512,7 @@ void refreshGraphics() {
     const Graphics::Settings settings = Graphics::current();
     GraphicsOptions options;
     options.frameRate = settings.frameRate;
+    options.inputLatency = static_cast<int>(settings.inputLatency);
     options.resolution = settings.resolution;
     options.upscaler = static_cast<int>(settings.upscaler);
     options.sharpening = static_cast<int>(settings.sharpening);
@@ -529,6 +530,7 @@ void applyGraphicsChange() {
     }
     Graphics::Settings settings;
     settings.frameRate = options.frameRate;
+    settings.inputLatency = static_cast<Graphics::InputLatency>(options.inputLatency);
     settings.resolution = options.resolution;
     settings.upscaler = static_cast<Graphics::Upscaler>(options.upscaler);
     settings.sharpening = static_cast<Graphics::Sharpening>(options.sharpening);

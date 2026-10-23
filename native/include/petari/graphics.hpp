@@ -29,9 +29,13 @@ enum class Stats : int { Off, Fps, Detailed, Count };
 
 // FrameRate: 60, or 120 with an extra, interpolated frame between two game steps (native/FRAME_RATE.md).
 constexpr int kFrameRates[] = {60, 120};
+// Input latency (native/INPUT_LATENCY.md): Original, the Wii's frame loop draws each step in the next
+// frame; Reduced computes the step first and draws it at once, a frame sooner on screen.
+enum class InputLatency : int { Original, Reduced, Count };
 
 struct Settings {
     int frameRate = 60;         // one of kFrameRates
+    InputLatency inputLatency = InputLatency::Original;
     int resolution = kDisplay;  // one of kResolutions
     Upscaler upscaler = Upscaler::Fsr1;
     Sharpening sharpening = Sharpening::Off;
@@ -74,6 +78,9 @@ inline float sharpness(Sharpening sharpening) {
 }
 
 // Menu and stats labels.
+inline const char* inputLatencyName(InputLatency latency) {
+    return latency == InputLatency::Reduced ? "Reduced" : "Original";
+}
 inline const char* resolutionName(int resolution) {
     switch (resolution) {
     case 480: return "480p (Wii)";

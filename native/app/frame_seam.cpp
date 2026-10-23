@@ -66,6 +66,13 @@ PresentHooks gPresent;
 CpuRelease gRelease;
 constexpr std::uint64_t kRetraceNs = 16683333;  // 59.94 Hz
 std::uint64_t gStepPresentNs = 0;  // the step's aurora_end_frame, for frame interpolation's extra frame
+// Input latency Reduced (petari_host_input_first): this step is computed first and drawn at once,
+// so its extra frame, when there is one, is presented before the step's frame.
+bool gInputFirst = false;
+bool gExtraThisStep = false;           // this step's extra frame was presented
+std::uint64_t gExtraPresentNs = 0;
+std::uint64_t gExtraFrameNs = 4000000;  // how long an extra frame takes to draw, smoothed
+std::uint64_t gExtraStartNs = 0;
 std::uint64_t gExtraFrames = 0;    // frame interpolation's presents, in the frame time report
 std::uint64_t gLateSteps = 0;      // steps without an extra frame: presented too late
 std::uint64_t gSlowDisplaySteps = 0;  // or on a display below 100 Hz
@@ -871,11 +878,16 @@ void takeInputEarly() {
 
 // PETARI_INPUT_LATENCY=reduced: the loop computes each step first and draws it at once.
 extern "C" int petari_host_input_first(void) {
-    static const bool reduced = [] {
+    // PETARI_INPUT_LATENCY=reduced|original overrides the Graphics page for a run.
+    static const int forced = [] {
         const char* value = std::getenv("PETARI_INPUT_LATENCY");
-        return value != nullptr && std::strcmp(value, "reduced") == 0;
+        if (value == nullptr) return -1;
+        return std::strcmp(value, "reduced") == 0 ? 1 : std::strcmp(value, "original") == 0 ? 0 : -1;
     }();
-    return reduced ? 1 : 0;
+    gInputFirst = forced >= 0 ? forced == 1
+                              : PetariNative::Graphics::current().inputLatency == PetariNative::Graphics::InputLatency::Reduced;
+    gExtraThisStep = false;
+    return gInputFirst ? 1 : 0;
 }
 
 extern "C" void petari_host_frame_mark(int mark) {
@@ -955,6 +967,14 @@ extern "C" void petari_host_frame_seam(void) {
 #endif
     PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
+    if (gInputFirst && gExtraThisStep) {
+        // Input latency Reduced: the step's frame comes half an interval after its extra frame.
+        const std::uint64_t due = gExtraPresentNs + kRetraceNs / 2;
+        const std::uint64_t now = Telemetry::nowNs();
+        if (now < due) {
+            SDL_DelayPrecise(due - now);
+        }
+    }
     const std::uint64_t endStart = Telemetry::nowNs();
     gStepPresentNs = endStart;
     aurora_end_frame();
@@ -993,11 +1013,20 @@ extern "C" int petari_host_interp_wait(void) {
         return 0;
     }
     const std::uint64_t retrace = Telemetry::lastRetraceNs.load(std::memory_order_relaxed);
-    if (retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2) {
+    const std::uint64_t now = Telemetry::nowNs();
+    // The extra frame is shown half a retrace interval away from the step's frame, so that presents
+    // come evenly. In the Wii's order it follows the step's present, which must have come in the
+    // first half of its interval. With Input latency Reduced it comes first: it must be drawn within
+    // the first half, so that the step's frame, half an interval later, keeps its time.
+    const bool late = gInputFirst ? retrace == 0 || now + gExtraFrameNs > retrace + kRetraceNs / 2
+                                  : retrace == 0 || gStepPresentNs < retrace || gStepPresentNs > retrace + kRetraceNs / 2;
+    if (late) {
         ++gLateSteps;
         ++gInterpolationSecond.late;
+        gExtraFrameNs -= gExtraFrameNs / 16;  // an estimate that only grows would never allow one again
         return 0;
     }
+    gExtraStartNs = now;
     return 1;
 }
 
@@ -1015,12 +1044,19 @@ extern "C" void petari_host_present_seam(void) {
     const Rect image = updateImage();
     PetariNative::HomeMenu::drawImGuiOverlay(image.x, image.y, image.width, image.height);
     StatsOverlay::draw(gWindow, image.x, image.y, image.width, image.height);
-    const std::uint64_t due = gStepPresentNs + kRetraceNs / 2;
-    const std::uint64_t now = Telemetry::nowNs();
-    if (now < due) {
-        SDL_DelayPrecise(due - now);
+    const std::uint64_t drawn = Telemetry::nowNs();
+    if (drawn > gExtraStartNs) {
+        gExtraFrameNs = (gExtraFrameNs * 3 + std::min<std::uint64_t>(drawn - gExtraStartNs, 12000000)) / 4;
+    }
+    if (!gInputFirst) {
+        const std::uint64_t due = gStepPresentNs + kRetraceNs / 2;
+        if (drawn < due) {
+            SDL_DelayPrecise(due - drawn);
+        }
     }
     aurora_end_frame();
+    gExtraPresentNs = Telemetry::nowNs();
+    gExtraThisStep = true;
     StatsOverlay::notePresent();
     ++gExtraFrames;
     ++gInterpolationSecond.drawn;

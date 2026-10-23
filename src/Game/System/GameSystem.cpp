@@ -359,7 +359,7 @@ void GameSystem::frameLoop() {
 #ifdef PETARI_NATIVE
     // Host window, events and Aurora frame boundary (native/app).
     petari_host_frame_seam();
-    FrameInterpolation::afterSeam(this);
+    FrameInterpolation::extraFrame(this);
 #endif
     MainLoopFramework::sManager->waitForRetrace();
 #ifdef PETARI_NATIVE
@@ -379,9 +379,22 @@ void GameSystem::frameLoop() {
 // flare, talk) write is still read by the next step's update, after the retrace. The screen
 // preserver's capture follows the draw, as it follows it in the Wii's order.
 void GameSystem::frameLoopInputFirst() {
+    FrameInterpolation::beforeUpdate();  // the drawn step, for an extra frame at 120 frames per second
     update();
     calcAnim();
+    // As in frameLoop: the hold-to-skip and Point to move mods.
+    CutsceneSkip::noteFrame();
+    PointMove::update();
+    if (isNerve(GET_NERVE(GameSystem, GameSystemNormal))) {
+        for (bool first = true; CutsceneSkip::continueFastForward(first); first = false) {
+            CutsceneSkip::beginFastForwardStep();
+            updateSceneController();
+            calcAnim();
+            CutsceneSkip::noteFrame();
+        }
+    }
     petari_host_frame_mark(PETARI_FRAME_MARK_UPDATED);  // the latency probe (petari/latency_probe.hpp)
+    FrameInterpolation::extraFrame(this);  // halfway between the drawn step and this one, shown first
     MainLoopFramework::sManager->beginRender();
     draw();
     MainLoopFramework::sManager->endRender();

@@ -9,6 +9,7 @@ defaults draw exactly as before.
 | Item | Choices | What it does |
 | --- | --- | --- |
 | Frame rate | 60, 120 (interpolated) | At 120 the game draws one extra frame between every two of its 60 steps per second, with the camera and the models halfway, for smoother motion on a 120 Hz display. A prototype; native/FRAME_RATE.md has what it needs and what stays at 60. |
+| Input latency | Original, Reduced | Reduced computes each game step first and draws it at once, a frame sooner on screen; native/INPUT_LATENCY.md. |
 | Resolution | Display, 480p (Wii), 720p, 1080p, 1440p, 4K | The render height, at the displayed image's aspect (16:9: 853 x 480, 1280 x 720, 1920 x 1080, 2560 x 1440, 3840 x 2160). The same choice gives the same image on every Mac. Display renders at the displayed image's own size. Below the displayed size the image is upscaled (faster); above it, it is supersampled (smoother edges, more GPU time). 480p is the Wii's own resolution. |
 | Upscaler | FSR 1, Bicubic, Bilinear | The filter while upscaling. FSR 1 (AMD FidelityFX Super Resolution 1.0, EASU) keeps edges sharp and clean; bicubic (Catmull-Rom) is sharper than bilinear, which is what the window used before. At 1:1 nothing is scaled; when supersampling an area filter in linear light shrinks the image. |
 | Sharpening | Off, Low, Medium, High | FSR 1's RCAS sharpening after scaling, at any resolution. Low, Medium and High are AMD's 1, 0.5 and 0.2 stops. High also sharpens noise and the HUD. |
@@ -27,6 +28,7 @@ The page saves every change in `graphics.txt` in the user directory:
 
 ```
 FrameRate=60
+InputLatency=original
 Resolution=1080
 Upscaler=fsr1
 Sharpening=low
@@ -34,7 +36,7 @@ AntiAliasing=off
 Stats=fps
 ```
 
-A missing file keeps the defaults (`FrameRate=60`, `Resolution=display`, `Upscaler=fsr1`,
+A missing file keeps the defaults (`FrameRate=60`, `InputLatency=original`, `Resolution=display`, `Upscaler=fsr1`,
 `Sharpening=off`, `AntiAliasing=off`, `Stats=off`). Resolution also takes
 `1080p` or `4k`; another height takes the nearest choice. A damaged file is
 reported at startup and changes nothing. For one run, `PETARI_GRAPHICS`
